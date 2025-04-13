@@ -142,7 +142,7 @@ function update_with_progress() {
             if ((current_time - last_update_time >= update_interval)); then
                 elapsed_seconds=$((current_time - start_time))
                 formatted_elapsed_time=$(format_duration $elapsed_seconds)
-                echo -e "\r${indentation}|-- Progress: ${COLOR_CYAN}${percentage}%${COLOR_RESET} | Time: ${formatted_elapsed_time} | Files: ${index}/${entry_count}"
+                echo -e "\r${indentation}- Progress: ${COLOR_CYAN}${percentage}%${COLOR_RESET} | Time: ${formatted_elapsed_time} | Files: ${index}/${entry_count}" >&2
                 last_update_time=$current_time
             fi
         else
@@ -172,7 +172,7 @@ function update_with_progress() {
         current_time=$(date +%s)
         elapsed_seconds=$((current_time - start_time))
         formatted_elapsed_time=$(format_duration $elapsed_seconds)
-        echo -e "\r${indentation}- Progress: ${COLOR_CYAN}${percentage}%${COLOR_RESET} | Time: ${formatted_elapsed_time} | Files: ${index}/${entry_count}"
+        echo -e "\r${indentation}- Progress: ${COLOR_CYAN}${percentage}%${COLOR_RESET} | Time: ${formatted_elapsed_time} | Files: ${index}/${entry_count}" >&2
     else
         # 构建进度条
         filled=$((bar_length * index / entry_count))
