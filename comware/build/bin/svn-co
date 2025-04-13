@@ -172,7 +172,7 @@ function update_with_progress() {
         current_time=$(date +%s)
         elapsed_seconds=$((current_time - start_time))
         formatted_elapsed_time=$(format_duration $elapsed_seconds)
-        echo -e "\r${indentation}|-- Progress: ${COLOR_CYAN}${percentage}%${COLOR_RESET} | Time: ${formatted_elapsed_time} | Files: ${index}/${entry_count}" >/dev/tty
+        echo -e "\r${indentation}- Progress: ${COLOR_CYAN}${percentage}%${COLOR_RESET} | Time: ${formatted_elapsed_time} | Files: ${index}/${entry_count}" >/dev/tty
     else
         # 构建进度条
         filled=$((bar_length * index / entry_count))
@@ -236,7 +236,7 @@ if [ -n "$PARAM_FOLDER_LIST" ]; then
     # 处理文件夹列表
     for folder in $PARAM_FOLDER_LIST; do
         echo -e "  ${COLOR_CYAN}- 📂 Checking out folder '$folder'${COLOR_RESET}"
-        checkouted_count=$((checkouted_count + $(update_with_progress "$PARAM_LOCAL_DIR/$folder" "${folder_count_map[$folder]}")))
+        checkouted_count=$((checkouted_count + $(update_with_progress "$PARAM_LOCAL_DIR/$folder" "${folder_count_map[$folder]}" "  ")))
     done
 else
     checkouted_count=$((checkouted_count + $(update_with_progress "$PARAM_LOCAL_DIR" "$total_entry_count")))
