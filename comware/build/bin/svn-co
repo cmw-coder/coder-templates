@@ -1,0 +1,249 @@
+#!/bin/bash
+
+# 颜色支持检测
+if [ -n "$CODER" ] || [ -t 1 ]; then
+    COLOR_GREEN=$(echo -e "\033[32m")
+    COLOR_CYAN=$(echo -e "\033[36m")
+    COLOR_RED=$(echo -e "\033[31m")
+    COLOR_RESET=$(echo -e "\033[0m")
+else
+    COLOR_GREEN="" && COLOR_CYAN="" && COLOR_RED="" && COLOR_RESET=""
+fi
+
+# 参数检查
+if [ $# -ne 5 ]; then
+    echo "- ❔ Usage: svn-co <url> <folder-list> <path> <username> <password>"
+    exit 1
+fi
+
+# 入参处理
+PARAM_BASE_SVN_URL="$1"
+# shellcheck disable=SC2001
+PARAM_FOLDER_LIST=$(echo "${2//[\[\]]/}" | sed 's/,/ /g')
+PARAM_LOCAL_DIR="$3"
+PARAM_SVN_USERNAME="$4"
+PARAM_SVN_PASSWORD="$5"
+
+function svn_with_auth() {
+    svn "$@" --non-interactive --username "$PARAM_SVN_USERNAME" --password "$PARAM_SVN_PASSWORD"
+}
+function format_duration() {
+    local seconds=$1
+    local hours=$((seconds / 3600))
+    local minutes=$(((seconds % 3600) / 60))
+    local seconds=$((seconds % 60))
+    printf "%02d:%02d:%02d" $hours $minutes $seconds
+}
+function get_filename_max_length() {
+    local term_length=$1
+    local bar_length=$2
+    local filename_max_length=$((term_length - (bar_length + 16)))               # 保留16字符给其他元素
+    filename_max_length=$((filename_max_length > 10 ? filename_max_length : 10)) # 最小显示10字符
+    filename_max_length=$((filename_max_length - 3))                             # 留3字符给省略号
+    echo $filename_max_length
+}
+function get_entry_count_in_svn_url() {
+    local url="$1"
+    local entry_count
+    for retry in {1..3}; do
+        entry_count=$(svn_with_auth list -R "$url" 2>/dev/null | wc -l)
+        [ "$entry_count" -gt 0 ] && break
+        echo -e "${COLOR_RED}- ❗ Retry $retry/3 getting file count...${COLOR_RESET}" >&2
+        sleep 1
+    done
+    echo "$entry_count"
+}
+function get_progress_bar_character() {
+    if echo "█" | grep -q "█"; then
+        echo "█"
+    else
+        echo "#"
+    fi
+}
+function get_progress_bar_length() {
+    local bar_length=$(($1 - 50))
+    bar_length=$((bar_length > 20 ? bar_length : 20)) # 最小20字符
+    bar_length=$((bar_length < 60 ? bar_length : 60)) # 最大60字符
+    echo $bar_length
+}
+function update_with_progress() {
+    local update_path="$1"
+    local entry_count="$2"
+    local indentation="$3"
+
+    local index=0
+    local last_update_time=0
+    local spinner_frames=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+
+    local bar_content
+    local bar_length
+    local base_path
+    local current_time
+    local display_filename
+    local elapsed_seconds
+    local escaped_base_path
+    local escaped_local_dir
+    local filename_max_length
+    local filename_truncated_front_length
+    local filename_truncated_back_length
+    local filled
+    local formatted_elapsed_time
+    local percentage
+    local progress_bar_char
+    local raw_filename
+    local start_time
+    local term_length
+    local update_interval
+
+    # 变量初始化
+    term_length=$(($(tput cols 2>/dev/null || echo 80) - ${#indentation}))
+    bar_length=$(get_progress_bar_length "$term_length")
+    filename_max_length=$(get_filename_max_length "$term_length" "$bar_length")
+    filename_truncated_front_length=$((filename_max_length / 2))
+    filename_truncated_back_length=$((filename_max_length - filename_truncated_front_length))
+
+    base_path=$(echo "$PARAM_BASE_SVN_URL" | sed -E '
+        s#^[^/]+://[^/]+##;    # 移除协议和域名
+        s#/$##;                # 移除结尾斜杠
+        s#^/?##                # 移除可能残留的起始斜杠
+    ')
+    escaped_base_path=$(echo "$base_path" | sed 's/[\/&]/\\&/g')
+    escaped_local_dir=$(basename "$PARAM_LOCAL_DIR" | sed 's/[\/&]/\\&/g')
+
+    progress_bar_char=$(get_progress_bar_character)
+    start_time=$(date +%s)
+    update_interval=$((entry_count / 800))
+    update_interval=$((update_interval > 5 ? update_interval : 5))
+
+    # 命令进度循环
+    while read -r line; do
+        # 解析原始文件名
+        raw_filename=$(echo "$line" | sed -E 's/^[A-Z] +//')
+
+        # 多级路径截断处理
+        display_filename=$(echo "$raw_filename" | sed -E "
+            s#^${escaped_local_dir}/?##;
+            s#^${escaped_base_path}/?##;
+            s#^/?##;
+            s/^(.{$filename_truncated_front_length}).*(.{$filename_truncated_back_length})$/\1...\2/;
+            t;
+            s/^(.{${filename_max_length}}).+/\1.../;
+        ")
+
+        # 进度计算
+        if echo "$line" | grep -q "A    "; then
+            ((index++))
+        fi
+        percentage=$(awk "BEGIN {printf \"%.2f\", $index*100/$entry_count}")
+
+        # Coder环境下按时间间隔输出
+        if [ -n "$CODER" ]; then
+            current_time=$(date +%s)
+            if ((current_time - last_update_time >= update_interval)); then
+                elapsed_seconds=$((current_time - start_time))
+                formatted_elapsed_time=$(format_duration $elapsed_seconds)
+                echo -e "\r${indentation}|-- Progress: ${COLOR_CYAN}${percentage}%${COLOR_RESET} | Time: ${formatted_elapsed_time} | Files: ${index}/${entry_count}" >/dev/tty
+                last_update_time=$current_time
+            fi
+        else
+            # 构建进度条
+            filled=$((bar_length * index / entry_count))
+            filled=$((filled > bar_length ? bar_length : filled))
+            bar_content=$(eval printf "%0.s${progress_bar_char}" "{1..$filled}")
+
+            # 动态输出格式
+            printf "\r%s%s [%s%s%s] %6s%% %s%s%s\033[K" \
+                "${indentation}" \
+                "${spinner_frames[index % ${#spinner_frames[@]}]}" \
+                "$COLOR_GREEN" \
+                "$bar_content" \
+                "$COLOR_RESET" \
+                "$percentage" \
+                "$COLOR_CYAN" \
+                "$display_filename" \
+                "$COLOR_RESET"
+        fi
+    done < <(svn_with_auth up --set-depth infinity "$update_path" 2>&1)
+
+    # 处理最后一次输出
+    index=$((index > 0 ? index - 1 : 0))
+    percentage=$(awk "BEGIN {printf \"%.2f\", $index*100/$entry_count}")
+    if [ -n "$CODER" ]; then
+        current_time=$(date +%s)
+        elapsed_seconds=$((current_time - start_time))
+        formatted_elapsed_time=$(format_duration $elapsed_seconds)
+        echo -e "\r${indentation}|-- Progress: ${COLOR_CYAN}${percentage}%${COLOR_RESET} | Time: ${formatted_elapsed_time} | Files: ${index}/${entry_count}" >/dev/tty
+    else
+        # 构建进度条
+        filled=$((bar_length * index / entry_count))
+        filled=$((filled > bar_length ? bar_length : filled))
+        bar_content=$(eval printf "%0.s${progress_bar_char}" "{1..$filled}")
+
+        # 动态输出格式
+        printf "\r%s%s [%s%s%s] %6s%% %s%s%s\033[K" \
+            "${indentation}" \
+            "${spinner_frames[index % ${#spinner_frames[@]}]}" \
+            "$COLOR_GREEN" \
+            "$bar_content" \
+            "$COLOR_RESET" \
+            "$percentage" \
+            "$COLOR_CYAN" \
+            "$display_filename" \
+            "$COLOR_RESET"
+    fi
+
+    echo "$index"
+}
+
+# 注册中断处理函数
+function interrupt_handler() {
+    echo -e "${COLOR_RED}\n- ❌ Checkout interrupted!${COLOR_RESET}" >&2
+    exit 1
+}
+trap interrupt_handler SIGINT
+
+# 获取文件和文件夹总数
+total_entry_count=0
+declare -A folder_count_map
+echo -e "${COLOR_CYAN}- 📈 Getting entry count in repo '$PARAM_BASE_SVN_URL'${COLOR_RESET}"
+if [ -n "$PARAM_FOLDER_LIST" ]; then
+    # 处理文件夹列表
+    for folder in $PARAM_FOLDER_LIST; do
+        echo -e "  ${COLOR_CYAN}- 📂 Getting entry count in folder '$folder'${COLOR_RESET}"
+        folder_count_map["$folder"]=$(get_entry_count_in_svn_url "$PARAM_BASE_SVN_URL/$folder")
+        if [ $((folder_count_map["$folder"])) -eq 0 ]; then
+            echo -e "  ${COLOR_RED}- ❌ Error: Unable to get entry count in folder '$folder'${COLOR_RESET}" >&2
+            exit 1
+        fi
+        echo -e "  ${COLOR_GREEN}- ✔️ Found ${folder_count_map[$folder]} entries"
+        total_entry_count=$((total_entry_count + folder_count_map[$folder]))
+    done
+else
+    total_entry_count=$(get_entry_count_in_svn_url "$PARAM_BASE_SVN_URL")
+fi
+[ "$total_entry_count" -le 0 ] && {
+    echo -e "${COLOR_RED}- ❌ Error: Unable to get file count${COLOR_RESET}"
+    exit 1
+}
+echo -e "${COLOR_GREEN}- ✔️ Found total $total_entry_count entries${COLOR_RESET}"
+
+# 开始检出
+checkouted_count=0
+echo -e "${COLOR_CYAN}- ⏳ Checking out repo '$PARAM_BASE_SVN_URL'${COLOR_RESET}"
+svn_with_auth co --depth empty "$PARAM_BASE_SVN_URL" "$PARAM_LOCAL_DIR" >/dev/null 2>&1
+
+if [ -n "$PARAM_FOLDER_LIST" ]; then
+    # 处理文件夹列表
+    for folder in $PARAM_FOLDER_LIST; do
+        echo -e "  ${COLOR_CYAN}- 📂 Checking out folder '$folder'${COLOR_RESET}"
+        checkouted_count=$((checkouted_count + $(update_with_progress "$PARAM_LOCAL_DIR/$folder" "${folder_count_map[$folder]}")))
+    done
+else
+    checkouted_count=$((checkouted_count + $(update_with_progress "$PARAM_LOCAL_DIR" "$total_entry_count")))
+fi
+
+if [ "$checkouted_count" -ne "$total_entry_count" ]; then
+    echo -e "${COLOR_RED}- Warning: Actual files checked out ($checkouted_count) differ from initial count ($total_entry_count)${COLOR_RESET}" >&2
+fi
+
+echo -e "\n${COLOR_GREEN}- ✔️ Checkout completed!${COLOR_RESET}"

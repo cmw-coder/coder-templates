@@ -245,7 +245,7 @@ resource "coder_script" "checkout_base_svn" {
   script = <<EOF
     #!/bin/bash
     if [ ! -d "/home/${local.username}/project" ]; then
-      svn-co-progress "${data.coder_parameter.project_base_svn.value}" \
+      svn-co "${data.coder_parameter.project_base_svn.value}" \
         "${data.coder_parameter.project_module_list.value}" \
         "/home/${local.username}/project" \
         "${data.coder_parameter.svn_username.value}" \
@@ -263,7 +263,7 @@ resource "coder_script" "checkout_public_svn" {
   script = <<EOF
     #!/bin/bash
     if [ ! -d "/home/${local.username}/project/PUBLIC" ] && [ -n "${data.coder_parameter.project_public_svn.value}" ]; then
-      svn-co-progress "${data.coder_parameter.project_public_svn.value}"
+      svn-co "${data.coder_parameter.project_public_svn.value}"
         "${data.coder_parameter.project_public_folder_list.value}" \
         "/home/${local.username}/project/PUBLIC" \
         "${data.coder_parameter.svn_username.value}" \
