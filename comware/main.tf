@@ -18,7 +18,7 @@ provider "coder" {
 data "coder_parameter" "project_base_svn" {
   name          = "project_base_svn"
   display_name  = "Project base SVN"
-  description   = "Please provide the **base project branch* SVN URL for checkout."
+  description   = "Please provide the **base project branch** SVN URL for checkout."
   icon          = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
   order         = 0
   type          = "string"
@@ -29,7 +29,7 @@ data "coder_parameter" "project_module_list" {
   name          = "project_module_list"
   display_name  = "Project module List"
   description   = <<-EOT
-    Please provide a list of **module folder names** for `Project base SVN` to checkout.\n
+    Please provide a list of **module folder names** for `Project base SVN` to checkout.\
     If you want to check out the **entire project**, leave this field **empty**.
   EOT
   icon          = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
@@ -42,8 +42,8 @@ data "coder_parameter" "project_public_svn" {
   name          = "project_public_svn"
   display_name  = "Project public SVN"
   description   = <<-EOT
-    Please provide the **base public** SVN URL for `Project Base SVN`.\n
-    If you want to skip checking out the **public folder**, leave this field **empty**.
+    Please provide the **base public** SVN URL for `Project Base SVN`.\
+    If you want to **skip** checking out the public folder, leave this field **empty**.
   EOT
   icon          = "${data.coder_workspace.me.access_url}/emojis/1f310.png"
   order         = 2
@@ -55,8 +55,8 @@ data "coder_parameter" "project_public_folder_list" {
   name          = "project_public_folder_list"
   display_name  = "Public SVN List"
   description   = <<-EOT
-    Please provide a list of **public folder names** for `Project public SVN` to checkout.\n
-    Including the `**include**` folder is highly recommended for **optimal symbol highlighting**.\n
+    Please provide a list of **public folder names** for `Project public SVN` to checkout.\
+    Including the `include` folder is recommended for **symbol highlighting**.\
     If you want to check out the **entire public folder**, leave this field **empty**.
   EOT
   icon          = "${data.coder_workspace.me.access_url}/emojis/1f310.png"
