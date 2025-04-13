@@ -1,9 +1,9 @@
 #!/bin/bash
 function format_duration() {
     local seconds=$1
-    local hours=$(( seconds / 3600 ))
-    local minutes=$(( (seconds % 3600) / 60 ))
-    local seconds=$(( seconds % 60 ))
+    local hours=$((seconds / 3600))
+    local minutes=$(((seconds % 3600) / 60))
+    local seconds=$((seconds % 60))
     printf "%02d:%02d:%02d" $hours $minutes $seconds
 }
 
@@ -21,9 +21,9 @@ function get_base_path() {
 function get_filename_max_length() {
     local term_length=$1
     local bar_length=$2
-    local filename_max_length=$(( term_length - (bar_length + 16) ))  # 保留16字符给其他元素
-    filename_max_length=$(( filename_max_length > 10 ? filename_max_length : 10 ))  # 最小显示10字符
-    filename_max_length=$(( filename_max_length - 3 ))  # 留3字符给省略号
+    local filename_max_length=$((term_length - (bar_length + 16)))               # 保留16字符给其他元素
+    filename_max_length=$((filename_max_length > 10 ? filename_max_length : 10)) # 最小显示10字符
+    filename_max_length=$((filename_max_length - 3))                             # 留3字符给省略号
     echo $filename_max_length
 }
 
@@ -43,9 +43,9 @@ function get_progress_bar_character() {
 }
 
 function get_progress_bar_length() {
-    local bar_length=$(( $1 - 50 ))
-    bar_length=$(( bar_length > 20 ? bar_length : 20 ))  # 最小20字符
-    bar_length=$(( bar_length < 60 ? bar_length : 60 ))  # 最大60字符
+    local bar_length=$(($1 - 50))
+    bar_length=$((bar_length > 20 ? bar_length : 20)) # 最小20字符
+    bar_length=$((bar_length < 60 ? bar_length : 60)) # 最大60字符
     echo $bar_length
 }
 
@@ -58,14 +58,15 @@ function interrupt_handler() {
 trap interrupt_handler SIGINT
 
 # 参数检查
-if [ $# -ne 4 ]; then
+if [ $# -ne 5 ]; then
     echo "- ❔ Usage: svn-co-process <url> <folder-list> <path> <username> <password>"
     exit 1
 fi
 
 # 常量
 ESCAPED_BASE_PATH=$(get_base_path "$1")
-ESCAPED_LOCAL_DIR=$(get_local_dir "$2")
+ESCAPED_LOCAL_DIR=$(get_local_dir "$3")
+FOLDER_LIST=$(echo "$2" | sed 's|[\/&]|\\&|g')
 PROGRESS_CHAR=$(get_progress_bar_character)
 SPINNER_FRAMES=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
 TERM_LENGTH=$(tput cols 2>/dev/null || echo 80)
@@ -73,8 +74,8 @@ TERM_LENGTH=$(tput cols 2>/dev/null || echo 80)
 # 计算量
 BAR_LENGTH=$(get_progress_bar_length "$TERM_LENGTH")
 FILENAME_MAX_LENGTH=$(get_filename_max_length "$TERM_LENGTH" "$BAR_LENGTH")
-FILENAME_TRUNCATED_FRONT_LENGTH=$(( FILENAME_MAX_LENGTH / 2 ))
-FILENAME_TRUNCATED_BACK_LENGTH=$(( FILENAME_MAX_LENGTH - FILENAME_TRUNCATED_FRONT_LENGTH ))
+FILENAME_TRUNCATED_FRONT_LENGTH=$((FILENAME_MAX_LENGTH / 2))
+FILENAME_TRUNCATED_BACK_LENGTH=$((FILENAME_MAX_LENGTH - FILENAME_TRUNCATED_FRONT_LENGTH))
 
 # 颜色支持检测
 if [ -n "$CODER" ] || [ -t 1 ]; then
@@ -94,12 +95,15 @@ for retry in {1..3}; do
     echo -e "${COLOR_RED}- ❗ Retry $retry/3 getting file count...${COLOR_RESET}" >&2
     sleep 1
 done
-[ "$TOTAL_FILE_COUNT" -eq 0 ] && { echo -e "${COLOR_RED}- ❌ Error: Unable to get file count${COLOR_RESET}"; exit 1; }
+[ "$TOTAL_FILE_COUNT" -eq 0 ] && {
+    echo -e "${COLOR_RED}- ❌ Error: Unable to get file count${COLOR_RESET}"
+    exit 1
+}
 
 # 输出进度
 START_TIME=$(date +%s)
-UPDATE_INTERVAL=$(( TOTAL_FILE_COUNT / 800 ))
-UPDATE_INTERVAL=$(( UPDATE_INTERVAL > 5 ? UPDATE_INTERVAL : 5 ))
+UPDATE_INTERVAL=$((TOTAL_FILE_COUNT / 800))
+UPDATE_INTERVAL=$((UPDATE_INTERVAL > 5 ? UPDATE_INTERVAL : 5))
 
 # 开始检出
 index=0
@@ -122,14 +126,14 @@ while read -r line; do
     # 进度计算
     ((index++))
     percentage=$(awk "BEGIN {printf \"%.2f\", $index*100/$TOTAL_FILE_COUNT}")
-    filled=$(( BAR_LENGTH * index / TOTAL_FILE_COUNT ))
-    filled=$(( filled > BAR_LENGTH ? BAR_LENGTH : filled ))
+    filled=$((BAR_LENGTH * index / TOTAL_FILE_COUNT))
+    filled=$((filled > BAR_LENGTH ? BAR_LENGTH : filled))
 
     # Coder环境下按时间间隔输出
     if [ -n "$CODER" ]; then
         current_time=$(date +%s)
-        if (( current_time - last_update_time >= UPDATE_INTERVAL )); then
-            elapsed_seconds=$(( current_time - START_TIME ))
+        if ((current_time - last_update_time >= UPDATE_INTERVAL)); then
+            elapsed_seconds=$((current_time - START_TIME))
             formatted_elapsed_time=$(format_duration $elapsed_seconds)
             echo -e "\r|-- Progress: ${COLOR_CYAN}${percentage}%${COLOR_RESET} | Time: ${formatted_elapsed_time} | Files: ${index}/${TOTAL_FILE_COUNT}"
             last_update_time=$current_time
