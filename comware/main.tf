@@ -327,7 +327,7 @@ resource "docker_image" "main" {
     context = "./build"
     build_args = {
       USER = local.username
-      EXTENSION_VERSION = "1.98.2025031209"
+      EXTENSION_VERSION = "1.99.2025040909"
     }
   }
   triggers = {
