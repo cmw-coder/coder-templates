@@ -100,6 +100,9 @@ locals {
   marketplace_url = "https://code-marketplace.cmwcoder.h3c.com"
   username = data.coder_workspace_owner.me.name
   workspace = data.coder_workspace.me.name
+  yunxiao = {
+    organization_id = "864f6de3-3d59-46f2-9729-645fc20006b7"
+  }
 }
 
 resource "coder_agent" "main" {
@@ -185,6 +188,18 @@ resource "coder_env" "extensions_gallery" {
   agent_id = coder_agent.main.id
   name     = "EXTENSIONS_GALLERY"
   value    = "{\"serviceUrl\":\"${local.marketplace_url}/api\", \"itemUrl\":\"${local.marketplace_url}/item\", \"resourceUrlTemplate\": \"${local.marketplace_url}/files/{publisher}/{name}/{version}/{path}\"}"
+}
+
+resource "coder_env" "lingma_username" {
+  agent_id = coder_agent.main.id
+  name     = "LINGMA_USERNAME"
+  value    = "${local.username}"
+}
+
+resource "coder_env" "lingma_organization_id" {
+  agent_id = coder_agent.main.id
+  name     = "LINGMA_ORGANIZATION_ID"
+  value    = "${local.yunxiao.organization_id}"
 }
 
 resource "coder_env" "node_extra_ca_certs" {
