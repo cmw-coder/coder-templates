@@ -244,10 +244,10 @@ resource "coder_script" "checkout_base_svn" {
   start_blocks_login = true
   script = <<EOF
     #!/bin/bash
-    if [ ! -d "/home/${local.username}/project" ]; then
+    if [ ! -d "/home/${local.username}/project/open" ]; then
       svn-co "${data.coder_parameter.project_base_svn.value}" \
         "${data.coder_parameter.project_module_list.value}" \
-        "/home/${local.username}/project" \
+        "/home/${local.username}/project/open" \
         "${data.coder_parameter.svn_username.value}" \
         "${data.coder_parameter.svn_password.value}"
     fi
@@ -262,10 +262,10 @@ resource "coder_script" "checkout_public_svn" {
   start_blocks_login = true
   script = <<EOF
     #!/bin/bash
-    if [ ! -d "/home/${local.username}/project/PUBLIC" ] && [ -n "${data.coder_parameter.project_public_svn.value}" ]; then
+    if [ ! -d "/home/${local.username}/project/public" ] && [ -n "${data.coder_parameter.project_public_svn.value}" ]; then
       svn-co "${data.coder_parameter.project_public_svn.value}" \
         "${data.coder_parameter.project_public_folder_list.value}" \
-        "/home/${local.username}/project/PUBLIC" \
+        "/home/${local.username}/project/public" \
         "${data.coder_parameter.svn_username.value}" \
         "${data.coder_parameter.svn_password.value}"
     fi
@@ -294,7 +294,7 @@ resource "docker_container" "workspace" {
   }
   volumes {
     container_path = "/opt/glibc/include"
-    host_path      = "/opt/v1011/x86_64-glibc-gnuabi64-2/x86_64-unknown-linux-gnu/sys-root/usr/include"
+    host_path      = "/opt/glibc-headers/include"
     read_only      = true
   }
   volumes {
