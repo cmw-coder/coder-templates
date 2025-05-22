@@ -117,24 +117,47 @@ function update_with_progress() {
 
     # 处理多级路径，先将所有路径的反斜杠转为正斜杠
     local normalized_path="${update_path//\\//}"
+    local normalized_local_dir="${PARAM_LOCAL_DIR//\\//}"
     
-    # 如果路径包含斜杠，表示有多级目录需要处理
-    if [[ "$normalized_path" == */* ]]; then
-        # 分割路径为数组
-        local path_parts
-        IFS='/' read -ra path_parts <<< "$normalized_path"
+    # 如果路径是以PARAM_LOCAL_DIR开头的，提取相对路径部分
+    if [[ "$normalized_path" == "$normalized_local_dir"* ]]; then
+        local relative_path="${normalized_path#$normalized_local_dir}"
+        # 移除可能存在的开头斜杠
+        relative_path="${relative_path#/}"
         
-        # 逐级创建目录结构
-        local current_path=""
-        for ((i=0; i<${#path_parts[@]}-1; i++)); do
-            if [ -z "$current_path" ]; then
-                current_path="${path_parts[i]}"
-            else
+        # 如果相对路径包含斜杠，表示有多级目录需要处理
+        if [[ "$relative_path" == */* ]]; then
+            # 分割相对路径为数组
+            local path_parts
+            IFS='/' read -ra path_parts <<< "$relative_path"
+            
+            # 逐级创建目录结构
+            local current_path="$PARAM_LOCAL_DIR"
+            for ((i=0; i<${#path_parts[@]}-1; i++)); do
                 current_path="${current_path}/${path_parts[i]}"
-            fi
-            echo -e "${indentation}${COLOR_CYAN}- Creating directory: $current_path${COLOR_RESET}" >&2
-            svn_with_auth up --set-depth empty "$current_path" >/dev/null 2>&1
-        done
+                echo -e "${indentation}${COLOR_CYAN}- Creating directory: ${path_parts[i]}${COLOR_RESET}" >&2
+                svn_with_auth up --set-depth empty "$current_path" >/dev/null 2>&1
+            done
+        fi
+    else
+        # 如果不是以PARAM_LOCAL_DIR开头，按原来的方式处理
+        if [[ "$normalized_path" == */* ]]; then
+            # 分割路径为数组
+            local path_parts
+            IFS='/' read -ra path_parts <<< "$normalized_path"
+            
+            # 逐级创建目录结构
+            local current_path=""
+            for ((i=0; i<${#path_parts[@]}-1; i++)); do
+                if [ -z "$current_path" ]; then
+                    current_path="${path_parts[i]}"
+                else
+                    current_path="${current_path}/${path_parts[i]}"
+                fi
+                echo -e "${indentation}${COLOR_CYAN}- Creating directory: $current_path${COLOR_RESET}" >&2
+                svn_with_auth up --set-depth empty "$current_path" >/dev/null 2>&1
+            done
+        fi
     fi
     
     # 命令进度循环
