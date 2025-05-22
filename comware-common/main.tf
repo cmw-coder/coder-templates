@@ -10,6 +10,11 @@ terraform {
 }
 
 provider "docker" {
+  registry_auth {
+    address = "registry.coder.h3c.com"
+    username = "coder"
+    password = "silly"
+  }
 }
 
 provider "coder" {
@@ -25,11 +30,11 @@ data "coder_parameter" "project_base_svn" {
   mutable       = false
   default       = "http://10.153.120.80/cmwcode-open/V9R1/trunk"
 }
-data "coder_parameter" "project_module_list" {
-  name          = "project_module_list"
-  display_name  = "Project module List"
+data "coder_parameter" "project_base_folder_list" {
+  name          = "project_base_folder_list"
+  display_name  = "Project base folder list"
   description   = <<-EOT
-    Please provide a list of **module folder names** for `Project base SVN` to checkout.\
+    Please provide a list of **folder paths** for `Project base SVN` to checkout.\
     If you want to check out the **entire project**, leave this field **empty**.
   EOT
   icon          = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
@@ -55,7 +60,7 @@ data "coder_parameter" "project_public_folder_list" {
   name          = "project_public_folder_list"
   display_name  = "Public SVN List"
   description   = <<-EOT
-    Please provide a list of **public folder names** for `Project public SVN` to checkout.\
+    Please provide a list of **folder paths** for `Project public SVN` to checkout.\
     Including the `include` folder is recommended for **symbol highlighting**.\
     If you want to check out the **entire public folder**, leave this field **empty**.
   EOT
@@ -97,6 +102,8 @@ locals {
   assets_url = "https://coder-assets.cmwcoder.h3c.com"
   code_server_dir = "/tmp/code-server"
   coder_docs_url = "https://coder-docs.cmwcoder.h3c.com"
+  coder_tutorials_url = "https://tutorials.coder.h3c.com"
+  docker_image = "127.0.0.1:5000/comware-common:1"
   marketplace_url = "https://code-marketplace.cmwcoder.h3c.com"
   username = data.coder_workspace_owner.me.name
   workspace = data.coder_workspace.me.name
@@ -120,7 +127,7 @@ resource "coder_agent" "main" {
   display_apps {
     port_forwarding_helper = true
     ssh_helper = true
-    vscode = true
+    vscode = false
     vscode_insiders = false
     web_terminal = true
   }
@@ -181,6 +188,15 @@ resource "coder_app" "coder_docs" {
   display_name = "Coder Docs"
   icon         = "/emojis/1f4dd.png"
   url          = local.coder_docs_url
+  external     = true
+}
+
+resource "coder_app" "coder_tutorials" {
+  agent_id     = coder_agent.main.id
+  slug         = "coder-tutorials"
+  display_name = "Coder Tutorials"
+  icon         = "/emojis/1f4d6.png"
+  url          = local.coder_tutorials_url
   external     = true
 }
 
@@ -261,7 +277,7 @@ resource "coder_script" "checkout_base_svn" {
     #!/bin/bash
     if [ ! -d "/home/${local.username}/project/open" ]; then
       svn-co "${data.coder_parameter.project_base_svn.value}" \
-        "${data.coder_parameter.project_module_list.value}" \
+        "${data.coder_parameter.project_base_folder_list.value}" \
         "/home/${local.username}/project/open" \
         "${data.coder_parameter.svn_username.value}" \
         "${data.coder_parameter.svn_password.value}"
@@ -287,59 +303,84 @@ resource "coder_script" "checkout_public_svn" {
   EOF
 }
 
-resource "docker_container" "workspace" {
-  count = data.coder_workspace.me.start_count
-  image = docker_image.main.name
+resource "docker_service" "workspace" {
   name = "coder-${local.username}-${lower(local.workspace)}"
-  hostname = lower(local.workspace)
-  dns = ["10.72.66.36", "10.72.66.37"]
-  # Use the docker gateway if the access URL is 127.0.0.1
-  entrypoint = ["sh", "-c", replace(coder_agent.main.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")]
-  env = [
-    "CODER_AGENT_TOKEN=${coder_agent.main.token}",
-  ]
-  host {
-    host = "host.docker.internal"
-    ip   = "host-gateway"
+  task_spec {
+    container_spec {
+      image = docker_registry_image.main.name
+
+      labels {
+        label = "coder.owner"
+        value = data.coder_workspace_owner.me.name
+      }
+      labels {
+        label = "coder.owner_id"
+        value = data.coder_workspace_owner.me.id
+      }
+      labels {
+        label = "coder.workspace_id"
+        value = data.coder_workspace.me.id
+      }
+      labels {
+        label = "coder.workspace_name"
+        value = data.coder_workspace.me.name
+      }
+
+      command = ["sh", "-c", replace(coder_agent.main.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")]
+      hostname = lower(local.workspace)
+
+      env = {
+        CODER_AGENT_TOKEN = "${coder_agent.main.token}"
+      }
+
+      hosts {
+        host = "host.docker.internal"
+        ip   = "host-gateway"
+      }
+
+      dns_config {
+        nameservers = ["10.72.66.36", "10.72.66.37"]
+      }
+
+      mounts {
+        target    = "/home/${local.username}"
+        type      = "volume"
+
+        read_only = false
+        source    = docker_volume.home_volume.name
+      }
+
+      mounts {
+        target    = "/opt/glibc-headers/include"
+        type      = "bind"
+
+        read_only = true
+        source    = "/opt/glibc-headers/include"
+      }
+
+      mounts {
+        target    = "/opt/open-headers/include"
+        type      = "bind"
+
+        read_only = true
+        source    = "/opt/open-headers/V9R1/trunk/include"
+      }
+    }
   }
-  volumes {
-    container_path = "/home/${local.username}"
-    volume_name    = docker_volume.home_volume.name
-    read_only      = false
-  }
-  volumes {
-    container_path = "/opt/glibc/include"
-    host_path      = "/opt/glibc-headers/include"
-    read_only      = true
-  }
-  volumes {
-    container_path = "/opt/open-headers/include"
-    host_path      = "/opt/open-headers/V9R1/trunk/include"
-    read_only       = true
-  }
-  # Add labels in Docker to keep track of orphan resources.
-  labels {
-    label = "coder.owner"
-    value = data.coder_workspace_owner.me.name
-  }
-  labels {
-    label = "coder.owner_id"
-    value = data.coder_workspace_owner.me.id
-  }
-  labels {
-    label = "coder.workspace_id"
-    value = data.coder_workspace.me.id
-  }
-  labels {
-    label = "coder.workspace_name"
-    value = data.coder_workspace.me.name
+}
+
+resource "docker_registry_image" "main" {
+  name = docker_image.main.name
+  insecure_skip_verify  = true
+  triggers              = {
+    dir_sha1 = sha1(join("", [for f in fileset(path.module, "build/*") : filesha1(f)]))
   }
 }
 
 resource "docker_image" "main" {
-  name = "coder-${data.coder_workspace.me.id}"
+  name = "registry.coder.h3c.com/coder-${data.coder_workspace.me.id}"
   build {
-    context = "./build"
+    context = "build"
     build_args = {
       USER = local.username
       EXTENSION_VERSION = "1.99.2025040909"

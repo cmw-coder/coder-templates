@@ -115,6 +115,28 @@ function update_with_progress() {
     update_interval=$((entry_count / 800))
     update_interval=$((update_interval > 5 ? update_interval : 5))
 
+    # 处理多级路径，先将所有路径的反斜杠转为正斜杠
+    local normalized_path="${update_path//\\//}"
+    
+    # 如果路径包含斜杠，表示有多级目录需要处理
+    if [[ "$normalized_path" == */* ]]; then
+        # 分割路径为数组
+        local path_parts
+        IFS='/' read -ra path_parts <<< "$normalized_path"
+        
+        # 逐级创建目录结构
+        local current_path=""
+        for ((i=0; i<${#path_parts[@]}-1; i++)); do
+            if [ -z "$current_path" ]; then
+                current_path="${path_parts[i]}"
+            else
+                current_path="${current_path}/${path_parts[i]}"
+            fi
+            echo -e "${indentation}${COLOR_CYAN}- Creating directory: $current_path${COLOR_RESET}" >&2
+            svn_with_auth up --set-depth empty "$current_path" >/dev/null 2>&1
+        done
+    fi
+    
     # 命令进度循环
     while read -r line; do
         # 解析原始文件名

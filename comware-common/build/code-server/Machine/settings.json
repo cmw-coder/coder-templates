@@ -13,7 +13,7 @@
         "~/project/public/include/comware/sys/basetype.h"
     ],
     "C_Cpp.default.includePath": [
-        "/opt/glibc/include",
+        "/opt/glibc-headers/include",
         "/opt/open-headers/include",
         "~/project/public/include/comware"
     ],
