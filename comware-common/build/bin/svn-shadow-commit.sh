@@ -5,7 +5,7 @@
 
 # Configuration variables
 SHADOW_BRANCH_SUFFIX="_shadow"
-PATCH_FILE="/tmp/svn_with_auth-changes-$(date +%s).patch"
+PATCH_FILE="/tmp/svn-changes-$(date +%s).patch"
 ORIGINAL_DIR=$(pwd)
 
 # Display usage instructions
@@ -109,7 +109,7 @@ if [ -n "$FILE_PATH" ]; then
     cd "$WORKING_ROOT" || exit 1
 else
     # Check if current directory is an SVN working copy
-    if [ ! -d ".svn_with_auth" ]; then
+    if [ ! -d ".svn" ]; then
         echo "Error: Current directory is not an SVN working copy."
         exit 1
     fi
@@ -129,13 +129,13 @@ fi
 SVN_INFO=$(svn_with_auth info)
 CURRENT_URL=$(echo "$SVN_INFO" | grep "^URL:" | awk '{print $2}')
 REPO_ROOT=$(echo "$SVN_INFO" | grep "^Repository Root:" | awk '{print $3}')
-CURRENT_REVISION=$(echo "$SVN_INFO" | grep "^Revision:" | awk '{print $2}')
-CURRENT_PATH=${CURRENT_URL#$REPO_ROOT}
+LAST_CHANGED_REVISION=$(echo "$SVN_INFO" | grep "^Last Changed Rev:" | awk '{print $4}')
+CURRENT_PATH=${CURRENT_URL#"$REPO_ROOT"}
 
 # Debugging output
 echo "Current URL: $CURRENT_URL"
 echo "Repository Root: $REPO_ROOT"
-echo "Current Revision: $CURRENT_REVISION"
+echo "Last Changed Revision: $LAST_CHANGED_REVISION"
 echo "Current Path: $CURRENT_PATH"
 
 # Build shadow branch URL
@@ -198,7 +198,7 @@ if ! svn_with_auth info "$SHADOW_BRANCH_URL" > /dev/null 2>&1; then
             echo "Shadow branch verified successfully."
             break
         else
-            if [ $i -eq 3 ]; then
+            if [ "$i" -eq 3 ]; then
                 echo "ERROR: Failed to verify shadow branch creation after $i attempts."
                 rm -f "$PATCH_FILE"
                 cd "$ORIGINAL_DIR" || exit 1
@@ -220,19 +220,35 @@ MODIFIED_FILES=$(svn_with_auth status | grep -E "^M" | awk '{print $2}')
 if [ -n "$MODIFIED_FILES" ]; then
     echo "Processing modified files directly..."
     for file in $MODIFIED_FILES; do
-        rel_path="${file}"
-        shadow_file_url="$SHADOW_BRANCH_URL/$rel_path"
-        
-        echo "Updating file: $rel_path"
-        # Create temporary file with modifications
-        tmp_file="/tmp/svn-shadow-$(basename "$file")-$(date +%s)"
-        cat "$file" > "$tmp_file"
-        
-        # Put the modified file directly to shadow branch
-        if ! svn_with_auth import -m "Shadow update for $rel_path" "$tmp_file" "$shadow_file_url"; then
-            echo "Warning: Failed to update $shadow_file_url"
+        # Verify this is really the modified file we want to update
+        if [ -f "$file" ]; then
+            rel_path="${file}"
+            shadow_file_url="$SHADOW_BRANCH_URL/$rel_path"
+            
+            echo "Updating file: $rel_path"
+            # Create temporary file with modifications
+            tmp_file="/tmp/svn-shadow-$(basename "$file")-$(date +%s)"
+            cat "$file" > "$tmp_file"
+            
+            # First delete the existing file in shadow branch
+            echo "Deleting existing file in shadow branch..."
+            svn_with_auth delete -m "Preparing update for $rel_path" "$shadow_file_url" > /dev/null 2>&1 || true
+            
+            # Create parent directories if needed
+            parent_dir=$(dirname "$shadow_file_url")
+            svn_with_auth mkdir --parents -m "Ensuring parent directories for $rel_path" "$parent_dir" > /dev/null 2>&1 || true
+            
+            # Now import the updated file
+            echo "Importing updated file..."
+            if ! svn_with_auth import -m "Shadow update for $rel_path" "$tmp_file" "$shadow_file_url"; then
+                echo "Warning: Failed to update $shadow_file_url"
+            else
+                echo "Successfully updated $shadow_file_url"
+            fi
+            rm -f "$tmp_file"
+        else
+            echo "Warning: Modified file $file not found, skipping"
         fi
-        rm -f "$tmp_file"
     done
 fi
 
@@ -290,7 +306,7 @@ fi
 
 # Final commit message to shadow branch
 echo "Changes applied directly to shadow branch: $SHADOW_BRANCH_URL"
-echo "SVN revision: $(svn_with_auth info "$SHADOW_BRANCH_URL" | grep "^Revision:" | awk '{print $2}')"
+echo "SVN last changed revision: $(svn_with_auth info "$SHADOW_BRANCH_URL" | grep "^Last Changed Rev:" | awk '{print $4}')"
 
 # Clean up
 rm -f "$PATCH_FILE"
