@@ -5,7 +5,6 @@
 
 # Configuration variables
 SHADOW_BRANCH_SUFFIX="_shadow"
-PATCH_FILE="/tmp/svn-changes-$(date +%s).patch"
 ORIGINAL_DIR=$(pwd)
 
 # Display usage instructions
@@ -157,9 +156,6 @@ fi
 
 echo "Uncommitted changes found. Preparing to commit to shadow branch..."
 
-# Create diff patch file
-svn_with_auth diff >"$PATCH_FILE"
-
 # Track added/deleted/unknown files
 MODIFIED_FILES=$(svn_with_auth status | grep -E "^M|^MM" | awk '{print $2}')
 ADDED_FILES=$(svn_with_auth status | grep "^A" | awk '{print $2}')
@@ -185,7 +181,6 @@ if ! svn_with_auth info "$SHADOW_BRANCH_URL" >/dev/null 2>&1; then
             echo "ERROR: Could not access repository root. Check SVN server connection."
         fi
 
-        rm -f "$PATCH_FILE"
         cd "$ORIGINAL_DIR" || exit 1
         exit 1
     fi
@@ -200,7 +195,6 @@ if ! svn_with_auth info "$SHADOW_BRANCH_URL" >/dev/null 2>&1; then
         else
             if [ "$i" -eq 3 ]; then
                 echo "ERROR: Failed to verify shadow branch creation after $i attempts."
-                rm -f "$PATCH_FILE"
                 cd "$ORIGINAL_DIR" || exit 1
                 exit 1
             fi
@@ -225,7 +219,6 @@ else
             echo "Shadow branch reset to match main branch revision $MAIN_LAST_CHANGED_REV"
         else
             echo "Failed to recreate shadow branch"
-            rm -f "$PATCH_FILE"
             cd "$ORIGINAL_DIR" || exit 1
             exit 1
         fi
@@ -256,69 +249,63 @@ process_files_in_single_commit() {
     # Modify process_file to handle conflicts
     process_file() {
         local action="$1"
-        local file="$2"
-        local parent_dir
-        parent_dir="$(dirname "$file")"
+        local relative_path="$2"
         
-        # Ensure parent directory exists
-        [ -d "$parent_dir" ] || mkdir -p "$parent_dir"
-        
-        # First do a deep update of parent to better understand the structure
-        svn_with_auth update --depth=immediates --accept theirs-full "$parent_dir" > /dev/null 2>&1
+        # Update the parent directory to ensure it exists
+        svn_with_auth update --parents --set-depth empty "$relative_path" >/dev/null 2>&1
         
         case "$action" in
-            update|add)
-                echo "Processing $action for $file..."
-                # Force delete the existing file to avoid conflicts
-                if [ -e "$file" ]; then
-                    echo "- Removing existing version first"
-                    rm -f "$file" 
-                fi
-                
-                # Copy new content
-                mkdir -p "$(dirname "$file")"
-                cp -f "$WORKING_ROOT/$file" "$file"
+            add)                
+                # Copy new content from working root
+                cp -f "$WORKING_ROOT/$relative_path" "$relative_path"
                 
                 # Add to version control with force
-                echo "- Adding to SVN"
-                svn_with_auth add --force "$file" > /dev/null 2>&1
+                svn_with_auth add --force "$relative_path" > /dev/null 2>&1
                 
                 # Check status to see if we have conflicts
-                if svn_with_auth status "$file" | grep -q "^C"; then
+                if svn_with_auth status "$relative_path" | grep -q "^C"; then
                     echo "- Resolving conflict with local version"
-                    svn_with_auth resolve --accept working "$file" > /dev/null 2>&1
+                    svn_with_auth resolve --accept working "$relative_path" > /dev/null 2>&1
+                fi
+                ;;
+            update)                
+                # Copy new content from working root
+                cp -f "$WORKING_ROOT/$relative_path" "$relative_path"
+                
+                # Check status to see if we have conflicts
+                if svn_with_auth status "$relative_path" | grep -q "^C"; then
+                    echo "- Resolving conflict with local version"
+                    svn_with_auth resolve --accept working "$relative_path" > /dev/null 2>&1
                 fi
                 ;;
             delete)
-                # For deleted files, checkout first, then delete
-                svn_with_auth update --parents "$file" > /dev/null 2>&1
-                [ -e "$file" ] && svn_with_auth delete "$file" > /dev/null 2>&1
+                [ -e "$relative_path" ] && svn_with_auth delete "$relative_path" > /dev/null 2>&1
                 ;;
         esac
-        echo "OK $action: $file"
+        echo "OK $action: $relative_path"
         changed=true
     }
 
     # Process each file type
     echo "Processing modified files..."
-    for file in $MODIFIED_FILES; do
-        [ -f "$WORKING_ROOT/$file" ] && process_file "update" "$file"
+    for relative_path in $MODIFIED_FILES; do
+        [ -f "$WORKING_ROOT/$relative_path" ] && process_file "update" "$relative_path"
     done
     
     echo "Processing added files..."
-    for file in $ADDED_FILES; do
-        [ -f "$WORKING_ROOT/$file" ] && process_file "add" "$file"
+    for relative_path in $ADDED_FILES; do
+        [ -f "$WORKING_ROOT/$relative_path" ] && process_file "add" "$relative_path"
     done
     
     echo "Processing deleted files..."
-    for file in $DELETED_FILES; do
-        process_file "delete" "$file"
+    for relative_path in $DELETED_FILES; do
+        process_file "delete" "$relative_path"
     done
 
     # Commit all changes
     if [ "$changed" = true ]; then
         echo "Committing all changes..."
-        if svn_with_auth commit -m "Shadow branch update - $(date '+%Y-%m-%d %H:%M:%S')"; then
+        if svn_with_auth commit -m "[Auto Sync] Commit for CodeX - $(date '+%Y-%m-%d %H:%M:%S')"; then
             echo "✓ Successfully committed all changes"
         else
             echo "✗ Commit failed"
@@ -341,7 +328,6 @@ echo "Applying changes to shadow branch..."
 # Process all changes in single commit instead of individual operations
 if ! process_files_in_single_commit; then
     echo "Error applying changes to shadow branch."
-    rm -f "$PATCH_FILE"
     cd "$ORIGINAL_DIR" || exit 1
     exit 1
 fi
@@ -352,7 +338,6 @@ echo "Changes applied to shadow branch: $SHADOW_BRANCH_URL"
 echo "SVN revision: $(svn_with_auth info "$SHADOW_BRANCH_URL" | grep "^Last Changed Rev:" | awk '{print $4}')"
 
 # Clean up
-rm -f "$PATCH_FILE"
-
+# Remove unused patch file cleanup
 # Return to original directory
 cd "$ORIGINAL_DIR" || exit 1
