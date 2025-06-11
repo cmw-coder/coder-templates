@@ -1,19 +1,20 @@
 FROM ubuntu
 
 COPY --chmod=755 bin /usr/local/bin
+COPY ca-certs /usr/local/share/ca-certificates/
 COPY ubuntu.sources /etc/apt/sources.list.d/
 
 RUN apt-get update \
-    && apt-get install -y build-essential ca-certificates curl language-pack-en-base locales nano subversion sudo vim \
-    && rm -rf /var/lib/apt/lists/* \
+    && apt-get install -y build-essential ca-certificates curl jq nano neovim sudo \
+    && update-ca-certificates \
+    && apt-get install -y language-pack-en-base locales subversion \
     && sed -i '/en_US.UTF-8/s/^#//g' /etc/locale.gen \
     && locale-gen en_US.UTF-8 \
+    && apt-get install -y python3 python3-pip black \
+    && ln -s /usr/bin/python3 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /opt/glibc/include \
     && mkdir -p /opt/open-headers/include
-
-# Add the H3C CA certificate to the system trust store
-COPY ca-certs /usr/local/share/ca-certificates/
-RUN update-ca-certificates
 
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
@@ -26,6 +27,7 @@ USER ${USER}
 WORKDIR /home/${USER}
 
 COPY --chown=${USER}:${USER} code-server /home/${USER}/.local/share/code-server/
+COPY --chown=${USER}:${USER} pip.conf /home/${USER}/.pip/
 
 # Add languagepacks.json
 ARG EXTENSION_VERSION=1.99.2025040909

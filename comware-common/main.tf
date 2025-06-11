@@ -139,7 +139,7 @@ resource "coder_agent" "main" {
     script       = "coder stat cpu"
     interval     = 10
     timeout      = 1
-    order = 0
+    order       = 0
   }
 
   metadata {
@@ -148,7 +148,7 @@ resource "coder_agent" "main" {
     script       = "coder stat mem"
     interval     = 10
     timeout      = 1
-    order = 1
+    order        = 1
   }
 
   metadata {
@@ -164,6 +164,21 @@ resource "coder_agent" "main" {
     EOF
     interval     = 30
     order        = 2
+  }
+
+  metadata {
+    key          = "python_version"
+    display_name = "Python Version"
+    script       = <<EOF
+      #!/bin/bash
+      if command -v python3 >/dev/null 2>&1; then
+        python3 --version | head -n1 | cut -d " " -f2
+      else
+        echo unknown
+      fi
+    EOF
+    interval     = 30
+    order        = 3
   }
 }
 
