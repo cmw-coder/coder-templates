@@ -1,67 +1,93 @@
 #!/bin/bash
 
-# Jenkins配置
-JENKINS_SERVER_URL="http://10.153.3.174:8080"
-JENKINS_USERNAME="h25380"
-JENKINS_API_TOKEN="117b0fdde578a988ec1be741dd777c1a1c"
+# 设置默认值
+CONFIG_FILE="${HOME}/.abuild.conf"
+TIMEOUT=300  # 默认等待超时时间（秒）
+LOG_LEVEL=1  # 0=错误, 1=信息, 2=调试
+
+# 加载配置文件（如果存在）
+# shellcheck source=/dev/null
+if [ -f "$CONFIG_FILE" ]; then
+  source "$CONFIG_FILE"
+else
+  # 默认Jenkins配置
+  JENKINS_SERVER_URL="http://10.153.3.174:8080"
+  JENKINS_USERNAME="h25380"
+  JENKINS_API_TOKEN="117b0fdde578a988ec1be741dd777c1a1c"
+fi
+
 JENKINS_AUTH="${JENKINS_USERNAME}:${JENKINS_API_TOKEN}"
+
+# 日志函数 - 将所有输出重定向到stderr以避免干扰函数返回值
+log_error() { echo "[Error] $*" >&2; }
+log_info() { if [ "$LOG_LEVEL" -ge 1 ]; then echo "[Info] $*" >&2; fi; }
+log_debug() { if [ "$LOG_LEVEL" -ge 2 ]; then echo "[Debug] $*" >&2; fi; }
+
+# 错误处理函数
+handle_error() {
+  log_error "$1"
+  return 1
+}
 
 # 获取Jenkins Crumb以防止CSRF保护
 get_jenkins_crumb() {
   curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/crumbIssuer/api/json" | jq -r '.crumb'
 }
 
-# 获取构建编号
+# 获取构建编号，添加超时控制
 get_build_number() {
-  local server=$1
-  local task_name=$2
-  local build_cmd=$3
+  local task_name=$1
+  local build_cmd=$2
+  local start_time
+  start_time=$(date +%s)
   
-  echo "[Info] Looking for build number for task: ${task_name} with command: ${build_cmd}"
+  log_info "Looking for build number for task: ${task_name}"
+  log_debug "Build command: ${build_cmd}"
   
   # 等待队列中的任务开始运行
   while true; do
+    # 检查超时
+    local current_time
+    current_time=$(date +%s)
+    if [ $((current_time - start_time)) -gt "$TIMEOUT" ]; then
+      log_error "Timeout waiting for build to start after ${TIMEOUT} seconds"
+      echo "-1"
+      return 1
+    fi
+    
     local queue_info
     queue_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/queue/api/json")
-    local is_exist=false
     
-    if echo "$queue_info" | jq -e '.items[] | select(.task.name == "'"$task_name"'")' > /dev/null; then
-      echo "[Info] Task ${task_name} found in queue, checking if it matches our criteria..."
-      # 检查是否是我们的构建命令和用户ID
-      if echo "$queue_info" | jq -e '.items[] | select(.task.name == "'"$task_name"'") | 
-        (.actions[0].parameters[0].value == "'"$build_cmd"'" and .actions[1].causes[0].userId == "'"$JENKINS_USERNAME"'") or
-        (.actions[1].parameters[0].value == "'"$build_cmd"'" and .actions[0].causes[0].userId == "'"$JENKINS_USERNAME"'")' > /dev/null; then
-        is_exist=true
-        echo "[Info] Matching task found in queue, waiting for it to start..."
-        break
-      fi
+    # 检查是否存在匹配的任务
+    if echo "$queue_info" | jq -e '.items[] | select(.task.name == "'"$task_name"'") | 
+      (.actions[0].parameters[0].value == "'"$build_cmd"'" and .actions[1].causes[0].userId == "'"$JENKINS_USERNAME"'") or
+      (.actions[1].parameters[0].value == "'"$build_cmd"'" and .actions[0].causes[0].userId == "'"$JENKINS_USERNAME"'")' > /dev/null; then
+      log_info "Matching task found in queue, waiting for it to start..."
+      sleep 3
+      continue
     fi
     
-    if [ "$is_exist" = "false" ]; then
-      echo "[Info] Task not found in queue or has started running"
-      break
-    fi
-    echo "[Info] Waiting for task to start running..."
-    sleep 3
+    log_info "Task not found in queue or has started running"
+    break
   done
   
-  # 获取下一个构建号减1
+  # 获取最新构建号
   local next_build_number
   next_build_number=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/api/json" | jq '.nextBuildNumber - 1')
-  echo "[Info] Latest build number for ${task_name}: ${next_build_number}"
+  log_info "Latest build number for ${task_name}: ${next_build_number}"
   
   # 查找匹配的构建
   local i=0
-  echo "[Info] Checking recent builds for matching command and user..."
+  log_debug "Checking recent builds for matching command and user..."
   while [ "$next_build_number" -gt 0 ] && [ $i -lt 10 ]; do
-    echo "[Info] Checking build #${next_build_number}"
+    log_debug "Checking build #${next_build_number}"
     local job_info
     job_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${next_build_number}/api/json")
     
     # 处理可能的两种参数顺序
     if echo "$job_info" | jq -e '(.actions[0].parameters[0].value == "'"$build_cmd"'" and .actions[1].causes[0].userId == "'"$JENKINS_USERNAME"'") or
         (.actions[1].parameters[0].value == "'"$build_cmd"'" and .actions[0].causes[0].userId == "'"$JENKINS_USERNAME"'")' > /dev/null; then
-      echo "[Success] Found matching build: #${next_build_number}"
+      log_info "Found matching build: #${next_build_number}"
       echo "$next_build_number"
       return 0
     fi
@@ -70,70 +96,90 @@ get_build_number() {
     i=$((i + 1))
   done
   
-  echo "[Error] Failed to find matching build after checking ${i} builds"
+  log_error "Failed to find matching build after checking ${i} builds"
   echo "-1"
   return 1
 }
 
 # 从构建控制台输出中提取版本路径
 get_version_path() {
-  local task_name=$1
-  local console_output=$2
-  local version_path_prefix=""
-  local version_file_path=""
-  local last_path_name=""
+  local task_name="$1"
+  local console_output="$2"
   
   # 查找Build.html路径
-  version_path_prefix=$(echo "$console_output" | grep -E '^\s*.*Build\.html' | head -1)
-  if [ -n "$version_path_prefix" ]; then
-    # 提取路径前缀
-    version_path_prefix=$(echo "$version_path_prefix" | sed -E 's/^\s*(.*Build\.html).*/\1/')
-    version_path_prefix=${version_path_prefix%\\Build.html}
-    version_path_prefix=${version_path_prefix//\\/\/}
-    last_path_name=$(echo "$version_path_prefix" | awk -F/ '{print $NF}')
-    
-    # 根据任务类型查找相应的文件路径
-    if [ "$task_name" = "V9ABUILD_CI" ]; then
-      version_file_path=$(echo "$console_output" | grep -E "$last_path_name.*TARGET.*\.tar\.gz" | head -1)
-      if [ -n "$version_file_path" ]; then
-        version_file_path=$(echo "$version_file_path" | sed -E "s/.*($last_path_name\/TARGET\/.*)/\1/")
-      fi
-    else
-      version_file_path=$(echo "$console_output" | grep -E "$last_path_name.*TARGET.*\.ipe" | head -1)
-      if [ -n "$version_file_path" ]; then
-        version_file_path=$(echo "$version_file_path" | sed -E "s/.*($last_path_name\/TARGET\/.*\.ipe\/)/\1/")
-      fi
-    fi
+  local version_path_prefix
+  version_path_prefix=$(echo "$console_output" | grep -E '^\s*.*Build\.html' | head -1 | 
+                       sed -E 's/^\s*(.*Build\.html).*/\1/' | 
+                       sed 's/\\Build.html$//' | 
+                       sed 's/\\/\//g')
+  
+  if [ -z "$version_path_prefix" ]; then
+    log_debug "No Build.html path found in console output"
+    echo ""
+    return 0
+  fi
+  
+  local last_path_name
+  last_path_name=$(echo "$version_path_prefix" | awk -F/ '{print $NF}')
+  local version_file_path=""
+  
+  # 根据任务类型查找相应的文件路径
+  if [ "$task_name" = "V9ABUILD_CI" ]; then
+    version_file_path=$(echo "$console_output" | grep -E "${last_path_name}.*TARGET.*\.tar\.gz" | head -1 |
+                       sed -E "s/.*($last_path_name\/TARGET\/.*)/\1/")
+  else
+    version_file_path=$(echo "$console_output" | grep -E "${last_path_name}.*TARGET.*\.ipe" | head -1 |
+                       sed -E "s/.*($last_path_name\/TARGET\/.*\.ipe\/)/\1/")
   fi
   
   # 返回完整版本路径
-  if [ -n "$version_path_prefix" ] && [ -n "$version_file_path" ]; then
+  if [ -n "$version_file_path" ]; then
     echo "file:${version_path_prefix}/${version_file_path}"
   else
+    log_debug "No version file path found in console output"
     echo ""
   fi
 }
 
 # 获取构建错误信息
-get_error_result() {
-  local server=$1
-  local build_number=$2
-  local task_name=$3
+get_build_result() {
+  local build_number="$1"
+  local task_name="$2"
   
   # 获取构建信息和控制台输出
+  local build_url=""
   local build_info
-  build_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json")
-  local build_url
+  
+  if ! build_info=$(curl -s --fail --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json"); then
+    log_error "Failed to get build info for job ${task_name} #${build_number}"
+    echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
+    return 1
+  fi
+  
+  if [ -z "$build_info" ]; then
+    log_error "Empty build info received for job ${task_name} #${build_number}"
+    echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
+    return 1
+  fi
+  
   build_url=$(echo "$build_info" | jq -r '.url')
+  if [ -z "$build_url" ] || [ "$build_url" = "null" ]; then
+    log_error "Invalid build URL retrieved for job ${task_name} #${build_number}"
+    echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
+    return 1
+  fi
+  
   local console_output
-  console_output=$(curl -s --user "${JENKINS_AUTH}" "${build_url}consoleText")
+  console_output=$(curl -s --fail --user "${JENKINS_AUTH}" "${build_url}consoleText")
+  # 删除未使用的变量
+  
+  local job_status
+  job_status=$(echo "$build_info" | jq -r '.result')
   
   # 初始化结果变量
   local ret=0
   local version_path=""
-  local error_info="{}"
-  local job_status
-  job_status=$(echo "$build_info" | jq -r '.result')
+  local error_info="[]"
   
   if [ "$job_status" = "SUCCESS" ]; then
     version_path=$(get_version_path "$task_name" "$console_output")
@@ -142,42 +188,39 @@ get_error_result() {
     # 提取错误信息
     local error_list
     error_list=$(echo "$console_output" | grep -E '^(.*):([0-9]+):\s*(error:|undefined reference|fatal error:)(.*)$')
+    
     if [ -n "$error_list" ]; then
-      # 将错误信息格式化为JSON
-      error_info="[
-"
+      # 计算唯一的错误文件数量
       local unique_files=()
-      
       while IFS= read -r line; do
         local file
         file=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\1/')
-        local line_num
-        line_num=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\2/')
-        
-        # 处理文件名中可能包含的行号
-        if [[ "$file" == *":"* ]]; then
-          line_num=${file##*:}
-          file=${file%:*}
-        fi
-        
+        [[ "$file" == *":"* ]] && file=${file%:*}
         unique_files+=("$file")
-        
-        if [ ${#error_info} -gt 2 ]; then
-          error_info="${error_info},
-"
-        fi
-        error_info="${error_info}{\"FILE\":\"${file}\",\"LINENUMBER\":${line_num},\"ALARM\":\"${line}\"}"
       done <<< "$error_list"
       
-      error_info="${error_info}]"
-      
-      # 如果错误文件超过5个，清空错误信息
       mapfile -t unique_files < <(printf "%s\n" "${unique_files[@]}" | sort -u)
-      if [ ${#unique_files[@]} -gt 5 ]; then
-        error_info="[]"
+      
+      # 如果错误文件不超过5个，格式化错误信息
+      if [ ${#unique_files[@]} -le 5 ]; then
+        error_info="["
+        local first=true
+        
+        while IFS= read -r line; do
+          local file
+          local line_num
+          file=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\1/')
+          line_num=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\2/')
+          
+          [[ "$file" == *":"* ]] && { line_num=${file##*:}; file=${file%:*}; }
+          
+          $first || error_info="${error_info},"
+          first=false
+          error_info="${error_info}{\"FILE\":\"${file}\",\"LINENUMBER\":${line_num},\"ALARM\":\"${line}\"}"
+        done <<< "$error_list"
+        
+        error_info="${error_info}]"
       fi
-    else
-      error_info="[]"
     fi
   fi
   
@@ -186,154 +229,167 @@ get_error_result() {
 }
 
 # 监控构建结果
-get_result_number() {
-  local server=$1
-  local task_name=$2
-  local build_cmd=$3
-  
-  echo "[Info] Getting build number for task: ${task_name}"
-  local build_number
-  build_number=$(get_build_number "$server" "$task_name" "$build_cmd")
-  local date1
-  date1=$(date +"%Y%m%d.%H%M%S")
-  echo "[Info] Current timestamp: ${date1}"
+monitor_build_progress() {
+  local task_name="$1"
+  local build_number="$2"
   
   if [ "$build_number" = "-1" ]; then
-    echo "[Warning] Build canceled or not found"
+    log_error "Build canceled or not found"
     echo "Cancel."
-    local job_status="Cancel"
-  else
-    echo "[Info] Retrieved build number: ${build_number}"
-    local build_info
-    build_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json")
-    local build_url
-    build_url=$(echo "$build_info" | jq -r '.url')
-    echo "${build_number} ${task_name}_BUILDING ${date1} -- ${build_url}console"
-    
-    local build_console="${build_url}console"
-    echo "[Info] Build console URL: ${build_console}"
-    # 等待构建完成
-    echo "[Info] Waiting for build to complete..."
-    local job_status
-    job_status=$(echo "$build_info" | jq -r '.result')
-    while [ "$job_status" = "null" ]; do
-      sleep 3
-      build_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json")
-      job_status=$(echo "$build_info" | jq -r '.result')
-      echo -n "."
-    done
-    echo ""
-    
-    local date2
-    date2=$(date +"%Y%m%d.%H%M%S")
-    echo "[Info] Build completed at: ${date2}"
-    
-    # 安全地计算时间差，使用日期格式检查
-    local seconds=0
-    if date -d "$date1" +%s >/dev/null 2>&1 && date -d "$date2" +%s >/dev/null 2>&1; then
-      seconds=$(($(date -d "$date2" +%s) - $(date -d "$date1" +%s)))
-      echo "[Info] Build duration: ${seconds} seconds"
-    else
-      echo "[Warning] Could not calculate build duration due to date format issues"
-      seconds=0
-    fi
-    
-    echo "${build_number} ${task_name}_${job_status} ${date2} ${seconds}S ${build_url}console"
-    echo "[Info] Build result: ${job_status}"
+    return 1
   fi
   
-  echo "$build_number"
+  local start_time
+  start_time=$(date +"%Y%m%d.%H%M%S")
+  
+  local timestamp_seconds
+  timestamp_seconds=$(date -d "$start_time" +%s 2>/dev/null || date +%s)
+  
+  local build_url
+  build_url=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json" | jq -r '.url')
+  
+  log_info "Build #${build_number} started at ${start_time}"
+  log_info "Build console URL: ${build_url}console"
+  
+  # 等待构建完成，添加超时检查
+  local wait_time=0
+  local job_status="null"
+  echo -n "Waiting for build to complete " >&2
+  
+  while [ "$job_status" = "null" ] && [ "$wait_time" -lt "$TIMEOUT" ]; do
+    sleep 3
+    wait_time=$((wait_time + 3))
+    job_status=$(curl -s --user "${JENKINS_AUTH}" "${build_url}/api/json" | jq -r '.result')
+    echo -n "." >&2
+  done
+  echo "" >&2
+  
+  if [ "$wait_time" -ge "$TIMEOUT" ]; then
+    log_error "Build timed out after ${TIMEOUT} seconds"
+    echo "Timeout."
+    return 2
+  fi
+  
+  local end_time
+  end_time=$(date +"%Y%m%d.%H%M%S")
+  
+  local end_seconds
+  end_seconds=$(date -d "$end_time" +%s 2>/dev/null || date +%s)
+  
+  local duration=$((end_seconds - timestamp_seconds))
+  
+  log_info "Build completed at: ${end_time} (${duration}s)"
+  log_info "Build result: ${job_status}"
+
+  return 0
 }
 
 # 执行构建作业
 build_job_compile() {
-  local svn_url=$1
-  local ipe_packet_name=$2
-  local module=$3
+  local svn_url="$1"
+  local ipe_packet_name="$2"
+  local module="$3"
   local user_number=${4:-"$JENKINS_USERNAME"}
-  local timestamp=$5
-  local lib_path=$6
+  local timestamp="$5"
+  local lib_path="$6"
   local version_type=${7:-"release"}
   
-  # 错误处理函数
-  handle_error() {
-    echo "[Error] ABuild failed due to exception: $1"
-    return 1
-  }
-  
-  local server="server" # 仅作为占位符，在Bash中不需要
-  
+  # 确定任务名称
+  local task_name
   if [[ "$svn_url" == *"V9R1"* ]]; then
-    local task_name="V9ABUILD"
+    task_name="V9ABUILD"
   else
-    local task_name="ABUILD"
+    task_name="ABUILD"
   fi
   
   # 构建命令
   local build_cmd="-e ${ipe_packet_name} -s ${svn_url}"
-  if [ -n "$module" ]; then
-    build_cmd="${build_cmd}:${module}"
-  fi
+  [ -n "$module" ] && build_cmd="${build_cmd}:${module}"
+  [ "${version_type,,}" != "debug" ] && build_cmd="${build_cmd} -r"
+  [ -n "$lib_path" ] && build_cmd="${build_cmd} -i ${lib_path}"
+  [ -n "$timestamp" ] && build_cmd="${build_cmd} -v ${timestamp} -uk"
   
-  if [ "${version_type,,}" != "debug" ]; then
-    build_cmd="${build_cmd} -r"
-  fi
-  
-  if [ -n "$lib_path" ]; then
-    build_cmd="${build_cmd} -i ${lib_path}"
-  fi
-  
-  if [ -n "$timestamp" ]; then
-    build_cmd="${build_cmd} -v ${timestamp} -uk"
-  fi
-  
-  echo "[Info] Triggering Jenkins ABuild. Command: ${build_cmd}"
+  log_info "Triggering Jenkins ABuild for task ${task_name}"
+  log_debug "Build command: ${build_cmd}"
   
   # 获取CSRF令牌
   local crumb
   crumb=$(get_jenkins_crumb)
-  if [ -z "$crumb" ]; then
-    handle_error "Failed to get Jenkins crumb"
-    return 1
-  fi
+  [ -z "$crumb" ] && return "$(handle_error "Failed to get Jenkins crumb")"
   
   # 触发Jenkins构建
   curl -s -X POST --user "${JENKINS_AUTH}" -H "Jenkins-Crumb: ${crumb}" \
     "${JENKINS_SERVER_URL}/job/${task_name}/buildWithParameters" \
     --data-urlencode "BUILD_CMD_PARAM=${build_cmd}" \
-    --data-urlencode "FAKE_USER=${user_number}" || {
-      handle_error "Failed to trigger Jenkins build"
-      return 1
-    }
+    --data-urlencode "FAKE_USER=${user_number}" || return "$(handle_error "Failed to trigger Jenkins build")"
   
-  # 获取构建编号及结果
+  # 获取构建编号
   local abuild_number
-  abuild_number=$(get_result_number "$server" "$task_name" "$build_cmd")
-  if [ -z "$abuild_number" ] || [ "$abuild_number" = "Cancel" ]; then
-    handle_error "Build was cancelled or failed to get build number"
-    return 1
-  fi
+  abuild_number=$(get_build_number "$task_name" "$build_cmd")
+  [ -z "$abuild_number" ] || [ "$abuild_number" = "-1" ] && return "$(handle_error "Build was cancelled or failed to get build number")"
   
-  local result_info
-  result_info=$(get_error_result "$server" "$abuild_number" "$task_name")
+  # 监控构建结果
+  monitor_build_progress "$task_name" "$abuild_number" || return $?
   
-  echo "$result_info"
+  # 获取构建结果
+  get_build_result "$abuild_number" "$task_name"
+}
+
+# 显示帮助信息
+show_help() {
+  echo "Usage: abuild [OPTIONS] <svn_url> <ipe_packet_name> [module] [user_number] [timestamp] [lib_path] [debug|release]"
+  echo
+  echo "Options:"
+  echo "  -h, --help     显示此帮助信息"
+  echo "  -v, --verbose  启用详细日志输出"
+  echo "  -t, --timeout  设置等待超时时间（秒）"
+  echo
+  echo "Example:"
+  echo "  abuild http://svn/path MyPacket MyModule h12345 20231101 /path/to/lib debug"
+}
+
+# 解析命令行选项
+parse_options() {
+  while [ $# -gt 0 ]; do
+    case $1 in
+      -h|--help)
+        show_help
+        exit 0
+        ;;
+      -v|--verbose)
+        LOG_LEVEL=2
+        shift
+        ;;
+      -t|--timeout)
+        TIMEOUT=$2
+        shift 2
+        ;;
+      *)
+        # 非选项参数，停止解析
+        break
+        ;;
+    esac
+  done
 }
 
 # 主函数
 main() {
+  parse_options "$@"
+  
   if [ $# -lt 2 ]; then
-    echo "Usage: abuild <svn_url> <ipe_packet_name> [module] [user_number] [timestamp] [lib_path] [debug|release]"
+    show_help
     exit 1
   fi
   
   local result
-  result=$(build_job_compile "$1" "$2" "${3:-""}" "${4:-$JENKINS_USERNAME}" "${5:-""}" "${6:-""}" "${7:-release}")
+  result=$(build_job_compile "$@")
   
   if [ -n "$result" ]; then
-    echo "Build Result: $result"
+    echo "$result"
+    return 0
   else
     echo "Build failed or encountered an error."
+    return 1
   fi
 }
 
