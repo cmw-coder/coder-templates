@@ -1,27 +1,98 @@
 #!/bin/bash
 
-# 设置默认值
-CONFIG_FILE="${HOME}/.abuild.conf"
-TIMEOUT=300  # 默认等待超时时间（秒）
-LOG_LEVEL=1  # 0=错误, 1=信息, 2=调试
-
-# 加载配置文件（如果存在）
-# shellcheck source=/dev/null
-if [ -f "$CONFIG_FILE" ]; then
-  source "$CONFIG_FILE"
-else
-  # 默认Jenkins配置
-  JENKINS_SERVER_URL="http://10.153.3.174:8080"
-  JENKINS_USERNAME="h25380"
-  JENKINS_API_TOKEN="117b0fdde578a988ec1be741dd777c1a1c"
-fi
+# 从环境变量获取配置，使用默认值作为后备
+TIMEOUT=${TIMEOUT:-300}  # 默认等待超时时间（秒）
+LOG_LEVEL=${LOG_LEVEL:-1}  # 0=错误, 1=信息, 2=调试
+JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.174:8080"}
+JENKINS_USERNAME=${JENKINS_USERNAME:-"h25380"}
+JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"117b0fdde578a988ec1be741dd777c1a1c"}
 
 JENKINS_AUTH="${JENKINS_USERNAME}:${JENKINS_API_TOKEN}"
 
+# 跟踪上一次日志输出是否使用了-n标志
+PREVIOUS_LOG_NONEWLINE=false
+PREVIOUS_LOG_LEVEL=""
+
+# 日志处理函数 - 支持换行和缩进，使用线条连接多行
+log_message() {
+  local level="$1"
+  local nonewline=false
+  shift
+  
+  # 检查是否需要不添加换行符
+  if [ "$1" = "-n" ]; then
+    nonewline=true
+    shift
+  fi
+  
+  local indent="${LOG_INDENT:-0}"
+  local indent_str=""
+  local level_length=${#level}
+  local continuation_prefix
+  local is_first_line=true
+  local skip_prefix=false
+  
+  # 创建缩进字符串
+  if [ "$indent" -gt 0 ]; then
+    indent_str=$(printf "%${indent}s" "")
+  fi
+  
+  # 创建后续行的前缀，与第一行级别对齐
+  continuation_prefix=$(printf "%$((level_length-1))s|" "")
+  
+  # 判断是否跳过前缀（如果上一次输出使用了-n并且等级相同）
+  if [ "$PREVIOUS_LOG_NONEWLINE" = true ] && [ "$PREVIOUS_LOG_LEVEL" = "$level" ]; then
+    skip_prefix=true
+  fi
+  
+  # 处理每行消息，保留换行符
+  echo -e "$*" | while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$is_first_line" = true ]; then
+      # 第一行使用正常的级别前缀或跳过前缀
+      if [ "$skip_prefix" = true ]; then
+        # 如果上一次是-n并且日志级别相同，则直接输出，不添加前缀
+        printf "%s" "$line" >&2
+      elif [ "$nonewline" = true ]; then
+        printf "%s %s%s" "$level" "$indent_str" "$line" >&2
+      else
+        printf "%s %s%s\n" "$level" "$indent_str" "$line" >&2
+      fi
+      is_first_line=false
+    else
+      # 后续行使用连接线，并保持与第一行相同的缩进
+      if [ "$nonewline" = true ] && [ -z "$line" ]; then
+        # 不输出任何内容
+        :
+      elif [ "$nonewline" = true ]; then
+        printf "\n%s %s%s" "$continuation_prefix" "$indent_str" "$line" >&2
+      else
+        printf "%s %s%s\n" "$continuation_prefix" "$indent_str" "$line" >&2
+      fi
+    fi
+  done
+  
+  # 记录本次日志的状态，用于下一次日志输出判断
+  PREVIOUS_LOG_NONEWLINE=$nonewline
+  PREVIOUS_LOG_LEVEL=$level
+}
+
+# 增加/减少缩进级别
+log_indent_increase() { export LOG_INDENT=$((${LOG_INDENT:-0} + 2)); }
+log_indent_decrease() { 
+  if [ "${LOG_INDENT:-0}" -ge 2 ]; then
+    export LOG_INDENT=$((LOG_INDENT - 2))
+  else
+    export LOG_INDENT=0
+  fi
+}
+
 # 日志函数 - 将所有输出重定向到stderr以避免干扰函数返回值
-log_error() { echo "[Error] $*" >&2; }
-log_info() { if [ "$LOG_LEVEL" -ge 1 ]; then echo "[Info] $*" >&2; fi; }
-log_debug() { if [ "$LOG_LEVEL" -ge 2 ]; then echo "[Debug] $*" >&2; fi; }
+log_error() { log_message "[Error]" "$@"; }
+log_info() { [ "$LOG_LEVEL" -ge 1 ] && log_message "[Info]" "$@"; }
+log_debug() { [ "$LOG_LEVEL" -ge 2 ] && log_message "[Debug]" "$@"; }
+# 不带换行符的日志函数
+log_info_n() { [ "$LOG_LEVEL" -ge 1 ] && log_message "[Info]" -n "$@"; }
+log_debug_n() { [ "$LOG_LEVEL" -ge 2 ] && log_message "[Debug]" -n "$@"; }
 
 # 错误处理函数
 handle_error() {
@@ -235,7 +306,6 @@ monitor_build_progress() {
   
   if [ "$build_number" = "-1" ]; then
     log_error "Build canceled or not found"
-    echo "Cancel."
     return 1
   fi
   
@@ -254,19 +324,18 @@ monitor_build_progress() {
   # 等待构建完成，添加超时检查
   local wait_time=0
   local job_status="null"
-  echo -n "Waiting for build to complete " >&2
+  log_info_n "Waiting for build to complete "
   
   while [ "$job_status" = "null" ] && [ "$wait_time" -lt "$TIMEOUT" ]; do
     sleep 3
     wait_time=$((wait_time + 3))
     job_status=$(curl -s --user "${JENKINS_AUTH}" "${build_url}/api/json" | jq -r '.result')
-    echo -n "." >&2
+    log_info_n "."
   done
-  echo "" >&2
+  log_info ""  # 仅添加一个换行符
   
   if [ "$wait_time" -ge "$TIMEOUT" ]; then
     log_error "Build timed out after ${TIMEOUT} seconds"
-    echo "Timeout."
     return 2
   fi
   
@@ -287,8 +356,8 @@ monitor_build_progress() {
 # 执行构建作业
 build_job_compile() {
   local svn_url="$1"
-  local ipe_packet_name="$2"
-  local module="$3"
+  local ipe_package_name="$2"
+  local module_list="$3"
   local user_number=${4:-"$JENKINS_USERNAME"}
   local timestamp="$5"
   local lib_path="$6"
@@ -303,13 +372,13 @@ build_job_compile() {
   fi
   
   # 构建命令
-  local build_cmd="-e ${ipe_packet_name} -s ${svn_url}"
-  [ -n "$module" ] && build_cmd="${build_cmd}:${module}"
+  local build_cmd="-e ${ipe_package_name} -s ${svn_url}"
+  [ -n "$module_list" ] && build_cmd="${build_cmd}:${module_list}"
   [ "${version_type,,}" != "debug" ] && build_cmd="${build_cmd} -r"
   [ -n "$lib_path" ] && build_cmd="${build_cmd} -i ${lib_path}"
   [ -n "$timestamp" ] && build_cmd="${build_cmd} -v ${timestamp} -uk"
   
-  log_info "Triggering Jenkins ABuild for task ${task_name}"
+  log_info "Starting ${task_name}:\n- Packages: ${ipe_package_name}\n- Repo: ${svn_url}\n- Modules: ${module_list}\n- Type: ${version_type}\n- Lib path: ${lib_path}\n- User: ${user_number}"
   log_debug "Build command: ${build_cmd}"
   
   # 获取CSRF令牌
@@ -337,7 +406,7 @@ build_job_compile() {
 
 # 显示帮助信息
 show_help() {
-  echo "Usage: abuild [OPTIONS] <svn_url> <ipe_packet_name> [module] [user_number] [timestamp] [lib_path] [debug|release]"
+  echo "Usage: abuild [OPTIONS] <svn_url> <ipe_package_name> [module_list] [user_number] [timestamp] [lib_path] [debug|release]"
   echo
   echo "Options:"
   echo "  -h, --help     显示此帮助信息"
