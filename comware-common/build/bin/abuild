@@ -1,25 +1,27 @@
 #!/bin/bash
 
-# 从环境变量获取配置，使用默认值作为后备
-TIMEOUT=${TIMEOUT:-300}  # 默认等待超时时间（秒）
-LOG_LEVEL=${LOG_LEVEL:-1}  # 0=错误, 1=信息, 2=调试
+# Get configuration from environment variables, use defaults as fallback
+TIMEOUT=${TIMEOUT:-300}  # Default wait timeout (seconds)
+LOG_LEVEL=${LOG_LEVEL:-1}  # 0=error, 1=info, 2=debug
 JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.174:8080"}
 JENKINS_USERNAME=${JENKINS_USERNAME:-"h25380"}
 JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"117b0fdde578a988ec1be741dd777c1a1c"}
+PROJECT_BASE_SVN=${PROJECT_BASE_SVN:-""}  # Project base SVN URL, set by Coder automatically
+PROJECT_USERNAME=${PROJECT_USERNAME:-$(whoami)}  # Default to current user
 
 JENKINS_AUTH="${JENKINS_USERNAME}:${JENKINS_API_TOKEN}"
 
-# 跟踪上一次日志输出是否使用了-n标志
+# Track if the previous log output used the -n flag
 PREVIOUS_LOG_NONEWLINE=false
 PREVIOUS_LOG_LEVEL=""
 
-# 日志处理函数 - 支持换行和缩进，使用线条连接多行
+# Log processing function - supports line breaks and indentation, connecting multiple lines
 log_message() {
   local level="$1"
   local nonewline=false
   shift
   
-  # 检查是否需要不添加换行符
+  # Check if newlines should be omitted
   if [ "$1" = "-n" ]; then
     nonewline=true
     shift
@@ -32,25 +34,25 @@ log_message() {
   local is_first_line=true
   local skip_prefix=false
   
-  # 创建缩进字符串
+  # Create indentation string
   if [ "$indent" -gt 0 ]; then
     indent_str=$(printf "%${indent}s" "")
   fi
   
-  # 创建后续行的前缀，与第一行级别对齐
+  # Create prefix for continuation lines, aligned with the first line level
   continuation_prefix=$(printf "%$((level_length-1))s|" "")
   
-  # 判断是否跳过前缀（如果上一次输出使用了-n并且等级相同）
+  # Determine whether to skip the prefix (if the previous output used -n and has the same level)
   if [ "$PREVIOUS_LOG_NONEWLINE" = true ] && [ "$PREVIOUS_LOG_LEVEL" = "$level" ]; then
     skip_prefix=true
   fi
   
-  # 处理每行消息，保留换行符
+  # Process each line of the message, preserving line breaks
   echo -e "$*" | while IFS= read -r line || [ -n "$line" ]; do
     if [ "$is_first_line" = true ]; then
-      # 第一行使用正常的级别前缀或跳过前缀
+      # The first line uses normal level prefix or skips the prefix
       if [ "$skip_prefix" = true ]; then
-        # 如果上一次是-n并且日志级别相同，则直接输出，不添加前缀
+        # If previous output used -n and has the same log level, output directly without prefix
         printf "%s" "$line" >&2
       elif [ "$nonewline" = true ]; then
         printf "%s %s%s" "$level" "$indent_str" "$line" >&2
@@ -59,9 +61,9 @@ log_message() {
       fi
       is_first_line=false
     else
-      # 后续行使用连接线，并保持与第一行相同的缩进
+      # Subsequent lines use connecting lines and maintain the same indentation as the first line
       if [ "$nonewline" = true ] && [ -z "$line" ]; then
-        # 不输出任何内容
+        # Don't output anything
         :
       elif [ "$nonewline" = true ]; then
         printf "\n%s %s%s" "$continuation_prefix" "$indent_str" "$line" >&2
@@ -71,19 +73,19 @@ log_message() {
     fi
   done
   
-  # 记录本次日志的状态，用于下一次日志输出判断
+  # Record the status of this log for next log output decision
   PREVIOUS_LOG_NONEWLINE=$nonewline
   PREVIOUS_LOG_LEVEL=$level
 }
 
-# 增加/减少缩进级别
+# Increase/decrease indentation level
 log_indent_increase() { export LOG_INDENT=$((${LOG_INDENT:-0} + 2)); }
 log_indent_decrease() { 
   export LOG_INDENT=$((${LOG_INDENT:-0} > 2 ? LOG_INDENT - 2 : 0))
 }
 
-# 日志函数 - 将所有输出重定向到stderr以避免干扰函数返回值
-# 定义日志输出函数，支持不同级别
+# Log functions - redirect all output to stderr to avoid interfering with function return values
+# Define log output functions, supporting different levels
 log_message_by_level() {
   local level=$1
   local min_level=$2
@@ -99,20 +101,20 @@ log_debug() { log_message_by_level "[Debug]" 2 "" "$@"; }
 log_info_n() { log_message_by_level "[Info]" 1 "nonewline" "$@"; }
 log_debug_n() { log_message_by_level "[Debug]" 2 "nonewline" "$@"; }
 
-# 错误处理函数
+# Error handling function
 handle_error() {
   log_error "$1"
-  # 同时返回JSON格式错误信息，确保即使stderr被重定向也能获得有意义的输出
+  # Also return error info in JSON format, ensuring meaningful output even when stderr is redirected
   echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[{\"FILE\":\"\",\"LINENUMBER\":0,\"ALARM\":\"$1\"}]}"
   return 1
 }
 
-# 获取Jenkins Crumb以防止CSRF保护
+# Get Jenkins Crumb to prevent CSRF protection
 get_jenkins_crumb() {
   curl -s --fail --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/crumbIssuer/api/json" | jq -r '.crumb'
 }
 
-# 获取构建编号，添加超时控制
+# Get build number, with timeout control
 get_build_number() {
   local task_name=$1
   local build_cmd=$2
@@ -121,12 +123,12 @@ get_build_number() {
   log_info "Looking for build number for task: ${task_name}"
   log_debug "Build command: ${build_cmd}"
   
-  # 等待队列中的任务开始运行
+  # Wait for the queued task to start running
   while [ $(($(date +%s) - start_time)) -lt "$TIMEOUT" ]; do
-    # 检查队列中的任务
+    # Check tasks in the queue
     local queue_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/queue/api/json")
     
-    # 使用简化的jq查询检查是否存在匹配的任务
+    # Use simplified jq query to check if there's a matching task
     if echo "$queue_info" | jq -e '.items[] | select(.task.name == "'"$task_name"'") | 
       (.actions[] | select(.parameters != null) | .parameters[] | select(.value == "'"$build_cmd"'")) and 
       (.actions[] | select(.causes != null) | .causes[] | select(.userId == "'"$JENKINS_USERNAME"'"))' > /dev/null; then
@@ -139,19 +141,19 @@ get_build_number() {
     break
   done
   
-  # 超时检查
+  # Timeout check
   if [ $(($(date +%s) - start_time)) -ge "$TIMEOUT" ]; then
     log_error "Timeout waiting for build to start after ${TIMEOUT} seconds"
     echo "-1"
     return 1
   fi
   
-  # 获取最新构建号
+  # Get the latest build number
   local next_build_number
   next_build_number=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/api/json" | jq '.nextBuildNumber - 1')
   log_info "Latest build number for ${task_name}: ${next_build_number}"
   
-  # 查找匹配的构建
+  # Find matching build
   local i=0
   log_debug "Checking recent builds for matching command and user..."
   while [ "$next_build_number" -gt 0 ] && [ $i -lt 10 ]; do
@@ -159,7 +161,7 @@ get_build_number() {
     local job_info
     job_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${next_build_number}/api/json")
     
-    # 处理可能的两种参数顺序
+    # Handle two possible parameter orders
     if echo "$job_info" | jq -e '(.actions[0].parameters[0].value == "'"$build_cmd"'" and .actions[1].causes[0].userId == "'"$JENKINS_USERNAME"'") or
         (.actions[1].parameters[0].value == "'"$build_cmd"'" and .actions[0].causes[0].userId == "'"$JENKINS_USERNAME"'")' > /dev/null; then
       log_info "Found matching build: #${next_build_number}"
@@ -176,12 +178,12 @@ get_build_number() {
   return 1
 }
 
-# 从构建控制台输出中提取版本路径
+# Extract version path from build console output
 get_version_path() {
   local task_name="$1"
   local console_output="$2"
   
-  # 查找Build.html路径
+  # Find Build.html path
   local version_path_prefix
   version_path_prefix=$(echo "$console_output" | grep -E '^\s*.*Build\.html' | head -1 | 
                        sed -E 's/^\s*(.*Build\.html).*/\1/' | 
@@ -198,7 +200,7 @@ get_version_path() {
   last_path_name=$(echo "$version_path_prefix" | awk -F/ '{print $NF}')
   local version_file_path=""
   
-  # 根据任务类型查找相应的文件路径
+  # Find appropriate file path based on task type
   if [ "$task_name" = "V9ABUILD_CI" ]; then
     version_file_path=$(echo "$console_output" | grep -E "${last_path_name}.*TARGET.*\.tar\.gz" | head -1 |
                        sed -E "s/.*($last_path_name\/TARGET\/.*)/\1/")
@@ -207,7 +209,7 @@ get_version_path() {
                        sed -E "s/.*($last_path_name\/TARGET\/.*\.ipe\/)/\1/")
   fi
   
-  # 返回完整版本路径
+  # Return complete version path
   if [ -n "$version_file_path" ]; then
     echo "file:${version_path_prefix}/${version_file_path}"
   else
@@ -216,12 +218,12 @@ get_version_path() {
   fi
 }
 
-# 获取构建错误信息
+# Get build error information
 get_build_result() {
   local build_number="$1"
   local task_name="$2"
   
-  # 获取构建信息和控制台输出
+  # Get build info and console output
   local build_url=""
   local build_info
   
@@ -246,12 +248,12 @@ get_build_result() {
   
   local console_output
   console_output=$(curl -s --fail --user "${JENKINS_AUTH}" "${build_url}consoleText")
-  # 删除未使用的变量
+  # Remove unused variables
   
   local job_status
   job_status=$(echo "$build_info" | jq -r '.result')
   
-  # 初始化结果变量
+  # Initialize result variables
   local ret=0
   local version_path=""
   local error_info="[]"
@@ -260,12 +262,12 @@ get_build_result() {
     version_path=$(get_version_path "$task_name" "$console_output")
   else
     ret=-1
-    # 提取错误信息
+    # Extract error information
     local error_list
     error_list=$(echo "$console_output" | grep -E '^(.*):([0-9]+):\s*(error:|undefined reference|fatal error:)(.*)$')
     
     if [ -n "$error_list" ]; then
-      # 计算唯一的错误文件数量
+      # Count unique error files
       local unique_files=()
       while IFS= read -r line; do
         local file
@@ -276,7 +278,7 @@ get_build_result() {
       
       mapfile -t unique_files < <(printf "%s\n" "${unique_files[@]}" | sort -u)
       
-      # 如果错误文件不超过5个，格式化错误信息
+      # If error files don't exceed 5, format error info
       if [ ${#unique_files[@]} -le 5 ]; then
         error_info="["
         local first=true
@@ -299,11 +301,11 @@ get_build_result() {
     fi
   fi
   
-  # 构建JSON结果
+  # Build JSON result
   echo "{\"result\":${ret},\"version_path\":\"${version_path}\",\"build_info_output\":\"${build_url}console\",\"error_info\":${error_info}}"
 }
 
-# 监控构建结果
+# Monitor build results
 monitor_build_progress() {
   local task_name="$1"
   local build_number="$2"
@@ -325,7 +327,7 @@ monitor_build_progress() {
   log_info "Build #${build_number} started at ${start_time}"
   log_info "Build console URL: ${build_url}console"
   
-  # 等待构建完成，添加超时检查
+  # Wait for build completion, with timeout check
   local wait_time=0
   local job_status="null"
   log_info_n "Waiting for build to complete "
@@ -336,7 +338,7 @@ monitor_build_progress() {
     job_status=$(curl -s --user "${JENKINS_AUTH}" "${build_url}/api/json" | jq -r '.result')
     log_info_n "."
   done
-  log_info ""  # 仅添加一个换行符
+  log_info ""  # Just add a newline
   
   if [ "$wait_time" -ge "$TIMEOUT" ]; then
     log_error "Build timed out after ${TIMEOUT} seconds"
@@ -357,17 +359,25 @@ monitor_build_progress() {
   return 0
 }
 
-# 执行构建作业
+# Execute build job
 build_job_compile() {
-  local svn_path="$1"
-  local ipe_package_name="$2"
-  local module_list="$3"
-  local user_number=${4:-"$JENKINS_USERNAME"}
+  local ipe_package_name="$1"
+  local module_list="$2"
+  local version_type=${3:-"release"}
+  local lib_path="$4"
   local timestamp="$5"
-  local lib_path="$6"
-  local version_type=${7:-"release"}
+
+  # Detect if SVN path contains cmwcode-open and extract the subsequent characters
+  local svn_path=""
+  if [[ "$PROJECT_BASE_SVN" == *"cmwcode-open"* ]]; then
+    svn_path=${PROJECT_BASE_SVN#*cmwcode-open}
+    log_debug "Found cmwcode-open in SVN path, extracted path: $svn_path"
+  else
+    log_error "cmwcode-open not found in SVN path"
+    return 1
+  fi
   
-  # 确定任务名称
+  # Determine task name
   local task_name
   if [[ "$svn_path" == *"V9R1"* ]]; then
     task_name="V9ABUILD"
@@ -375,17 +385,17 @@ build_job_compile() {
     task_name="ABUILD"
   fi
   
-  # 构建命令
+  # Build command
   local build_cmd="-e ${ipe_package_name} -s ${svn_path}"
   [ -n "$module_list" ] && build_cmd="${build_cmd}:${module_list}"
   [ "${version_type,,}" != "debug" ] && build_cmd="${build_cmd} -r"
   [ -n "$lib_path" ] && build_cmd="${build_cmd} -i ${lib_path}"
   [ -n "$timestamp" ] && build_cmd="${build_cmd} -v ${timestamp} -uk"
   
-  log_info "Starting ${task_name}:\n- Packages: ${ipe_package_name}\n- Repo: ${svn_path}\n- Modules: ${module_list}\n- Type: ${version_type}\n- Lib path: ${lib_path}\n- User: ${user_number}"
+  log_info "Starting ${task_name}:\n- Packages: ${ipe_package_name}\n- Repo: ${svn_path}\n- Modules: ${module_list}\n- Type: ${version_type}\n- Lib path: ${lib_path}\n- User: ${PROJECT_USERNAME}"
   log_debug "Build command: ${build_cmd}"
   
-  # 获取CSRF令牌
+  # Get CSRF token
   local crumb
   crumb=$(get_jenkins_crumb)
   if [ -z "$crumb" ]; then
@@ -393,16 +403,16 @@ build_job_compile() {
     return 1
   fi
   
-  # 触发Jenkins构建
+  # Trigger Jenkins build
   if ! curl -s -X POST --user "${JENKINS_AUTH}" -H "Jenkins-Crumb: ${crumb}" \
     "${JENKINS_SERVER_URL}/job/${task_name}/buildWithParameters" \
     --data-urlencode "BUILD_CMD_PARAM=${build_cmd}" \
-    --data-urlencode "FAKE_USER=${user_number}" > /dev/null; then
+    --data-urlencode "FAKE_USER=${PROJECT_USERNAME}" > /dev/null; then
     handle_error "Failed to trigger Jenkins build"
     return 1
   fi
   
-  # 获取构建编号
+  # Get build number
   local abuild_number
   abuild_number=$(get_build_number "$task_name" "$build_cmd")
   if [ -z "$abuild_number" ] || [ "$abuild_number" = "-1" ]; then
@@ -410,33 +420,35 @@ build_job_compile() {
     return 1
   fi
   
-  # 监控构建结果
+  # Monitor build results
   monitor_build_progress "$task_name" "$abuild_number" || return $?
   
-  # 获取构建结果
+  # Get build result
   get_build_result "$abuild_number" "$task_name"
 }
 
-# 显示帮助信息
+# Display help information
 show_help() {
-  echo "Usage: abuild [OPTIONS] <svn_path> <ipe_package_name> [module_list] [user_number] [timestamp] [lib_path] [debug|release]"
+  echo "Usage: abuild [OPTIONS] <ipe_package_name> [module_list] [debug|release] [lib_path] [timestamp]"
   echo
   echo "Options:"
-  echo "  -h, --help     显示此帮助信息"
-  echo "  -v, --verbose  启用详细日志输出"
-  echo "  -t, --timeout  设置等待超时时间（秒）"
+  echo "  -h, --help     Display this help information"
+  echo "  -v, --verbose  Enable verbose logging"
+  echo "  -t, --timeout  Set wait timeout in seconds"
   echo "Environment Variables:"
-  echo "  TIMEOUT        默认等待超时时间（秒），默认为300"
-  echo "  LOG_LEVEL      日志级别，0=错误, 1=信息, 2=调试，默认为1"
-  echo "  JENKINS_SERVER_URL  Jenkins服务器URL，默认为http://10.153.3.174:8080"
-  echo "  JENKINS_USERNAME     Jenkins用户名，默认为h25380"
-  echo "  JENKINS_API_TOKEN    Jenkins API令牌，默认为117b0fdde578a988ec1be741dd777c1a1c"
+  echo "  LOG_LEVEL             Log level, 0=error, 1=info, 2=debug, default is 1"
+  echo "  JENKINS_SERVER_URL    Jenkins server URL, default is http://10.153.3.174:8080"
+  echo "  JENKINS_USERNAME      Jenkins API username, default is h25380"
+  echo "  JENKINS_API_TOKEN     Jenkins API token, default is 117b0fdde578a988ec1be741dd777c1a1c"
+  echo "  PROJECT_BASE_SVN      Project base SVN URL, Coder would set this automatically by default"
+  echo "  PROJECT_USERNAME      Username to start ABuild, default is current user"
+  echo "  TIMEOUT               Default waiting timeout in seconds, default is 300"
   echo
   echo "Example:"
-  echo "  abuild /V9R1/branches_bugfix/xxxxx 64sim9cen,64sim9dis "" h12345 "" /path/to/lib debug"
+  echo "  abuild 64sim9cen,64sim9dis \"\" h12345 \"\" /path/to/lib debug"
 }
 
-# 解析命令行选项
+# Parse command line options
 parse_options() {
   while [ $# -gt 0 ]; do
     case $1 in
@@ -453,26 +465,31 @@ parse_options() {
         shift 2
         ;;
       *)
-        # 非选项参数，停止解析
+        # Non-option parameter, stop parsing
         break
         ;;
     esac
   done
 }
 
-# 主函数
+# Main function
 main() {
   parse_options "$@"
   
-  if [ $# -lt 2 ]; then
+  if [ $# -lt 1 ]; then
     show_help
     exit 1
   fi
+
+  if [ -z "$PROJECT_BASE_SVN" ]; then
+    log_error "PROJECT_BASE_SVN is not set, please set it before running this script."
+    exit 1
+  fi
   
-  # 直接输出构建结果，无需额外检查
+  # Output build result directly, no additional check needed
   build_job_compile "$@"
   return $?
 }
 
-# 执行主函数
+# Execute main function
 main "$@"

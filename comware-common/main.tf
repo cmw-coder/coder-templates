@@ -141,7 +141,6 @@ resource "coder_agent" "main" {
     timeout      = 1
     order       = 0
   }
-
   metadata {
     key          = "ram_usage"
     display_name = "RAM Usage"
@@ -150,7 +149,6 @@ resource "coder_agent" "main" {
     timeout      = 1
     order        = 1
   }
-
   metadata {
     key          = "code_server_version"
     display_name = "Code Server Version"
@@ -165,7 +163,6 @@ resource "coder_agent" "main" {
     interval     = 30
     order        = 2
   }
-
   metadata {
     key          = "python_version"
     display_name = "Python Version"
@@ -197,7 +194,6 @@ resource "coder_app" "code_server" {
     threshold = 6
   }
 }
-
 resource "coder_app" "coder_docs" {
   agent_id     = coder_agent.main.id
   slug         = "coder-docs"
@@ -206,7 +202,6 @@ resource "coder_app" "coder_docs" {
   url          = local.coder_docs_url
   external     = true
 }
-
 resource "coder_app" "coder_tutorials" {
   agent_id     = coder_agent.main.id
   slug         = "coder-tutorials"
@@ -221,23 +216,35 @@ resource "coder_env" "extensions_gallery" {
   name     = "EXTENSIONS_GALLERY"
   value    = "{\"serviceUrl\":\"${local.marketplace_url}/api\", \"itemUrl\":\"${local.marketplace_url}/item\", \"resourceUrlTemplate\": \"${local.marketplace_url}/files/{publisher}/{name}/{version}/{path}\"}"
 }
-
-resource "coder_env" "lingma_username" {
-  agent_id = coder_agent.main.id
-  name     = "LINGMA_USERNAME"
-  value    = "${local.username}"
-}
-
 resource "coder_env" "lingma_organization_id" {
   agent_id = coder_agent.main.id
   name     = "LINGMA_ORGANIZATION_ID"
   value    = "${local.yunxiao.organization_id}"
 }
-
+resource "coder_env" "lingma_username" {
+  agent_id = coder_agent.main.id
+  name     = "LINGMA_USERNAME"
+  value    = "${local.username}"
+}
 resource "coder_env" "node_extra_ca_certs" {
   agent_id = coder_agent.main.id
   name     = "NODE_EXTRA_CA_CERTS"
   value    = "/etc/ssl/certs/ca-certificates.crt"
+}
+resource "coder_env" "project_base_folder_list" {
+  agent_id = coder_agent.main.id
+  name     = "PROJECT_BASE_FOLDER_LIST"
+  value    = "${data.coder_parameter.project_base_folder_list.value}"
+}
+resource "coder_env" "project_base_svn" {
+  agent_id = coder_agent.main.id
+  name     = "PROJECT_BASE_SVN"
+  value    = "${data.coder_parameter.project_base_svn.value}"
+}
+resource "coder_env" "project_public_svn" {
+  agent_id = coder_agent.main.id
+  name     = "PROJECT_PUBLIC_SVN"
+  value    = "${data.coder_parameter.project_public_svn.value}"
 }
 
 resource "coder_script" "start_code_server" {
@@ -282,7 +289,6 @@ resource "coder_script" "start_code_server" {
     echo -e "\033[32m- ✔️ Code server started!\033[0m"
   EOF
 }
-
 resource "coder_script" "checkout_base_svn" {
   agent_id     = coder_agent.main.id
   display_name = "Checkout base SVN project"
@@ -300,7 +306,6 @@ resource "coder_script" "checkout_base_svn" {
     fi
   EOF
 }
-
 resource "coder_script" "checkout_public_svn" {
   agent_id     = coder_agent.main.id
   display_name = "Checkout public SVN project"
