@@ -6,8 +6,9 @@ LOG_LEVEL=${LOG_LEVEL:-1}  # 0=error, 1=info, 2=debug
 JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.174:8080"}
 JENKINS_USERNAME=${JENKINS_USERNAME:-"h25380"}
 JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"117b0fdde578a988ec1be741dd777c1a1c"}
-PROJECT_BASE_SVN=${PROJECT_BASE_SVN:-""}  # Project base SVN URL, set by Coder automatically
-PROJECT_USERNAME=${PROJECT_USERNAME:-$(whoami)}  # Default to current user
+PROJECT_BASE_FOLDER_LIST=${PROJECT_BASE_FOLDER_LIST:-""}  # Project base folder list (JSON array), this should be set automatically
+PROJECT_BASE_SVN=${PROJECT_BASE_SVN:-""}  # Project base SVN URL, this should be set automatically
+PROJECT_USERNAME=${PROJECT_USERNAME:-$(whoami)}  # Default is current user
 
 JENKINS_AUTH="${JENKINS_USERNAME}:${JENKINS_API_TOKEN}"
 
@@ -362,10 +363,9 @@ monitor_build_progress() {
 # Execute build job
 build_job_compile() {
   local ipe_package_name="$1"
-  local module_list="$2"
-  local version_type=${3:-"release"}
-  local lib_path="$4"
-  local timestamp="$5"
+  local version_type=${2:-"debug"}
+  local lib_path="$3"
+  local timestamp="$4"
 
   # Detect if SVN path contains cmwcode-open and extract the subsequent characters
   local svn_path=""
@@ -373,7 +373,7 @@ build_job_compile() {
     svn_path=${PROJECT_BASE_SVN#*cmwcode-open}
     log_debug "Found cmwcode-open in SVN path, extracted path: $svn_path"
   else
-    log_error "cmwcode-open not found in SVN path"
+    log_error "Invalid Comware SVN, please set correct PROJECT_BASE_SVN before running this script."
     return 1
   fi
   
@@ -384,6 +384,10 @@ build_job_compile() {
   else
     task_name="ABUILD"
   fi
+
+  # Convert folder list from JSON array to a comma-separated string
+  local module_list
+  module_list=$(echo "$PROJECT_BASE_FOLDER_LIST" | tr -d '[]"')
   
   # Build command
   local build_cmd="-e ${ipe_package_name} -s ${svn_path}"
@@ -429,23 +433,33 @@ build_job_compile() {
 
 # Display help information
 show_help() {
-  echo "Usage: abuild [OPTIONS] <ipe_package_name> [module_list] [debug|release] [lib_path] [timestamp]"
+  echo "Usage: abuild [OPTIONS] <ipe_package_name> [debug|release] [lib_path] [timestamp]"
   echo
   echo "Options:"
   echo "  -h, --help     Display this help information"
   echo "  -v, --verbose  Enable verbose logging"
   echo "  -t, --timeout  Set wait timeout in seconds"
-  echo "Environment Variables:"
-  echo "  LOG_LEVEL             Log level, 0=error, 1=info, 2=debug, default is 1"
-  echo "  JENKINS_SERVER_URL    Jenkins server URL, default is http://10.153.3.174:8080"
-  echo "  JENKINS_USERNAME      Jenkins API username, default is h25380"
-  echo "  JENKINS_API_TOKEN     Jenkins API token, default is 117b0fdde578a988ec1be741dd777c1a1c"
-  echo "  PROJECT_BASE_SVN      Project base SVN URL, Coder would set this automatically by default"
-  echo "  PROJECT_USERNAME      Username to start ABuild, default is current user"
-  echo "  TIMEOUT               Default waiting timeout in seconds, default is 300"
   echo
-  echo "Example:"
-  echo "  abuild 64sim9cen,64sim9dis \"\" h12345 \"\" /path/to/lib debug"
+  echo "Arguments:"
+  echo "  <ipe_package_name>  IPE package name, e.g., 64sim9cen"
+  echo "  [debug|release]     Build type, default is debug"
+  echo "  [lib_path]          Optional library path, e.g., /path/to/lib"
+  echo "  [timestamp]         Optional timestamp, e.g., 20231001.120000"
+  echo
+  echo "Examples:"
+  echo "  abuild 64sim9cen"
+  echo "  abuild 64sim9cen,64sim9dis release"
+  echo "  abuild 64sim9cen,64sim9dis debug /path/to/lib"
+  echo
+  echo "Configurable Environment Variables:"
+  echo "  LOG_LEVEL                   Log level, 0=error, 1=info, 2=debug, default is 1"
+  echo "  JENKINS_SERVER_URL          Jenkins server URL, default is http://10.153.3.174:8080"
+  echo "  JENKINS_USERNAME            Jenkins API username, default is h25380"
+  echo "  JENKINS_API_TOKEN           Jenkins API token, default is 117b0fdde578a988ec1be741dd777c1a1c"
+  echo "  PROJECT_BASE_FOLDER_LIST    Project base folder list (JSON array), this should be set automatically"
+  echo "  PROJECT_BASE_SVN            Project base SVN URL, this should be set automatically"
+  echo "  PROJECT_USERNAME            Username to start ABuild, default is current user"
+  echo "  TIMEOUT                     Default waiting timeout in seconds, default is 300"
 }
 
 # Parse command line options
