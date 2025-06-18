@@ -118,12 +118,12 @@ create_shadow_branch() {
 
     # Check if shadow branch exists, delete if it does
     if svn_s info "$shadow_branch_url" >/dev/null 2>&1; then
-        echo "Shadow branch exists. Deleting it to ensure it's in sync..."
+        log_info "Shadow branch exists. Deleting it to ensure it's in sync..."
         if ! svn_s delete -m "Remove old shadow branch" "$shadow_branch_url" >/dev/null; then
             log_error "Failed to delete existing shadow branch."
             exit 1
         fi
-        echo "Old shadow branch deleted successfully."
+        log_info "Old shadow branch deleted successfully."
     fi
 
     # Create shadow branch
@@ -133,7 +133,7 @@ create_shadow_branch() {
         log_error "Failed to create shadow branch."
         exit 1
     fi
-    echo "Shadow branch created: $shadow_branch_url"
+    log_info "Shadow branch created: $shadow_branch_url"
 }
 
 apply_changes_to_shadow_branch() {
