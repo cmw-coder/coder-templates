@@ -466,8 +466,8 @@ show_help() {
     echo "  TIMEOUT                     Default waiting timeout in seconds, default is 300"
 }
 
-# Parse command line options
-parse_command_line_args() {
+# Main function
+main() {
     while [ $# -gt 0 ]; do
         case $1 in
         -h | --help)
@@ -488,11 +488,6 @@ parse_command_line_args() {
             ;;
         esac
     done
-}
-
-# Main function
-main() {
-    parse_command_line_args "$@"
 
     if [ $# -lt 1 ]; then
         show_help

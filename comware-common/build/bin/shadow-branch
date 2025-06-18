@@ -112,22 +112,28 @@ svn_s() {
     fi
 }
 
+remove_shadow_branch() {
+    local shadow_branch_url="$1"
+
+    if ! svn_s info "$shadow_branch_url" >/dev/null 2>&1; then
+        log_info "No shadow branch found at $shadow_branch_url, nothing to remove."
+        return 0
+    fi
+
+    if ! svn_s delete -m "Removing shadow branch" "$shadow_branch_url"; then
+        log_error "Failed to remove shadow branch."
+        exit 1
+    fi
+
+    log_info "Shadow branch $shadow_branch_url removed successfully."
+    return 0
+}
+
 create_shadow_branch() {
     local current_branch_url="$1"
     local shadow_branch_url="$2"
 
-    # Check if shadow branch exists, delete if it does
-    if svn_s info "$shadow_branch_url" >/dev/null 2>&1; then
-        log_info "Shadow branch exists. Deleting it to ensure it's in sync..."
-        if ! svn_s delete -m "Remove old shadow branch" "$shadow_branch_url" >/dev/null; then
-            log_error "Failed to delete existing shadow branch."
-            exit 1
-        fi
-        log_info "Old shadow branch deleted successfully."
-    fi
-
     # Create shadow branch
-    log_info "Creating shadow branch..."
     log_debug "Running: svn copy --parents \"$current_branch_url\" \"$shadow_branch_url\" -m \"Creating shadow branch for $current_branch_url\""
     if ! svn_s copy --parents "$current_branch_url" "$shadow_branch_url" -m "Creating shadow branch for $current_branch_url"; then
         log_error "Failed to create shadow branch."
@@ -216,20 +222,30 @@ apply_changes_to_shadow_branch() {
 
     # Commit all changes
     if [ "$changed" = true ]; then
-        log_info "Committing all changes..."
-        if svn_s commit -m "[Shadow Branch] Commit for code sync - $(date '+%Y-%m-%d %H:%M:%S')" "$temp_dir"; then
-            log_info "✓ Successfully committed all changes"
-        else
-            log_error "✗ Commit failed"
+        if ! svn_s commit -m "[Shadow Branch] Commit for code sync - $(date '+%Y-%m-%d %H:%M:%S')" "$temp_dir"; then
+            log_error "Commit failed"
             rm -rf "$temp_dir"
             return 1
         fi
+        log_info "Committed all changes"
     else
         log_info "No changes to commit"
     fi
 
     rm -rf "$temp_dir"
     return 0
+}
+
+get_current_branch_url() {
+    local current_branch_path="$1"
+
+    if [ ! -d "${current_branch_path}/.svn" ]; then
+        log_error "'${current_branch_path}' is not an SVN working copy."
+        exit 1
+    fi
+
+    # Extract url from SVN info
+    svn_s info "$current_branch_path" | grep "^URL:" | awk '{print $2}'
 }
 
 sync_to_shadow_branch() {
@@ -240,13 +256,9 @@ sync_to_shadow_branch() {
         exit 1
     fi
 
-    # Get SVN info
-    local current_branch_info
-    current_branch_info=$(svn_s info "$current_branch_path")
-
-    # Extract url from SVN info
+    # Get current branch URL
     local current_branch_url
-    current_branch_url=$(echo "$current_branch_info" | grep "^URL:" | awk '{print $2}')
+    current_branch_url=$(get_current_branch_url "$current_branch_path")
     log_info "Current branch URL: $current_branch_url"
 
     # Check for uncommitted changes
@@ -261,6 +273,7 @@ sync_to_shadow_branch() {
 
     # Create shadow branch
     local shadow_branch_url="${current_branch_url}_shadow"
+    remove_shadow_branch "$shadow_branch_url"
     create_shadow_branch "$current_branch_url" "$shadow_branch_url"
 
     # Apply all changes to temporary directory
@@ -280,7 +293,7 @@ show_help() {
     echo
     echo "Options:"
     echo "  -h, --help          Display help information"
-    echo "  -s, --shadow PATH   Custom shadow branch subpath (default is <current_path>_shadow)"
+    echo "  -r, --remove        Remove the shadow branch instead of creating it"
     echo "  -v, --verbose       Enable verbose logging"
     echo
     echo "Arguments:"
@@ -292,12 +305,18 @@ show_help() {
     echo "  SVN_USERNAME        SVN username, this should be set automatically"
 }
 
-parse_command_line_args() {
+# Main function
+main() {
+    local is_remove=false
     while [[ $# -gt 0 ]]; do
         case $1 in
         -h | --help)
             show_help
             exit 0
+            ;;
+        -r | --remove)
+            is_remove=true
+            shift
             ;;
         -v | --verbose)
             LOG_LEVEL=2
@@ -309,19 +328,27 @@ parse_command_line_args() {
             ;;
         esac
     done
-}
-
-# Main function
-main() {
-    parse_command_line_args "$@"
 
     if [ $# -lt 1 ]; then
         show_help
         exit 1
     fi
 
-    sync_to_shadow_branch "$@"
-    return $?
+    # if is remove, delete the shadow branch
+    if [ "$is_remove" = true ]; then
+        # Get current branch URL
+        local current_branch_url
+        current_branch_url=$(get_current_branch_url "$@")
+        log_info "Current branch URL: $current_branch_url"
+
+        # Remove shadow branch
+        local shadow_branch_url="${current_branch_url}_shadow"
+        remove_shadow_branch "$shadow_branch_url"
+        return $?
+    else
+        sync_to_shadow_branch "$@"
+        return $?
+    fi
 }
 
 # Execute main function
