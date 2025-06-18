@@ -1,0 +1,328 @@
+#!/bin/bash
+
+# Configuration variables
+LOG_LEVEL=${LOG_LEVEL:-1}               # 0=error, 1=info, 2=debug
+SVN_PASSWORD=${SVN_PASSWORD:-""}        # This should be set automatically
+SVN_USERNAME=${SVN_USERNAME:-$(whoami)} # This should be set automatically
+
+# Track if the previous log output used the -n flag
+PREVIOUS_LOG_NONEWLINE=false
+PREVIOUS_LOG_LEVEL=""
+# Log processing function - supports line breaks and indentation, connecting multiple lines
+log_message() {
+    local level="$1"
+    local nonewline=false
+    shift
+
+    # Check if newlines should be omitted
+    if [ "$1" = "-n" ]; then
+        nonewline=true
+        shift
+    fi
+
+    local indent="${LOG_INDENT:-0}"
+    local indent_str=""
+    local level_length=${#level}
+    local continuation_prefix
+    local is_first_line=true
+    local skip_prefix=false
+
+    # Create indentation string
+    if [ "$indent" -gt 0 ]; then
+        indent_str=$(printf "%${indent}s" "")
+    fi
+
+    # Create prefix for continuation lines, aligned with the first line level
+    continuation_prefix=$(printf "%$((level_length - 1))s|" "")
+
+    # Determine whether to skip the prefix (if the previous output used -n and has the same level)
+    if [ "$PREVIOUS_LOG_NONEWLINE" = true ] && [ "$PREVIOUS_LOG_LEVEL" = "$level" ]; then
+        skip_prefix=true
+    fi
+
+    # Process each line of the message, preserving line breaks
+    echo -e "$*" | while IFS= read -r line || [ -n "$line" ]; do
+        if [ "$is_first_line" = true ]; then
+            # The first line uses normal level prefix or skips the prefix
+            if [ "$skip_prefix" = true ]; then
+                # If previous output used -n and has the same log level, output directly without prefix
+                printf "%s" "$line" >&2
+            elif [ "$nonewline" = true ]; then
+                printf "%s %s%s" "$level" "$indent_str" "$line" >&2
+            else
+                printf "%s %s%s\n" "$level" "$indent_str" "$line" >&2
+            fi
+            is_first_line=false
+        else
+            # Subsequent lines use connecting lines and maintain the same indentation as the first line
+            if [ "$nonewline" = true ] && [ -z "$line" ]; then
+                # Don't output anything
+                :
+            elif [ "$nonewline" = true ]; then
+                printf "\n%s %s%s" "$continuation_prefix" "$indent_str" "$line" >&2
+            else
+                printf "%s %s%s\n" "$continuation_prefix" "$indent_str" "$line" >&2
+            fi
+        fi
+    done
+
+    # Record the status of this log for next log output decision
+    PREVIOUS_LOG_NONEWLINE=$nonewline
+    PREVIOUS_LOG_LEVEL=$level
+}
+# Increase/decrease indentation level
+log_indent_increase() { export LOG_INDENT=$((${LOG_INDENT:-0} + 2)); }
+log_indent_decrease() {
+    export LOG_INDENT=$((${LOG_INDENT:-0} > 2 ? LOG_INDENT - 2 : 0))
+}
+# Log functions - redirect all output to stderr to avoid interfering with function return values
+# Define log output functions, supporting different levels
+log_message_by_level() {
+    local level=$1
+    local min_level=$2
+    local nonewline=$3
+    shift 3
+
+    [ "$LOG_LEVEL" -ge "$min_level" ] && log_message "$level" ${nonewline:+"-n"} "$@"
+}
+log_error() { log_message "[Error]" "$@"; }
+log_info() { log_message_by_level "[Info]" 1 "" "$@"; }
+log_debug() { log_message_by_level "[Debug]" 2 "" "$@"; }
+log_info_n() { log_message_by_level "[Info]" 1 "nonewline" "$@"; }
+log_debug_n() { log_message_by_level "[Debug]" 2 "nonewline" "$@"; }
+
+svn_s() {
+    local cmd=$1
+    shift
+
+    # For info and diff commands, we need the output and they don't support -q
+    if [ "$cmd" = "diff" ] || [ "$cmd" = "info" ] || [ "$cmd" = "update" ]; then
+        if [ -n "$SVN_USERNAME" ] && [ -n "$SVN_PASSWORD" ]; then
+            svn "$cmd" "$@" --non-interactive --username "$SVN_USERNAME" --password "$SVN_PASSWORD"
+        else
+            svn "$cmd" "$@" --non-interactive
+        fi
+    else
+        # For other commands, use quiet mode
+        if [ -n "$SVN_USERNAME" ] && [ -n "$SVN_PASSWORD" ]; then
+            svn "$cmd" "$@" -q --non-interactive --username "$SVN_USERNAME" --password "$SVN_PASSWORD"
+        else
+            svn "$cmd" "$@" -q --non-interactive
+        fi
+    fi
+}
+
+create_shadow_branch() {
+    local current_branch_url="$1"
+    local shadow_branch_url="$2"
+
+    # Check if shadow branch exists, delete if it does
+    if svn_s info "$shadow_branch_url" >/dev/null 2>&1; then
+        echo "Shadow branch exists. Deleting it to ensure it's in sync..."
+        if ! svn_s delete -m "Remove old shadow branch" "$shadow_branch_url" >/dev/null; then
+            log_error "Failed to delete existing shadow branch."
+            exit 1
+        fi
+        echo "Old shadow branch deleted successfully."
+    fi
+
+    # Create shadow branch
+    log_info "Creating shadow branch..."
+    log_debug "Running: svn copy --parents \"$current_branch_url\" \"$shadow_branch_url\" -m \"Creating shadow branch for $current_branch_url\""
+    if ! svn_s copy --parents "$current_branch_url" "$shadow_branch_url" -m "Creating shadow branch for $current_branch_url"; then
+        log_error "Failed to create shadow branch."
+        exit 1
+    fi
+    echo "Shadow branch created: $shadow_branch_url"
+}
+
+apply_changes_to_shadow_branch() {
+    local current_branch_path="$1"
+    local current_branch_status="$2"
+    local shadow_branch_url="$3"
+
+    # Extract added/deleted/unknown files
+    local added_files
+    local deleted_files
+    local modified_files
+    added_files=$(echo "$current_branch_status" | grep "^A" | awk '{print $2}')
+    deleted_files=$(echo "$current_branch_status" | grep "^D" | awk '{print $2}')
+    modified_files=$(echo "$current_branch_status" | grep -E "^M|^MM" | awk '{print $2}')
+
+    # Create temporary directory for shadow branch
+    local temp_dir
+    temp_dir="/tmp/shadow-branch-$(date +%s)"
+    mkdir -p "$temp_dir"
+
+    # Initialize empty checkout
+    if ! svn_s checkout --depth=empty "$shadow_branch_url" "$temp_dir" >/dev/null; then
+        log_error "Failed to initialize empty checkout"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+
+    local changed=false
+
+    process_file() {
+        local action="$1"
+        local relative_path="$2"
+
+        svn_s update --parents --set-depth empty "$temp_dir/$relative_path" >/dev/null 2>&1
+
+        case "$action" in
+        add)
+            cp -f "$current_branch_path/$relative_path" "$temp_dir/$relative_path"
+            svn_s add --force "$temp_dir/$relative_path" >/dev/null 2>&1
+
+            # Check status to see if we have conflicts
+            if svn_s status "$temp_dir/$relative_path" | grep -q "^C"; then
+                log_info "Resolving conflict with local version"
+                svn_s resolve --accept working "$temp_dir/$relative_path" >/dev/null 2>&1
+            fi
+            ;;
+        delete)
+            [ -e "$temp_dir/$relative_path" ] && svn_s delete "$temp_dir/$relative_path" >/dev/null 2>&1
+            ;;
+        modify)
+            cp -f "$current_branch_path/$relative_path" "$temp_dir/$relative_path"
+
+            # Check status to see if we have conflicts
+            if svn_s status "$temp_dir/$relative_path" | grep -q "^C"; then
+                log_info "Resolving conflict with local version"
+                svn_s resolve --accept working "$temp_dir/$relative_path" >/dev/null 2>&1
+            fi
+            ;;
+        esac
+        log_info "$action success: $temp_dir/$relative_path"
+        changed=true
+    }
+
+    # Process each file type
+    log_info "Processing added files..."
+    for file_path in $added_files; do
+        local relative_path="${file_path#"$current_branch_path"/}"
+        [ -f "$current_branch_path/$relative_path" ] && process_file add "$relative_path"
+    done
+    log_info "Processing deleted files..."
+    for file_path in $deleted_files; do
+        local relative_path="${file_path#"$current_branch_path"/}"
+        process_file delete "$relative_path"
+    done
+    log_info "Processing modified files..."
+    for file_path in $modified_files; do
+        local relative_path="${file_path#"$current_branch_path"/}"
+        [ -f "$current_branch_path/$relative_path" ] && process_file modify "$relative_path"
+    done
+
+    # Commit all changes
+    if [ "$changed" = true ]; then
+        log_info "Committing all changes..."
+        if svn_s commit -m "[Shadow Branch] Commit for code sync - $(date '+%Y-%m-%d %H:%M:%S')" "$temp_dir"; then
+            log_info "✓ Successfully committed all changes"
+        else
+            log_error "✗ Commit failed"
+            rm -rf "$temp_dir"
+            return 1
+        fi
+    else
+        log_info "No changes to commit"
+    fi
+
+    rm -rf "$temp_dir"
+    return 0
+}
+
+sync_to_shadow_branch() {
+    local current_branch_path="$1"
+
+    if [ ! -d "${current_branch_path}/.svn" ]; then
+        log_error "'${current_branch_path}' is not an SVN working copy."
+        exit 1
+    fi
+
+    # Get SVN info
+    local current_branch_info
+    current_branch_info=$(svn_s info "$current_branch_path")
+
+    # Extract url from SVN info
+    local current_branch_url
+    current_branch_url=$(echo "$current_branch_info" | grep "^URL:" | awk '{print $2}')
+    log_info "Current branch URL: $current_branch_url"
+
+    # Check for uncommitted changes
+    local current_branch_status
+    current_branch_status=$(svn_s status "$current_branch_path")
+    if [ -z "$current_branch_status" ]; then
+        log_info "No uncommitted changes found. No need to commit to shadow branch."
+        echo "$current_branch_url"
+        exit 0
+    fi
+    log_info "Uncommitted changes found. Preparing to commit to shadow branch..."
+
+    # Create shadow branch
+    local shadow_branch_url="${current_branch_url}_shadow"
+    create_shadow_branch "$current_branch_url" "$shadow_branch_url"
+
+    # Apply all changes to temporary directory
+    log_info "Applying changes to shadow branch..."    
+    if ! apply_changes_to_shadow_branch "$current_branch_path" "$current_branch_status" "$shadow_branch_url"; then
+        log_error "Error applying changes to shadow branch."
+        exit 1
+    fi
+
+    # Final summary
+    log_info "Changes applied to shadow branch: $shadow_branch_url, revision: $(svn_s info "$shadow_branch_url" | grep "^Last Changed Rev:" | awk '{print $4}')"
+    echo "$shadow_branch_url"
+}
+
+show_help() {
+    echo "Usage: $0 [options] <project_path>"
+    echo
+    echo "Options:"
+    echo "  -h, --help          Display help information"
+    echo "  -s, --shadow PATH   Custom shadow branch subpath (default is <current_path>_shadow)"
+    echo "  -v, --verbose       Enable verbose logging"
+    echo
+    echo "Arguments:"
+    echo "  <project_path>      Path to the SVN working copy (required)"
+    echo
+    echo "Configurable Environment Variables:"
+    echo "  LOG_LEVEL           Log level, 0=error, 1=info, 2=debug, default is 1"
+    echo "  SVN_PASSWORD        SVN password, this should be set automatically"
+    echo "  SVN_USERNAME        SVN username, this should be set automatically"
+}
+
+parse_command_line_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+        -h | --help)
+            show_help
+            exit 0
+            ;;
+        -v | --verbose)
+            LOG_LEVEL=2
+            shift
+            ;;
+        *)
+            # Non-option parameter, stop parsing
+            break
+            ;;
+        esac
+    done
+}
+
+# Main function
+main() {
+    parse_command_line_args "$@"
+
+    if [ $# -lt 1 ]; then
+        show_help
+        exit 1
+    fi
+
+    sync_to_shadow_branch "$@"
+    return $?
+}
+
+# Execute main function
+main "$@"

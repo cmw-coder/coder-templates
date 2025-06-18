@@ -122,7 +122,6 @@ resource "coder_agent" "main" {
     GIT_AUTHOR_EMAIL    = "${data.coder_workspace_owner.me.email}"
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, local.username)
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
-    PROJECT_BASE_DIR    = "/home/${local.username}/project"
   }
 
   display_apps {
@@ -231,6 +230,11 @@ resource "coder_env" "node_extra_ca_certs" {
   name     = "NODE_EXTRA_CA_CERTS"
   value    = "/etc/ssl/certs/ca-certificates.crt"
 }
+resource "coder_env" "project_path" {
+  agent_id = coder_agent.main.id
+  name     = "PROJECT_PATH"
+  value    = "/home/${local.username}/project"
+}
 resource "coder_env" "project_base_folder_list" {
   agent_id = coder_agent.main.id
   name     = "PROJECT_BASE_FOLDER_LIST"
@@ -245,6 +249,16 @@ resource "coder_env" "project_public_svn" {
   agent_id = coder_agent.main.id
   name     = "PROJECT_PUBLIC_SVN"
   value    = "${data.coder_parameter.project_public_svn.value}"
+}
+resource "coder_env" "svn_username" {
+  agent_id = coder_agent.main.id
+  name     = "SVN_USERNAME"
+  value    = "${data.coder_parameter.svn_username.value}"
+}
+resource "coder_env" "svn_password" {
+  agent_id = coder_agent.main.id
+  name     = "SVN_PASSWORD"
+  value    = "${data.coder_parameter.svn_password.value}"
 }
 
 resource "coder_script" "start_code_server" {

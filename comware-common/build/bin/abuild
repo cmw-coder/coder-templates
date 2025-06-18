@@ -1,101 +1,97 @@
 #!/bin/bash
 
 # Get configuration from environment variables, use defaults as fallback
-TIMEOUT=${TIMEOUT:-300}  # Default wait timeout (seconds)
-LOG_LEVEL=${LOG_LEVEL:-1}  # 0=error, 1=info, 2=debug
+TIMEOUT=${TIMEOUT:-300}   # Default wait timeout (seconds)
+LOG_LEVEL=${LOG_LEVEL:-1} # 0=error, 1=info, 2=debug
 JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.174:8080"}
 JENKINS_USERNAME=${JENKINS_USERNAME:-"h25380"}
 JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"117b0fdde578a988ec1be741dd777c1a1c"}
-PROJECT_BASE_FOLDER_LIST=${PROJECT_BASE_FOLDER_LIST:-""}  # Project base folder list (JSON array), this should be set automatically
-PROJECT_BASE_SVN=${PROJECT_BASE_SVN:-""}  # Project base SVN URL, this should be set automatically
-PROJECT_USERNAME=${PROJECT_USERNAME:-$(whoami)}  # Default is current user
+PROJECT_BASE_FOLDER_LIST=${PROJECT_BASE_FOLDER_LIST:-""} # This should be set automatically
+PROJECT_BASE_SVN=${PROJECT_BASE_SVN:-""}                 # This should be set automatically
+SVN_USERNAME=${SVN_USERNAME:-$(whoami)}                  # This should be set automatically
 
 JENKINS_AUTH="${JENKINS_USERNAME}:${JENKINS_API_TOKEN}"
 
 # Track if the previous log output used the -n flag
 PREVIOUS_LOG_NONEWLINE=false
 PREVIOUS_LOG_LEVEL=""
-
 # Log processing function - supports line breaks and indentation, connecting multiple lines
 log_message() {
-  local level="$1"
-  local nonewline=false
-  shift
-  
-  # Check if newlines should be omitted
-  if [ "$1" = "-n" ]; then
-    nonewline=true
+    local level="$1"
+    local nonewline=false
     shift
-  fi
-  
-  local indent="${LOG_INDENT:-0}"
-  local indent_str=""
-  local level_length=${#level}
-  local continuation_prefix
-  local is_first_line=true
-  local skip_prefix=false
-  
-  # Create indentation string
-  if [ "$indent" -gt 0 ]; then
-    indent_str=$(printf "%${indent}s" "")
-  fi
-  
-  # Create prefix for continuation lines, aligned with the first line level
-  continuation_prefix=$(printf "%$((level_length-1))s|" "")
-  
-  # Determine whether to skip the prefix (if the previous output used -n and has the same level)
-  if [ "$PREVIOUS_LOG_NONEWLINE" = true ] && [ "$PREVIOUS_LOG_LEVEL" = "$level" ]; then
-    skip_prefix=true
-  fi
-  
-  # Process each line of the message, preserving line breaks
-  echo -e "$*" | while IFS= read -r line || [ -n "$line" ]; do
-    if [ "$is_first_line" = true ]; then
-      # The first line uses normal level prefix or skips the prefix
-      if [ "$skip_prefix" = true ]; then
-        # If previous output used -n and has the same log level, output directly without prefix
-        printf "%s" "$line" >&2
-      elif [ "$nonewline" = true ]; then
-        printf "%s %s%s" "$level" "$indent_str" "$line" >&2
-      else
-        printf "%s %s%s\n" "$level" "$indent_str" "$line" >&2
-      fi
-      is_first_line=false
-    else
-      # Subsequent lines use connecting lines and maintain the same indentation as the first line
-      if [ "$nonewline" = true ] && [ -z "$line" ]; then
-        # Don't output anything
-        :
-      elif [ "$nonewline" = true ]; then
-        printf "\n%s %s%s" "$continuation_prefix" "$indent_str" "$line" >&2
-      else
-        printf "%s %s%s\n" "$continuation_prefix" "$indent_str" "$line" >&2
-      fi
-    fi
-  done
-  
-  # Record the status of this log for next log output decision
-  PREVIOUS_LOG_NONEWLINE=$nonewline
-  PREVIOUS_LOG_LEVEL=$level
-}
 
+    # Check if newlines should be omitted
+    if [ "$1" = "-n" ]; then
+        nonewline=true
+        shift
+    fi
+
+    local indent="${LOG_INDENT:-0}"
+    local indent_str=""
+    local level_length=${#level}
+    local continuation_prefix
+    local is_first_line=true
+    local skip_prefix=false
+
+    # Create indentation string
+    if [ "$indent" -gt 0 ]; then
+        indent_str=$(printf "%${indent}s" "")
+    fi
+
+    # Create prefix for continuation lines, aligned with the first line level
+    continuation_prefix=$(printf "%$((level_length - 1))s|" "")
+
+    # Determine whether to skip the prefix (if the previous output used -n and has the same level)
+    if [ "$PREVIOUS_LOG_NONEWLINE" = true ] && [ "$PREVIOUS_LOG_LEVEL" = "$level" ]; then
+        skip_prefix=true
+    fi
+
+    # Process each line of the message, preserving line breaks
+    echo -e "$*" | while IFS= read -r line || [ -n "$line" ]; do
+        if [ "$is_first_line" = true ]; then
+            # The first line uses normal level prefix or skips the prefix
+            if [ "$skip_prefix" = true ]; then
+                # If previous output used -n and has the same log level, output directly without prefix
+                printf "%s" "$line" >&2
+            elif [ "$nonewline" = true ]; then
+                printf "%s %s%s" "$level" "$indent_str" "$line" >&2
+            else
+                printf "%s %s%s\n" "$level" "$indent_str" "$line" >&2
+            fi
+            is_first_line=false
+        else
+            # Subsequent lines use connecting lines and maintain the same indentation as the first line
+            if [ "$nonewline" = true ] && [ -z "$line" ]; then
+                # Don't output anything
+                :
+            elif [ "$nonewline" = true ]; then
+                printf "\n%s %s%s" "$continuation_prefix" "$indent_str" "$line" >&2
+            else
+                printf "%s %s%s\n" "$continuation_prefix" "$indent_str" "$line" >&2
+            fi
+        fi
+    done
+
+    # Record the status of this log for next log output decision
+    PREVIOUS_LOG_NONEWLINE=$nonewline
+    PREVIOUS_LOG_LEVEL=$level
+}
 # Increase/decrease indentation level
 log_indent_increase() { export LOG_INDENT=$((${LOG_INDENT:-0} + 2)); }
-log_indent_decrease() { 
-  export LOG_INDENT=$((${LOG_INDENT:-0} > 2 ? LOG_INDENT - 2 : 0))
+log_indent_decrease() {
+    export LOG_INDENT=$((${LOG_INDENT:-0} > 2 ? LOG_INDENT - 2 : 0))
 }
-
 # Log functions - redirect all output to stderr to avoid interfering with function return values
 # Define log output functions, supporting different levels
 log_message_by_level() {
-  local level=$1
-  local min_level=$2
-  local nonewline=$3
-  shift 3
-  
-  [ "$LOG_LEVEL" -ge "$min_level" ] && log_message "$level" ${nonewline:+"-n"} "$@"
-}
+    local level=$1
+    local min_level=$2
+    local nonewline=$3
+    shift 3
 
+    [ "$LOG_LEVEL" -ge "$min_level" ] && log_message "$level" ${nonewline:+"-n"} "$@"
+}
 log_error() { log_message "[Error]" "$@"; }
 log_info() { log_message_by_level "[Info]" 1 "" "$@"; }
 log_debug() { log_message_by_level "[Debug]" 2 "" "$@"; }
@@ -104,405 +100,407 @@ log_debug_n() { log_message_by_level "[Debug]" 2 "nonewline" "$@"; }
 
 # Error handling function
 handle_error() {
-  log_error "$1"
-  # Also return error info in JSON format, ensuring meaningful output even when stderr is redirected
-  echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[{\"FILE\":\"\",\"LINENUMBER\":0,\"ALARM\":\"$1\"}]}"
-  return 1
+    log_error "$1"
+    # Also return error info in JSON format, ensuring meaningful output even when stderr is redirected
+    echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[{\"FILE\":\"\",\"LINENUMBER\":0,\"ALARM\":\"$1\"}]}"
+    return 1
 }
 
 # Get Jenkins Crumb to prevent CSRF protection
 get_jenkins_crumb() {
-  curl -s --fail --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/crumbIssuer/api/json" | jq -r '.crumb'
+    curl -s --fail --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/crumbIssuer/api/json" | jq -r '.crumb'
 }
 
 # Get build number, with timeout control
 get_build_number() {
-  local task_name=$1
-  local build_cmd=$2
-  local start_time=$(date +%s)
-  
-  log_info "Looking for build number for task: ${task_name}"
-  log_debug "Build command: ${build_cmd}"
-  
-  # Wait for the queued task to start running
-  while [ $(($(date +%s) - start_time)) -lt "$TIMEOUT" ]; do
-    # Check tasks in the queue
-    local queue_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/queue/api/json")
-    
-    # Use simplified jq query to check if there's a matching task
-    if echo "$queue_info" | jq -e '.items[] | select(.task.name == "'"$task_name"'") | 
+    local task_name=$1
+    local build_cmd=$2
+    local start_time=$(date +%s)
+
+    log_info "Looking for build number for task: ${task_name}"
+    log_debug "Build command: ${build_cmd}"
+
+    # Wait for the queued task to start running
+    while [ $(($(date +%s) - start_time)) -lt "$TIMEOUT" ]; do
+        # Check tasks in the queue
+        local queue_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/queue/api/json")
+
+        # Use simplified jq query to check if there's a matching task
+        if echo "$queue_info" | jq -e '.items[] | select(.task.name == "'"$task_name"'") | 
       (.actions[] | select(.parameters != null) | .parameters[] | select(.value == "'"$build_cmd"'")) and 
-      (.actions[] | select(.causes != null) | .causes[] | select(.userId == "'"$JENKINS_USERNAME"'"))' > /dev/null; then
-      log_info "Matching task found in queue, waiting..."
-      sleep 3
-      continue
+      (.actions[] | select(.causes != null) | .causes[] | select(.userId == "'"$JENKINS_USERNAME"'"))' >/dev/null; then
+            log_info "Matching task found in queue, waiting..."
+            sleep 3
+            continue
+        fi
+
+        log_info "Task not found in queue or has started running"
+        break
+    done
+
+    # Timeout check
+    if [ $(($(date +%s) - start_time)) -ge "$TIMEOUT" ]; then
+        log_error "Timeout waiting for build to start after ${TIMEOUT} seconds"
+        echo "-1"
+        return 1
     fi
-    
-    log_info "Task not found in queue or has started running"
-    break
-  done
-  
-  # Timeout check
-  if [ $(($(date +%s) - start_time)) -ge "$TIMEOUT" ]; then
-    log_error "Timeout waiting for build to start after ${TIMEOUT} seconds"
+
+    # Get the latest build number
+    local next_build_number
+    next_build_number=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/api/json" | jq '.nextBuildNumber - 1')
+    log_info "Latest build number for ${task_name}: ${next_build_number}"
+
+    # Find matching build
+    local i=0
+    log_debug "Checking recent builds for matching command and user..."
+    while [ "$next_build_number" -gt 0 ] && [ $i -lt 10 ]; do
+        log_debug "Checking build #${next_build_number}"
+        local job_info
+        job_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${next_build_number}/api/json")
+
+        # Handle two possible parameter orders
+        if echo "$job_info" | jq -e '(.actions[0].parameters[0].value == "'"$build_cmd"'" and .actions[1].causes[0].userId == "'"$JENKINS_USERNAME"'") or
+        (.actions[1].parameters[0].value == "'"$build_cmd"'" and .actions[0].causes[0].userId == "'"$JENKINS_USERNAME"'")' >/dev/null; then
+            log_info "Found matching build: #${next_build_number}"
+            echo "$next_build_number"
+            return 0
+        fi
+
+        next_build_number=$((next_build_number - 1))
+        i=$((i + 1))
+    done
+
+    log_error "Failed to find matching build after checking ${i} builds"
     echo "-1"
     return 1
-  fi
-  
-  # Get the latest build number
-  local next_build_number
-  next_build_number=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/api/json" | jq '.nextBuildNumber - 1')
-  log_info "Latest build number for ${task_name}: ${next_build_number}"
-  
-  # Find matching build
-  local i=0
-  log_debug "Checking recent builds for matching command and user..."
-  while [ "$next_build_number" -gt 0 ] && [ $i -lt 10 ]; do
-    log_debug "Checking build #${next_build_number}"
-    local job_info
-    job_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${next_build_number}/api/json")
-    
-    # Handle two possible parameter orders
-    if echo "$job_info" | jq -e '(.actions[0].parameters[0].value == "'"$build_cmd"'" and .actions[1].causes[0].userId == "'"$JENKINS_USERNAME"'") or
-        (.actions[1].parameters[0].value == "'"$build_cmd"'" and .actions[0].causes[0].userId == "'"$JENKINS_USERNAME"'")' > /dev/null; then
-      log_info "Found matching build: #${next_build_number}"
-      echo "$next_build_number"
-      return 0
-    fi
-    
-    next_build_number=$((next_build_number - 1))
-    i=$((i + 1))
-  done
-  
-  log_error "Failed to find matching build after checking ${i} builds"
-  echo "-1"
-  return 1
 }
 
 # Extract version path from build console output
 get_version_path() {
-  local task_name="$1"
-  local console_output="$2"
-  
-  # Find Build.html path
-  local version_path_prefix
-  version_path_prefix=$(echo "$console_output" | grep -E '^\s*.*Build\.html' | head -1 | 
-                       sed -E 's/^\s*(.*Build\.html).*/\1/' | 
-                       sed 's/\\Build.html$//' | 
-                       sed 's/\\/\//g')
-  
-  if [ -z "$version_path_prefix" ]; then
-    log_debug "No Build.html path found in console output"
-    echo ""
-    return 0
-  fi
-  
-  local last_path_name
-  last_path_name=$(echo "$version_path_prefix" | awk -F/ '{print $NF}')
-  local version_file_path=""
-  
-  # Find appropriate file path based on task type
-  if [ "$task_name" = "V9ABUILD_CI" ]; then
-    version_file_path=$(echo "$console_output" | grep -E "${last_path_name}.*TARGET.*\.tar\.gz" | head -1 |
-                       sed -E "s/.*($last_path_name\/TARGET\/.*)/\1/")
-  else
-    version_file_path=$(echo "$console_output" | grep -E "${last_path_name}.*TARGET.*\.ipe" | head -1 |
-                       sed -E "s/.*($last_path_name\/TARGET\/.*\.ipe\/)/\1/")
-  fi
-  
-  # Return complete version path
-  if [ -n "$version_file_path" ]; then
-    echo "file:${version_path_prefix}/${version_file_path}"
-  else
-    log_debug "No version file path found in console output"
-    echo ""
-  fi
+    local task_name="$1"
+    local console_output="$2"
+
+    # Find Build.html path
+    local version_path_prefix
+    version_path_prefix=$(echo "$console_output" | grep -E '^\s*.*Build\.html' | head -1 |
+        sed -E 's/^\s*(.*Build\.html).*/\1/' |
+        sed 's/\\Build.html$//' |
+        sed 's/\\/\//g')
+
+    if [ -z "$version_path_prefix" ]; then
+        log_debug "No Build.html path found in console output"
+        echo ""
+        return 0
+    fi
+
+    local last_path_name
+    last_path_name=$(echo "$version_path_prefix" | awk -F/ '{print $NF}')
+    local version_file_path=""
+
+    # Find appropriate file path based on task type
+    if [ "$task_name" = "V9ABUILD_CI" ]; then
+        version_file_path=$(echo "$console_output" | grep -E "${last_path_name}.*TARGET.*\.tar\.gz" | head -1 |
+            sed -E "s/.*($last_path_name\/TARGET\/.*)/\1/")
+    else
+        version_file_path=$(echo "$console_output" | grep -E "${last_path_name}.*TARGET.*\.ipe" | head -1 |
+            sed -E "s/.*($last_path_name\/TARGET\/.*\.ipe\/)/\1/")
+    fi
+
+    # Return complete version path
+    if [ -n "$version_file_path" ]; then
+        echo "file:${version_path_prefix}/${version_file_path}"
+    else
+        log_debug "No version file path found in console output"
+        echo ""
+    fi
 }
 
 # Get build error information
 get_build_result() {
-  local build_number="$1"
-  local task_name="$2"
-  
-  # Get build info and console output
-  local build_url=""
-  local build_info
-  
-  if ! build_info=$(curl -s --fail --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json"); then
-    log_error "Failed to get build info for job ${task_name} #${build_number}"
-    echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
-    return 1
-  fi
-  
-  if [ -z "$build_info" ]; then
-    log_error "Empty build info received for job ${task_name} #${build_number}"
-    echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
-    return 1
-  fi
-  
-  build_url=$(echo "$build_info" | jq -r '.url')
-  if [ -z "$build_url" ] || [ "$build_url" = "null" ]; then
-    log_error "Invalid build URL retrieved for job ${task_name} #${build_number}"
-    echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
-    return 1
-  fi
-  
-  local console_output
-  console_output=$(curl -s --fail --user "${JENKINS_AUTH}" "${build_url}consoleText")
-  # Remove unused variables
-  
-  local job_status
-  job_status=$(echo "$build_info" | jq -r '.result')
-  
-  # Initialize result variables
-  local ret=0
-  local version_path=""
-  local error_info="[]"
-  
-  if [ "$job_status" = "SUCCESS" ]; then
-    version_path=$(get_version_path "$task_name" "$console_output")
-  else
-    ret=-1
-    # Extract error information
-    local error_list
-    error_list=$(echo "$console_output" | grep -E '^(.*):([0-9]+):\s*(error:|undefined reference|fatal error:)(.*)$')
-    
-    if [ -n "$error_list" ]; then
-      # Count unique error files
-      local unique_files=()
-      while IFS= read -r line; do
-        local file
-        file=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\1/')
-        [[ "$file" == *":"* ]] && file=${file%:*}
-        unique_files+=("$file")
-      done <<< "$error_list"
-      
-      mapfile -t unique_files < <(printf "%s\n" "${unique_files[@]}" | sort -u)
-      
-      # If error files don't exceed 5, format error info
-      if [ ${#unique_files[@]} -le 5 ]; then
-        error_info="["
-        local first=true
-        
-        while IFS= read -r line; do
-          local file
-          local line_num
-          file=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\1/')
-          line_num=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\2/')
-          
-          [[ "$file" == *":"* ]] && { line_num=${file##*:}; file=${file%:*}; }
-          
-          $first || error_info="${error_info},"
-          first=false
-          error_info="${error_info}{\"FILE\":\"${file}\",\"LINENUMBER\":${line_num},\"ALARM\":\"${line}\"}"
-        done <<< "$error_list"
-        
-        error_info="${error_info}]"
-      fi
+    local build_number="$1"
+    local task_name="$2"
+
+    # Get build info and console output
+    local build_url=""
+    local build_info
+
+    if ! build_info=$(curl -s --fail --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json"); then
+        log_error "Failed to get build info for job ${task_name} #${build_number}"
+        echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
+        return 1
     fi
-  fi
-  
-  # Build JSON result
-  echo "{\"result\":${ret},\"version_path\":\"${version_path}\",\"build_info_output\":\"${build_url}console\",\"error_info\":${error_info}}"
+
+    if [ -z "$build_info" ]; then
+        log_error "Empty build info received for job ${task_name} #${build_number}"
+        echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
+        return 1
+    fi
+
+    build_url=$(echo "$build_info" | jq -r '.url')
+    if [ -z "$build_url" ] || [ "$build_url" = "null" ]; then
+        log_error "Invalid build URL retrieved for job ${task_name} #${build_number}"
+        echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
+        return 1
+    fi
+
+    local console_output
+    console_output=$(curl -s --fail --user "${JENKINS_AUTH}" "${build_url}consoleText")
+    # Remove unused variables
+
+    local job_status
+    job_status=$(echo "$build_info" | jq -r '.result')
+
+    # Initialize result variables
+    local ret=0
+    local version_path=""
+    local error_info="[]"
+
+    if [ "$job_status" = "SUCCESS" ]; then
+        version_path=$(get_version_path "$task_name" "$console_output")
+    else
+        ret=-1
+        # Extract error information
+        local error_list
+        error_list=$(echo "$console_output" | grep -E '^(.*):([0-9]+):\s*(error:|undefined reference|fatal error:)(.*)$')
+
+        if [ -n "$error_list" ]; then
+            # Count unique error files
+            local unique_files=()
+            while IFS= read -r line; do
+                local file
+                file=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\1/')
+                [[ "$file" == *":"* ]] && file=${file%:*}
+                unique_files+=("$file")
+            done <<<"$error_list"
+
+            mapfile -t unique_files < <(printf "%s\n" "${unique_files[@]}" | sort -u)
+
+            # If error files don't exceed 5, format error info
+            if [ ${#unique_files[@]} -le 5 ]; then
+                error_info="["
+                local first=true
+
+                while IFS= read -r line; do
+                    local file
+                    local line_num
+                    file=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\1/')
+                    line_num=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\2/')
+
+                    [[ "$file" == *":"* ]] && {
+                        line_num=${file##*:}
+                        file=${file%:*}
+                    }
+
+                    $first || error_info="${error_info},"
+                    first=false
+                    error_info="${error_info}{\"FILE\":\"${file}\",\"LINENUMBER\":${line_num},\"ALARM\":\"${line}\"}"
+                done <<<"$error_list"
+
+                error_info="${error_info}]"
+            fi
+        fi
+    fi
+
+    # Build JSON result
+    echo "{\"result\":${ret},\"version_path\":\"${version_path}\",\"build_info_output\":\"${build_url}console\",\"error_info\":${error_info}}"
 }
 
 # Monitor build results
 monitor_build_progress() {
-  local task_name="$1"
-  local build_number="$2"
-  
-  if [ "$build_number" = "-1" ]; then
-    log_error "Build canceled or not found"
-    return 1
-  fi
-  
-  local start_time
-  start_time=$(date +"%Y%m%d.%H%M%S")
-  
-  local timestamp_seconds
-  timestamp_seconds=$(date -d "$start_time" +%s 2>/dev/null || date +%s)
-  
-  local build_url
-  build_url=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json" | jq -r '.url')
-  
-  log_info "Build #${build_number} started at ${start_time}"
-  log_info "Build console URL: ${build_url}console"
-  
-  # Wait for build completion, with timeout check
-  local wait_time=0
-  local job_status="null"
-  log_info_n "Waiting for build to complete "
-  
-  while [ "$job_status" = "null" ] && [ "$wait_time" -lt "$TIMEOUT" ]; do
-    sleep 3
-    wait_time=$((wait_time + 3))
-    job_status=$(curl -s --user "${JENKINS_AUTH}" "${build_url}/api/json" | jq -r '.result')
-    log_info_n "."
-  done
-  log_info ""  # Just add a newline
-  
-  if [ "$wait_time" -ge "$TIMEOUT" ]; then
-    log_error "Build timed out after ${TIMEOUT} seconds"
-    return 2
-  fi
-  
-  local end_time
-  end_time=$(date +"%Y%m%d.%H%M%S")
-  
-  local end_seconds
-  end_seconds=$(date -d "$end_time" +%s 2>/dev/null || date +%s)
-  
-  local duration=$((end_seconds - timestamp_seconds))
-  
-  log_info "Build completed at: ${end_time} (${duration}s)"
-  log_info "Build result: ${job_status}"
+    local task_name="$1"
+    local build_number="$2"
 
-  return 0
+    if [ "$build_number" = "-1" ]; then
+        log_error "Build canceled or not found"
+        return 1
+    fi
+
+    local start_time
+    start_time=$(date +"%Y%m%d.%H%M%S")
+
+    local timestamp_seconds
+    timestamp_seconds=$(date -d "$start_time" +%s 2>/dev/null || date +%s)
+
+    local build_url
+    build_url=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json" | jq -r '.url')
+
+    log_info "Build #${build_number} started at ${start_time}"
+    log_info "Build console URL: ${build_url}console"
+
+    # Wait for build completion, with timeout check
+    local wait_time=0
+    local job_status="null"
+    log_info_n "Waiting for build to complete "
+
+    while [ "$job_status" = "null" ] && [ "$wait_time" -lt "$TIMEOUT" ]; do
+        sleep 3
+        wait_time=$((wait_time + 3))
+        job_status=$(curl -s --user "${JENKINS_AUTH}" "${build_url}/api/json" | jq -r '.result')
+        log_info_n "."
+    done
+    log_info "" # Just add a newline
+
+    if [ "$wait_time" -ge "$TIMEOUT" ]; then
+        log_error "Build timed out after ${TIMEOUT} seconds"
+        return 2
+    fi
+
+    local end_time
+    end_time=$(date +"%Y%m%d.%H%M%S")
+
+    local end_seconds
+    end_seconds=$(date -d "$end_time" +%s 2>/dev/null || date +%s)
+
+    local duration=$((end_seconds - timestamp_seconds))
+
+    log_info "Build completed at: ${end_time} (${duration}s)"
+    log_info "Build result: ${job_status}"
+
+    return 0
 }
 
 # Execute build job
 build_job_compile() {
-  local ipe_package_name="$1"
-  local version_type=${2:-"debug"}
-  local lib_path="$3"
-  local timestamp="$4"
+    local ipe_package_name="$1"
+    local version_type=${2:-"debug"}
+    local lib_path="$3"
+    local timestamp="$4"
 
-  # Detect if SVN path contains cmwcode-open and extract the subsequent characters
-  local svn_path=""
-  if [[ "$PROJECT_BASE_SVN" == *"cmwcode-open"* ]]; then
-    svn_path=${PROJECT_BASE_SVN#*cmwcode-open}
-    log_debug "Found cmwcode-open in SVN path, extracted path: $svn_path"
-  else
-    log_error "Invalid Comware SVN, please set correct PROJECT_BASE_SVN before running this script."
-    return 1
-  fi
-  
-  # Determine task name
-  local task_name
-  if [[ "$svn_path" == *"V9R1"* ]]; then
-    task_name="V9ABUILD"
-  else
-    task_name="ABUILD"
-  fi
+    # Detect if SVN path contains cmwcode-open and extract the subsequent characters
+    local svn_path=""
+    if [[ "$PROJECT_BASE_SVN" == *"cmwcode-open"* ]]; then
+        svn_path=${PROJECT_BASE_SVN#*cmwcode-open}
+        log_debug "Found cmwcode-open in SVN path, extracted path: $svn_path"
+    else
+        log_error "Invalid Comware SVN, please set correct PROJECT_BASE_SVN before running this script."
+        return 1
+    fi
 
-  # Convert folder list from JSON array to a comma-separated string
-  local module_list
-  module_list=$(echo "$PROJECT_BASE_FOLDER_LIST" | tr -d '[]"')
-  
-  # Build command
-  local build_cmd="-e ${ipe_package_name} -s ${svn_path}"
-  [ -n "$module_list" ] && build_cmd="${build_cmd}:${module_list}"
-  [ "${version_type,,}" != "debug" ] && build_cmd="${build_cmd} -r"
-  [ -n "$lib_path" ] && build_cmd="${build_cmd} -i ${lib_path}"
-  [ -n "$timestamp" ] && build_cmd="${build_cmd} -v ${timestamp} -uk"
-  
-  log_info "Starting ${task_name}:\n- Packages: ${ipe_package_name}\n- Repo: ${svn_path}\n- Modules: ${module_list}\n- Type: ${version_type}\n- Lib path: ${lib_path}\n- User: ${PROJECT_USERNAME}"
-  log_debug "Build command: ${build_cmd}"
-  
-  # Get CSRF token
-  local crumb
-  crumb=$(get_jenkins_crumb)
-  if [ -z "$crumb" ]; then
-    handle_error "Failed to get Jenkins crumb"
-    return 1
-  fi
-  
-  # Trigger Jenkins build
-  if ! curl -s -X POST --user "${JENKINS_AUTH}" -H "Jenkins-Crumb: ${crumb}" \
-    "${JENKINS_SERVER_URL}/job/${task_name}/buildWithParameters" \
-    --data-urlencode "BUILD_CMD_PARAM=${build_cmd}" \
-    --data-urlencode "FAKE_USER=${PROJECT_USERNAME}" > /dev/null; then
-    handle_error "Failed to trigger Jenkins build"
-    return 1
-  fi
-  
-  # Get build number
-  local abuild_number
-  abuild_number=$(get_build_number "$task_name" "$build_cmd")
-  if [ -z "$abuild_number" ] || [ "$abuild_number" = "-1" ]; then
-    handle_error "Build was cancelled or failed to get build number"
-    return 1
-  fi
-  
-  # Monitor build results
-  monitor_build_progress "$task_name" "$abuild_number" || return $?
-  
-  # Get build result
-  get_build_result "$abuild_number" "$task_name"
+    # Determine task name
+    local task_name
+    if [[ "$svn_path" == *"V9R1"* ]]; then
+        task_name="V9ABUILD"
+    else
+        task_name="ABUILD"
+    fi
+
+    # Convert folder list from JSON array to a comma-separated string
+    local module_list
+    module_list=$(echo "$PROJECT_BASE_FOLDER_LIST" | tr -d '[]"')
+
+    # Build command
+    local build_cmd="-e ${ipe_package_name} -s ${svn_path}"
+    [ -n "$module_list" ] && build_cmd="${build_cmd}:${module_list}"
+    [ "${version_type,,}" != "debug" ] && build_cmd="${build_cmd} -r"
+    [ -n "$lib_path" ] && build_cmd="${build_cmd} -i ${lib_path}"
+    [ -n "$timestamp" ] && build_cmd="${build_cmd} -v ${timestamp} -uk"
+
+    log_info "Starting ${task_name}:\n- Packages: ${ipe_package_name}\n- Repo: ${svn_path}\n- Modules: ${module_list}\n- Type: ${version_type}\n- Lib path: ${lib_path}\n- User: ${SVN_USERNAME}"
+    log_debug "Build command: ${build_cmd}"
+
+    # Get CSRF token
+    local crumb
+    crumb=$(get_jenkins_crumb)
+    if [ -z "$crumb" ]; then
+        handle_error "Failed to get Jenkins crumb"
+        return 1
+    fi
+
+    # Trigger Jenkins build
+    if ! curl -s -X POST --user "${JENKINS_AUTH}" -H "Jenkins-Crumb: ${crumb}" \
+        "${JENKINS_SERVER_URL}/job/${task_name}/buildWithParameters" \
+        --data-urlencode "BUILD_CMD_PARAM=${build_cmd}" \
+        --data-urlencode "FAKE_USER=${SVN_USERNAME}" >/dev/null; then
+        handle_error "Failed to trigger Jenkins build"
+        return 1
+    fi
+
+    # Get build number
+    local abuild_number
+    abuild_number=$(get_build_number "$task_name" "$build_cmd")
+    if [ -z "$abuild_number" ] || [ "$abuild_number" = "-1" ]; then
+        handle_error "Build was cancelled or failed to get build number"
+        return 1
+    fi
+
+    # Monitor build results
+    monitor_build_progress "$task_name" "$abuild_number" || return $?
+
+    # Get build result
+    get_build_result "$abuild_number" "$task_name"
 }
 
 # Display help information
 show_help() {
-  echo "Usage: abuild [OPTIONS] <ipe_package_name> [debug|release] [lib_path] [timestamp]"
-  echo
-  echo "Options:"
-  echo "  -h, --help     Display this help information"
-  echo "  -v, --verbose  Enable verbose logging"
-  echo "  -t, --timeout  Set wait timeout in seconds"
-  echo
-  echo "Arguments:"
-  echo "  <ipe_package_name>  IPE package name, e.g., 64sim9cen"
-  echo "  [debug|release]     Build type, default is debug"
-  echo "  [lib_path]          Optional library path, e.g., /path/to/lib"
-  echo "  [timestamp]         Optional timestamp, e.g., 20231001.120000"
-  echo
-  echo "Examples:"
-  echo "  abuild 64sim9cen"
-  echo "  abuild 64sim9cen,64sim9dis release"
-  echo "  abuild 64sim9cen,64sim9dis debug /path/to/lib"
-  echo
-  echo "Configurable Environment Variables:"
-  echo "  LOG_LEVEL                   Log level, 0=error, 1=info, 2=debug, default is 1"
-  echo "  JENKINS_SERVER_URL          Jenkins server URL, default is http://10.153.3.174:8080"
-  echo "  JENKINS_USERNAME            Jenkins API username, default is h25380"
-  echo "  JENKINS_API_TOKEN           Jenkins API token, default is 117b0fdde578a988ec1be741dd777c1a1c"
-  echo "  PROJECT_BASE_FOLDER_LIST    Project base folder list (JSON array), this should be set automatically"
-  echo "  PROJECT_BASE_SVN            Project base SVN URL, this should be set automatically"
-  echo "  PROJECT_USERNAME            Username to start ABuild, default is current user"
-  echo "  TIMEOUT                     Default waiting timeout in seconds, default is 300"
+    echo "Usage: abuild [options] <ipe_package_name> [debug|release] [lib_path] [timestamp]"
+    echo
+    echo "Options:"
+    echo "  -h, --help     Display this help information"
+    echo "  -t, --timeout  Set wait timeout in seconds"
+    echo "  -v, --verbose  Enable verbose logging"
+    echo
+    echo "Arguments:"
+    echo "  <ipe_package_name>  IPE package name, e.g., 64sim9cen"
+    echo "  [debug|release]     Build type, default is debug"
+    echo "  [lib_path]          Optional library path, e.g., /path/to/lib"
+    echo "  [timestamp]         Optional timestamp, e.g., 20231001.120000"
+    echo
+    echo "Examples:"
+    echo "  abuild 64sim9cen"
+    echo "  abuild 64sim9cen,64sim9dis release"
+    echo "  abuild 64sim9cen,64sim9dis debug /path/to/lib"
+    echo
+    echo "Configurable Environment Variables:"
+    echo "  LOG_LEVEL                   Log level, 0=error, 1=info, 2=debug, default is 1"
+    echo "  JENKINS_SERVER_URL          Jenkins server URL, default is http://10.153.3.174:8080"
+    echo "  JENKINS_USERNAME            Jenkins API username, default is h25380"
+    echo "  JENKINS_API_TOKEN           Jenkins API token, default is 117b0fdde578a988ec1be741dd777c1a1c"
+    echo "  PROJECT_BASE_FOLDER_LIST    Project base folder list (JSON array), this should be set automatically"
+    echo "  PROJECT_BASE_SVN            Project base SVN URL, this should be set automatically"
+    echo "  SVN_USERNAME                SVN username to start ABuild, this should be set automatically"
+    echo "  TIMEOUT                     Default waiting timeout in seconds, default is 300"
 }
 
 # Parse command line options
-parse_options() {
-  while [ $# -gt 0 ]; do
-    case $1 in
-      -h|--help)
-        show_help
-        exit 0
-        ;;
-      -v|--verbose)
-        LOG_LEVEL=2
-        shift
-        ;;
-      -t|--timeout)
-        TIMEOUT=$2
-        shift 2
-        ;;
-      *)
-        # Non-option parameter, stop parsing
-        break
-        ;;
-    esac
-  done
+parse_command_line_args() {
+    while [ $# -gt 0 ]; do
+        case $1 in
+        -h | --help)
+            show_help
+            exit 0
+            ;;
+        -v | --verbose)
+            LOG_LEVEL=2
+            shift
+            ;;
+        -t | --timeout)
+            TIMEOUT=$2
+            shift 2
+            ;;
+        *)
+            # Non-option parameter, stop parsing
+            break
+            ;;
+        esac
+    done
 }
 
 # Main function
 main() {
-  parse_options "$@"
-  
-  if [ $# -lt 1 ]; then
-    show_help
-    exit 1
-  fi
+    parse_command_line_args "$@"
 
-  if [ -z "$PROJECT_BASE_SVN" ]; then
-    log_error "PROJECT_BASE_SVN is not set, please set it before running this script."
-    exit 1
-  fi
-  
-  # Output build result directly, no additional check needed
-  build_job_compile "$@"
-  return $?
+    if [ $# -lt 1 ]; then
+        show_help
+        exit 1
+    fi
+
+    if [ -z "$PROJECT_BASE_SVN" ]; then
+        log_error "PROJECT_BASE_SVN is not set, please set it before running this script."
+        exit 1
+    fi
+
+    build_job_compile "$@"
+    return $?
 }
 
 # Execute main function
