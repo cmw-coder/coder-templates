@@ -264,7 +264,7 @@ sync_to_shadow_branch() {
     create_shadow_branch "$current_branch_url" "$shadow_branch_url"
 
     # Apply all changes to temporary directory
-    log_info "Applying changes to shadow branch..."    
+    log_info "Applying changes to shadow branch..."
     if ! apply_changes_to_shadow_branch "$current_branch_path" "$current_branch_status" "$shadow_branch_url"; then
         log_error "Error applying changes to shadow branch."
         exit 1

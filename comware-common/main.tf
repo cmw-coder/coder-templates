@@ -230,15 +230,15 @@ resource "coder_env" "node_extra_ca_certs" {
   name     = "NODE_EXTRA_CA_CERTS"
   value    = "/etc/ssl/certs/ca-certificates.crt"
 }
-resource "coder_env" "project_path" {
-  agent_id = coder_agent.main.id
-  name     = "PROJECT_PATH"
-  value    = "/home/${local.username}/project"
-}
 resource "coder_env" "project_base_folder_list" {
   agent_id = coder_agent.main.id
   name     = "PROJECT_BASE_FOLDER_LIST"
   value    = "${data.coder_parameter.project_base_folder_list.value}"
+}
+resource "coder_env" "project_path" {
+  agent_id = coder_agent.main.id
+  name     = "PROJECT_BASE_PATH"
+  value    = "/home/${local.username}/project/open"
 }
 resource "coder_env" "project_base_svn" {
   agent_id = coder_agent.main.id
