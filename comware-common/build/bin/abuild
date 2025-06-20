@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Get configuration from environment variables, use defaults as fallback
-TIMEOUT=${TIMEOUT:-300}   # Default wait timeout (seconds)
+TIMEOUT=${TIMEOUT:-600}   # Default wait timeout (seconds)
 LOG_LEVEL=${LOG_LEVEL:-1} # 0=error, 1=info, 2=debug
 JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.174:8080"}
 JENKINS_USERNAME=${JENKINS_USERNAME:-"h25380"}
