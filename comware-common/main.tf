@@ -210,6 +210,12 @@ resource "coder_app" "coder_tutorials" {
   external     = true
 }
 
+
+resource "coder_env" "coder_workspace" {
+  agent_id = coder_agent.main.id
+  name     = "CODER_WORKSPACE"
+  value    = "${local.workspace}"
+}
 resource "coder_env" "extensions_gallery" {
   agent_id = coder_agent.main.id
   name     = "EXTENSIONS_GALLERY"

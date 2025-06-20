@@ -7,7 +7,7 @@ JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.174:8080"}
 JENKINS_USERNAME=${JENKINS_USERNAME:-"h25380"}
 JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"117b0fdde578a988ec1be741dd777c1a1c"}
 PROJECT_BASE_FOLDER_LIST=${PROJECT_BASE_FOLDER_LIST:-""} # This should be set automatically
-PROJECT_BASE_PATH=${PROJECT_BASE_PATH:-""}                         # This should be set automatically
+PROJECT_BASE_PATH=${PROJECT_BASE_PATH:-""}               # This should be set automatically
 SVN_USERNAME=${SVN_USERNAME:-$(whoami)}                  # This should be set automatically
 
 JENKINS_AUTH="${JENKINS_USERNAME}:${JENKINS_API_TOKEN}"
@@ -102,8 +102,7 @@ log_debug_n() { log_message_by_level "[Debug]" 2 "nonewline" "$@"; }
 handle_error() {
     log_error "$1"
     # Also return error info in JSON format, ensuring meaningful output even when stderr is redirected
-    echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[{\"FILE\":\"\",\"LINENUMBER\":0,\"ALARM\":\"$1\"}]}"
-    return 1
+    echo "{\"result\":-2,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[{\"FILE\":\"\",\"LINENUMBER\":0,\"ALARM\":\"$1\"}]}"
 }
 
 # Get Jenkins Crumb to prevent CSRF protection
@@ -115,7 +114,8 @@ get_jenkins_crumb() {
 get_build_number() {
     local task_name=$1
     local build_cmd=$2
-    local start_time=$(date +%s)
+    local start_time
+    start_time=$(date +%s)
 
     log_info "Looking for build number for task: ${task_name}"
     log_debug "Build command: ${build_cmd}"
@@ -123,7 +123,8 @@ get_build_number() {
     # Wait for the queued task to start running
     while [ $(($(date +%s) - start_time)) -lt "$TIMEOUT" ]; do
         # Check tasks in the queue
-        local queue_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/queue/api/json")
+        local queue_info
+        queue_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/queue/api/json")
 
         # Use simplified jq query to check if there's a matching task
         if echo "$queue_info" | jq -e '.items[] | select(.task.name == "'"$task_name"'") | 
@@ -362,24 +363,23 @@ monitor_build_progress() {
 # Execute build job
 build_job_compile() {
     local ipe_package_name="$1"
-    local version_type=${2:-"debug"}
+    local folder_list="$2"
     local lib_path="$3"
-    local timestamp="$4"
+    local version_type="$4"
 
     # Creating shadow branch
     log_info "Creating shadow branch for project: ${PROJECT_BASE_PATH}"
     local shadow_branch_url
-    shadow_branch_url=$(shadow-branch "$PROJECT_BASE_PATH" 2>/dev/null)
+    shadow_branch_url=$(shadow-branch "$PROJECT_BASE_PATH")
 
     # Detect if SVN path contains cmwcode-open and extract the subsequent characters
-    local svn_path=""
-    if [[ "$shadow_branch_url" == *"cmwcode-open"* ]]; then
-        svn_path=${shadow_branch_url#*cmwcode-open}
-        log_debug "Found cmwcode-open in SVN path, extracted path: $svn_path"
-    else
-        log_error "Invalid shadow branch url, this may be caused by an incorrect PROJECT_BASE_PATH."
+    if [[ "$shadow_branch_url" != *"cmwcode-open"* ]]; then
+        handle_error "Invalid shadow branch url, this may be caused by an incorrect PROJECT_BASE_PATH."
         return 1
     fi
+
+    local svn_path=${shadow_branch_url#*cmwcode-open}
+    log_debug "Found cmwcode-open in SVN path, extracted path: $svn_path"
 
     # Determine task name
     local task_name
@@ -396,9 +396,9 @@ build_job_compile() {
     # Build command
     local build_cmd="-e ${ipe_package_name} -s ${svn_path}"
     [ -n "$module_list" ] && build_cmd="${build_cmd}:${module_list}"
-    [ "${version_type,,}" != "debug" ] && build_cmd="${build_cmd} -r"
+    [ -n "$folder_list" ] && build_cmd="${build_cmd} -f ${folder_list}"
     [ -n "$lib_path" ] && build_cmd="${build_cmd} -i ${lib_path}"
-    [ -n "$timestamp" ] && build_cmd="${build_cmd} -v ${timestamp} -uk"
+    [ "${version_type,,}" != "debug" ] && build_cmd="${build_cmd} -r"
 
     log_info "Starting ${task_name}:\n- Packages: ${ipe_package_name}\n- Repo: ${svn_path}\n- Modules: ${module_list}\n- Type: ${version_type}\n- Lib path: ${lib_path}\n- User: ${SVN_USERNAME}"
     log_debug "Build command: ${build_cmd}"
@@ -429,7 +429,10 @@ build_job_compile() {
     fi
 
     # Monitor build results
-    monitor_build_progress "$task_name" "$abuild_number" || return $?
+    if ! monitor_build_progress "$task_name" "$abuild_number"; then
+        handle_error "Build monitoring failed"
+        return $?
+    fi
 
     # Get build result
     get_build_result "$abuild_number" "$task_name"
@@ -437,18 +440,16 @@ build_job_compile() {
 
 # Display help information
 show_help() {
-    echo "Usage: abuild [options] <ipe_package_name> [debug|release] [lib_path] [timestamp]"
+    echo "Usage: abuild [options] <-e> <ipe_package_name>"
     echo
     echo "Options:"
-    echo "  -h, --help     Display this help information"
-    echo "  -t, --timeout  Set wait timeout in seconds"
-    echo "  -v, --verbose  Enable verbose logging"
-    echo
-    echo "Arguments:"
-    echo "  <ipe_package_name>  IPE package name, e.g., 64sim9cen"
-    echo "  [debug|release]     Build type, default is debug"
-    echo "  [lib_path]          Optional library path, e.g., /path/to/lib"
-    echo "  [timestamp]         Optional timestamp, e.g., 20231001.120000"
+    echo "  -e, --ipe-package <name>    Specify the IPE package name, e.g., 64sim9cen (required)"
+    echo "  -f, --folder <folder_list>  Specify to only build the folder list, e.g., ospf,nqa"
+    echo "  -h, --help                  Display this help information"
+    echo "  -i, --input-lib <lib_path>  Specify the library path to use, e.g., /path/to/lib"
+    echo "  -r, --release               Build in release mode (default is debug)"
+    echo "  -t, --timeout               Set wait timeout in seconds"
+    echo "  -v, --verbose               Enable verbose logging"
     echo
     echo "Examples:"
     echo "  abuild 64sim9cen"
@@ -468,28 +469,65 @@ show_help() {
 
 # Main function
 main() {
+    local ipe_package_name=""
+    local folder_list=""
+    local lib_path=""
+    local version_type="debug"
     while [ $# -gt 0 ]; do
         case $1 in
+        -e | --ipe-package)
+            if [ -z "$2" ]; then
+                log_error "IPE package name is required after -e or --ipe-package"
+                show_help
+                exit 1
+            fi
+            ipe_package_name="$2"
+            shift 2
+            ;;
+        -f | --folder)
+            if [ -z "$2" ]; then
+                log_error "Folder list is required after -f or --folder"
+                show_help
+                exit 1
+            fi
+            folder_list="$2"
+            shift 2
+            ;;
         -h | --help)
             show_help
             exit 0
             ;;
-        -v | --verbose)
-            LOG_LEVEL=2
+        -i | --input-lib)
+            if [ -z "$2" ]; then
+                log_error "Library path is required after -i or --input-lib"
+                show_help
+                exit 1
+            fi
+            lib_path="$2"
+            shift 2
+            ;;
+        -r | --release)
+            version_type="release"
             shift
             ;;
         -t | --timeout)
             TIMEOUT=$2
             shift 2
             ;;
+        -v | --verbose)
+            LOG_LEVEL=2
+            shift
+            ;;
         *)
-            # Non-option parameter, stop parsing
-            break
+            log_error "Unknown option: $1"
+            show_help
+            exit 1
             ;;
         esac
     done
 
-    if [ $# -lt 1 ]; then
+    if [ -z "$ipe_package_name" ]; then
+        log_error "ipe_package_name is required, please specify it with -e or --ipe-package"
         show_help
         exit 1
     fi
@@ -499,8 +537,13 @@ main() {
         exit 1
     fi
 
-    build_job_compile "$@"
-    return $?
+    build_job_compile "$ipe_package_name" "$folder_list" "$lib_path" "$version_type"
+    local build_result=$?
+
+    # Delete shadow branch
+    shadow-branch -r "$PROJECT_BASE_PATH"
+
+    return $build_result
 }
 
 # Execute main function

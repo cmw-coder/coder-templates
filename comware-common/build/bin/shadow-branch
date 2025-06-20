@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Configuration variables
+CODER_WORKSPACE=${CODER_WORKSPACE:-""}  # This should be set automatically
 LOG_LEVEL=${LOG_LEVEL:-1}               # 0=error, 1=info, 2=debug
 SVN_PASSWORD=${SVN_PASSWORD:-""}        # This should be set automatically
 SVN_USERNAME=${SVN_USERNAME:-$(whoami)} # This should be set automatically
@@ -95,8 +96,8 @@ svn_s() {
     local cmd=$1
     shift
 
-    # For info and diff commands, we need the output and they don't support -q
-    if [ "$cmd" = "diff" ] || [ "$cmd" = "info" ] || [ "$cmd" = "update" ]; then
+    # For some commands, we need the output and they don't support -q
+    if [ "$cmd" = "cat" ] || [ "$cmd" = "diff" ] || [ "$cmd" = "info" ] || [ "$cmd" = "update" ]; then
         if [ -n "$SVN_USERNAME" ] && [ -n "$SVN_PASSWORD" ]; then
             svn "$cmd" "$@" --non-interactive --username "$SVN_USERNAME" --password "$SVN_PASSWORD"
         else
@@ -116,7 +117,7 @@ remove_shadow_branch() {
     local shadow_branch_url="$1"
 
     if ! svn_s info "$shadow_branch_url" >/dev/null 2>&1; then
-        log_info "No shadow branch found at $shadow_branch_url, nothing to remove."
+        log_info "No shadow branch found, nothing to remove."
         return 0
     fi
 
@@ -125,7 +126,7 @@ remove_shadow_branch() {
         exit 1
     fi
 
-    log_info "Shadow branch $shadow_branch_url removed successfully."
+    log_info "Shadow branch removed successfully."
     return 0
 }
 
@@ -139,7 +140,7 @@ create_shadow_branch() {
         log_error "Failed to create shadow branch."
         exit 1
     fi
-    log_info "Shadow branch created: $shadow_branch_url"
+    log_info "Shadow branch created"
 }
 
 apply_changes_to_shadow_branch() {
@@ -248,6 +249,18 @@ get_current_branch_url() {
     svn_s info "$current_branch_path" | grep "^URL:" | awk '{print $2}'
 }
 
+get_shadow_branch_url() {
+    local current_branch_url="$1"
+
+    if [[ "$current_branch_url" == *"/trunk"* ]]; then
+        local latest_version_tag
+        latest_version_tag=$(svn_s cat "http://10.153.120.104/cmwcode-public/${current_branch_url#*/cmwcode-*/}/PUBLIC/init/all/platver.def" | grep -oP 'V\d+R\d+B\d+D\d+')
+        echo "${current_branch_url%/trunk}/branches_bugfix/COMWARE${latest_version_tag}/trunk_shadow_${SVN_USERNAME}_${CODER_WORKSPACE}"
+    else
+        echo "${current_branch_url}_shadow_${SVN_USERNAME}_${CODER_WORKSPACE}"
+    fi
+}
+
 sync_to_shadow_branch() {
     local current_branch_path="$1"
 
@@ -272,7 +285,9 @@ sync_to_shadow_branch() {
     log_info "Uncommitted changes found. Preparing to commit to shadow branch..."
 
     # Create shadow branch
-    local shadow_branch_url="${current_branch_url}_shadow"
+    local shadow_branch_url
+    shadow_branch_url="$(get_shadow_branch_url "$current_branch_url")"
+    log_info "Shadow branch URL: $shadow_branch_url"
     remove_shadow_branch "$shadow_branch_url"
     create_shadow_branch "$current_branch_url" "$shadow_branch_url"
 
@@ -300,6 +315,7 @@ show_help() {
     echo "  <project_path>      Path to the SVN working copy (required)"
     echo
     echo "Configurable Environment Variables:"
+    echo "  CODER_WORKSPACE     Coder workspace name, this should be set automatically"
     echo "  LOG_LEVEL           Log level, 0=error, 1=info, 2=debug, default is 1"
     echo "  SVN_PASSWORD        SVN password, this should be set automatically"
     echo "  SVN_USERNAME        SVN username, this should be set automatically"
@@ -342,7 +358,9 @@ main() {
         log_info "Current branch URL: $current_branch_url"
 
         # Remove shadow branch
-        local shadow_branch_url="${current_branch_url}_shadow"
+        local shadow_branch_url
+        shadow_branch_url="$(get_shadow_branch_url "$current_branch_url")"
+        log_info "Shadow branch URL: $shadow_branch_url"
         remove_shadow_branch "$shadow_branch_url"
         return $?
     else
