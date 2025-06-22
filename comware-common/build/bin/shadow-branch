@@ -172,35 +172,40 @@ apply_changes_to_shadow_branch() {
 
     process_file() {
         local action="$1"
-        local relative_path="$2"
+        local target_path
+        if [[ "$shadow_branch_url" == *"cmwcode-public"* ]]; then
+            target_path="$temp_dir/$2"
+        else
+            target_path="$temp_dir/PUBLIC/$2"
+        fi
 
-        svn_s update --parents --set-depth empty "$temp_dir/$relative_path" >/dev/null 2>&1
+        svn_s update --parents --set-depth empty "$target_path" >/dev/null 2>&1
 
         case "$action" in
         add)
-            cp -f "$current_branch_path/$relative_path" "$temp_dir/$relative_path"
-            svn_s add --force "$temp_dir/$relative_path" >/dev/null 2>&1
+            cp -f "$current_branch_path/$relative_path" "$target_path"
+            svn_s add --force "$target_path" >/dev/null 2>&1
 
             # Check status to see if we have conflicts
-            if svn_s status "$temp_dir/$relative_path" | grep -q "^C"; then
+            if svn_s status "$target_path" | grep -q "^C"; then
                 log_info "Resolving conflict with local version"
-                svn_s resolve --accept working "$temp_dir/$relative_path" >/dev/null 2>&1
+                svn_s resolve --accept working "$target_path" >/dev/null 2>&1
             fi
             ;;
         delete)
-            [ -e "$temp_dir/$relative_path" ] && svn_s delete "$temp_dir/$relative_path" >/dev/null 2>&1
+            [ -e "$target_path" ] && svn_s delete "$target_path" >/dev/null 2>&1
             ;;
         modify)
-            cp -f "$current_branch_path/$relative_path" "$temp_dir/$relative_path"
+            cp -f "$current_branch_path/$relative_path" "$target_path"
 
             # Check status to see if we have conflicts
-            if svn_s status "$temp_dir/$relative_path" | grep -q "^C"; then
+            if svn_s status "$target_path" | grep -q "^C"; then
                 log_info "Resolving conflict with local version"
-                svn_s resolve --accept working "$temp_dir/$relative_path" >/dev/null 2>&1
+                svn_s resolve --accept working "$target_path" >/dev/null 2>&1
             fi
             ;;
         esac
-        log_info "$action success: $temp_dir/$relative_path"
+        log_info "$action success: $target_path"
         changed=true
     }
 
@@ -254,6 +259,7 @@ get_shadow_branch_url() {
 
     if [[ "$current_branch_url" == *"/trunk"* ]]; then
         local latest_version_tag
+        current_branch_url="${current_branch_url%%/trunk*}/trunk"
         latest_version_tag=$(svn_s cat "http://10.153.120.104/cmwcode-public/${current_branch_url#*/cmwcode-*/}/PUBLIC/init/all/platver.def" | grep -oP 'V\d+R\d+B\d+D\d+')
         echo "${current_branch_url%/trunk}/branches_bugfix/COMWARE${latest_version_tag}/trunk_shadow_${SVN_USERNAME}_${CODER_WORKSPACE}"
     else
@@ -262,7 +268,8 @@ get_shadow_branch_url() {
 }
 
 sync_to_shadow_branch() {
-    local current_branch_path="$1"
+    local is_force="$1"
+    local current_branch_path="$2"
 
     if [ ! -d "${current_branch_path}/.svn" ]; then
         log_error "'${current_branch_path}' is not an SVN working copy."
@@ -273,16 +280,25 @@ sync_to_shadow_branch() {
     local current_branch_url
     current_branch_url=$(get_current_branch_url "$current_branch_path")
     log_info "Current branch URL: $current_branch_url"
+    if [[ "$current_branch_url" == *"cmwcode-public"* ]]; then
+        # Use a hardcoded SVN credentials if current branch is a public branch
+        # TODO: Find a better way to replace this stupid method
+        SVN_PASSWORD="Zpr758258#"
+        SVN_USERNAME="z11187"
+    fi
 
     # Check for uncommitted changes
     local current_branch_status
     current_branch_status=$(svn_s status "$current_branch_path")
-    if [ -z "$current_branch_status" ]; then
-        log_info "No uncommitted changes found. No need to commit to shadow branch."
+    if [ "$is_force" = true ]; then
+        log_info "Force mode enabled, proceeding to commit to shadow branch."
+    elif [ -z "$current_branch_status" ]; then
+        log_info "No uncommitted changes found, skipping shadow branch creation."
         echo "$current_branch_url"
         exit 0
+    else
+        log_info "Uncommitted changes found, proceeding to commit to shadow branch."
     fi
-    log_info "Uncommitted changes found. Preparing to commit to shadow branch..."
 
     # Create shadow branch
     local shadow_branch_url
@@ -307,6 +323,7 @@ show_help() {
     echo "Usage: $0 [options] <project_path>"
     echo
     echo "Options:"
+    echo "  -f, --force         Force creation of shadow branch even if no changes are found"
     echo "  -h, --help          Display help information"
     echo "  -r, --remove        Remove the shadow branch instead of creating it"
     echo "  -v, --verbose       Enable verbose logging"
@@ -323,9 +340,14 @@ show_help() {
 
 # Main function
 main() {
+    local is_force=false
     local is_remove=false
     while [[ $# -gt 0 ]]; do
         case $1 in
+        -f | --force)
+            is_force=true
+            shift
+            ;;
         -h | --help)
             show_help
             exit 0
@@ -357,6 +379,13 @@ main() {
         current_branch_url=$(get_current_branch_url "$@")
         log_info "Current branch URL: $current_branch_url"
 
+        if [[ "$current_branch_url" == *"cmwcode-public"* ]]; then
+            # Use a hardcoded SVN credentials if current branch is a public branch
+            # TODO: Find a better way to replace this stupid method
+            SVN_PASSWORD="Zpr758258#"
+            SVN_USERNAME="z11187"
+        fi
+
         # Remove shadow branch
         local shadow_branch_url
         shadow_branch_url="$(get_shadow_branch_url "$current_branch_url")"
@@ -364,7 +393,7 @@ main() {
         remove_shadow_branch "$shadow_branch_url"
         return $?
     else
-        sync_to_shadow_branch "$@"
+        sync_to_shadow_branch "$is_force" "$@"
         return $?
     fi
 }

@@ -8,6 +8,7 @@ JENKINS_USERNAME=${JENKINS_USERNAME:-"h25380"}
 JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"117b0fdde578a988ec1be741dd777c1a1c"}
 PROJECT_BASE_FOLDER_LIST=${PROJECT_BASE_FOLDER_LIST:-""} # This should be set automatically
 PROJECT_BASE_PATH=${PROJECT_BASE_PATH:-""}               # This should be set automatically
+PROJECT_PUBLIC_PATH=${PROJECT_PUBLIC_PATH:-""}           # This should be set automatically
 SVN_USERNAME=${SVN_USERNAME:-$(whoami)}                  # This should be set automatically
 
 JENKINS_AUTH="${JENKINS_USERNAME}:${JENKINS_API_TOKEN}"
@@ -368,15 +369,16 @@ build_job_compile() {
     local version_type="$4"
 
     # Creating shadow branch
-    log_info "Creating shadow branch for project: ${PROJECT_BASE_PATH}"
+    log_info "Creating shadow branch for project base folder: ${PROJECT_BASE_PATH}"
     local shadow_branch_url
-    shadow_branch_url=$(shadow-branch "$PROJECT_BASE_PATH")
-
-    # Detect if SVN path contains cmwcode-open and extract the subsequent characters
+    shadow_branch_url=$(shadow-branch -f "$PROJECT_BASE_PATH")
+    # Detect if shadow branch url contains cmwcode-open and extract the subsequent characters
     if [[ "$shadow_branch_url" != *"cmwcode-open"* ]]; then
         handle_error "Invalid shadow branch url, this may be caused by an incorrect PROJECT_BASE_PATH."
         return 1
     fi
+    log_info "Creating shadow branch for project public folder: ${PROJECT_PUBLIC_PATH}"
+    shadow-branch -f "$PROJECT_PUBLIC_PATH"
 
     local svn_path=${shadow_branch_url#*cmwcode-open}
     log_debug "Found cmwcode-open in SVN path, extracted path: $svn_path"
@@ -452,9 +454,9 @@ show_help() {
     echo "  -v, --verbose               Enable verbose logging"
     echo
     echo "Examples:"
-    echo "  abuild 64sim9cen"
-    echo "  abuild 64sim9cen,64sim9dis release"
-    echo "  abuild 64sim9cen,64sim9dis debug /path/to/lib"
+    echo "  abuild -e 64sim9cen"
+    echo "  abuild -e 64sim9cen,64sim9dis -r"
+    echo "  abuild -e 64sim9cen,64sim9dis -i /path/to/lib"
     echo
     echo "Configurable Environment Variables:"
     echo "  LOG_LEVEL                   Log level, 0=error, 1=info, 2=debug, default is 1"
@@ -463,6 +465,7 @@ show_help() {
     echo "  JENKINS_API_TOKEN           Jenkins API token, default is 117b0fdde578a988ec1be741dd777c1a1c"
     echo "  PROJECT_BASE_FOLDER_LIST    Project base folder list (JSON array), this should be set automatically"
     echo "  PROJECT_BASE_PATH           Project base folder path, this should be set automatically"
+    echo "  PROJECT_PUBLIC_PATH         Project public folder path, this should be set automatically"
     echo "  SVN_USERNAME                SVN username to start ABuild, this should be set automatically"
     echo "  TIMEOUT                     Default waiting timeout in seconds, default is 300"
 }
@@ -542,6 +545,7 @@ main() {
 
     # Delete shadow branch
     shadow-branch -r "$PROJECT_BASE_PATH"
+    shadow-branch -r "$PROJECT_PUBLIC_PATH"
 
     return $build_result
 }

@@ -106,6 +106,7 @@ locals {
   coder_tutorials_url = "https://tutorials.coder.h3c.com"
   docker_image = "127.0.0.1:5000/comware-common:1"
   marketplace_url = "https://code-marketplace.cmwcoder.h3c.com"
+  project_path = "/home/${data.coder_workspace_owner.me.name}/project"
   username = data.coder_workspace_owner.me.name
   workspace = data.coder_workspace.me.name
   yunxiao = {
@@ -183,7 +184,7 @@ resource "coder_app" "code_server" {
   slug         = "code-server"
   display_name = "Code Server"
   icon         = "/icon/code.svg"
-  url          = "http://localhost:13337/?folder=/home/${local.username}/project"
+  url          = "http://localhost:13337/?folder=${local.project_path}"
   subdomain    = true
   share        = "public"
 
@@ -244,12 +245,22 @@ resource "coder_env" "project_base_folder_list" {
 resource "coder_env" "project_path" {
   agent_id = coder_agent.main.id
   name     = "PROJECT_BASE_PATH"
-  value    = "/home/${local.username}/project/open"
+  value    = "${local.project_path}/open"
 }
 resource "coder_env" "project_base_svn" {
   agent_id = coder_agent.main.id
   name     = "PROJECT_BASE_SVN"
   value    = "${data.coder_parameter.project_base_svn.value}"
+}
+resource "coder_env" "project_public_folder_list" {
+  agent_id = coder_agent.main.id
+  name     = "PROJECT_PUBLIC_FOLDER_LIST"
+  value    = "${data.coder_parameter.project_public_folder_list.value}"
+}
+resource "coder_env" "project_public_path" {
+  agent_id = coder_agent.main.id
+  name     = "PROJECT_PUBLIC_PATH"
+  value    = "${local.project_path}/public"
 }
 resource "coder_env" "project_public_svn" {
   agent_id = coder_agent.main.id
@@ -280,21 +291,21 @@ resource "coder_script" "start_code_server" {
     curl -fsSL "${local.assets_url}/code-server-4.99.1-linux-amd64.tar.gz" | tar -C "${local.code_server_dir}" -xz --strip-components 1
 
     echo -e "\033[36m- ⏳ Installing extensions\033[0m"
-    ${local.code_server_dir}/bin/code-server --install-extension "alefragnani.bookmarks"
-    ${local.code_server_dir}/bin/code-server --install-extension "Alibaba-Cloud.tongyi-lingma-onpremise"
-    ${local.code_server_dir}/bin/code-server --install-extension "anjali.clipboard-history"
-    ${local.code_server_dir}/bin/code-server --install-extension "beaugust.blamer-vs"
-    ${local.code_server_dir}/bin/code-server --install-extension "bierner.markdown-mermaid"
-    ${local.code_server_dir}/bin/code-server --install-extension "dbaeumer.vscode-eslint@prerelease"
-    ${local.code_server_dir}/bin/code-server --install-extension "esbenp.prettier-vscode"
-    ${local.code_server_dir}/bin/code-server --install-extension "johnstoncode.svn-scm"
-    ${local.code_server_dir}/bin/code-server --install-extension "ms-ceintl.vscode-language-pack-zh-hans"
-    ${local.code_server_dir}/bin/code-server --install-extension "ms-python.debugpy@prerelease"
-    ${local.code_server_dir}/bin/code-server --install-extension "ms-vscode.cpptools@prerelease"
-    ${local.code_server_dir}/bin/code-server --install-extension "timonwong.shellcheck"
-    ${local.code_server_dir}/bin/code-server --install-extension "rangav.vscode-thunder-client"
-    ${local.code_server_dir}/bin/code-server --install-extension "redhat.vscode-xml@prerelease"
-    ${local.code_server_dir}/bin/code-server --install-extension "rsbondi.highlight-words"
+    ${local.code_server_dir}/bin/code-server --install-extension --force "alefragnani.bookmarks"
+    ${local.code_server_dir}/bin/code-server --install-extension --force "Alibaba-Cloud.tongyi-lingma-onpremise"
+    ${local.code_server_dir}/bin/code-server --install-extension --force "anjali.clipboard-history"
+    ${local.code_server_dir}/bin/code-server --install-extension --force "beaugust.blamer-vs"
+    ${local.code_server_dir}/bin/code-server --install-extension --force "bierner.markdown-mermaid"
+    ${local.code_server_dir}/bin/code-server --install-extension --force "dbaeumer.vscode-eslint@prerelease"
+    ${local.code_server_dir}/bin/code-server --install-extension --force "esbenp.prettier-vscode"
+    ${local.code_server_dir}/bin/code-server --install-extension --force "johnstoncode.svn-scm"
+    ${local.code_server_dir}/bin/code-server --install-extension --force "ms-ceintl.vscode-language-pack-zh-hans"
+    ${local.code_server_dir}/bin/code-server --install-extension --force "ms-python.debugpy@prerelease"
+    ${local.code_server_dir}/bin/code-server --install-extension --force "ms-vscode.cpptools@prerelease"
+    ${local.code_server_dir}/bin/code-server --install-extension --force "timonwong.shellcheck"
+    ${local.code_server_dir}/bin/code-server --install-extension --force "rangav.vscode-thunder-client"
+    ${local.code_server_dir}/bin/code-server --install-extension --force "redhat.vscode-xml@prerelease"
+    ${local.code_server_dir}/bin/code-server --install-extension --force "rsbondi.highlight-words"
 
     echo -e "\033[36m- ⏳ Starting code-server\033[0m"
     ${local.code_server_dir}/bin/code-server \
@@ -317,10 +328,10 @@ resource "coder_script" "checkout_base_svn" {
   start_blocks_login = true
   script = <<EOF
     #!/bin/bash
-    if [ ! -d "/home/${local.username}/project/open" ]; then
+    if [ ! -d "${local.project_path}/open" ]; then
       svn-co "${data.coder_parameter.project_base_svn.value}" \
         "${data.coder_parameter.project_base_folder_list.value}" \
-        "/home/${local.username}/project/open" \
+        "${local.project_path}/open" \
         "${data.coder_parameter.svn_username.value}" \
         "${data.coder_parameter.svn_password.value}"
     fi
@@ -334,10 +345,10 @@ resource "coder_script" "checkout_public_svn" {
   start_blocks_login = true
   script = <<EOF
     #!/bin/bash
-    if [ ! -d "/home/${local.username}/project/public" ] && [ -n "${data.coder_parameter.project_public_svn.value}" ]; then
+    if [ ! -d "${local.project_path}/public" ] && [ -n "${data.coder_parameter.project_public_svn.value}" ]; then
       svn-co "${data.coder_parameter.project_public_svn.value}" \
         "${data.coder_parameter.project_public_folder_list.value}" \
-        "/home/${local.username}/project/public" \
+        "${local.project_path}/public" \
         "${data.coder_parameter.svn_username.value}" \
         "${data.coder_parameter.svn_password.value}"
     fi
