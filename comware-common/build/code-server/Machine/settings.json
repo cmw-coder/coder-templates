@@ -10,12 +10,12 @@
         "__LITTLE_ENDIAN_BITFIELD"
     ],
     "C_Cpp.default.forcedInclude": [
-        "~/project/public/include/comware/sys/basetype.h"
+        "~/project/public/PUBLIC/include/comware/sys/basetype.h"
     ],
     "C_Cpp.default.includePath": [
         "/opt/glibc-headers/include",
         "/opt/open-headers/include",
-        "~/project/public/include/comware"
+        "~/project/public/PUBLIC/include/comware"
     ],
     "C_Cpp.intelliSenseCacheSize": 32768,
     "C_Cpp.intelliSenseMemoryLimit": 16384,

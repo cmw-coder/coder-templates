@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Configuration variables
+# Get configuration from environment variables, use defaults as fallback
 CODER_WORKSPACE=${CODER_WORKSPACE:-""}  # This should be set automatically
 LOG_LEVEL=${LOG_LEVEL:-1}               # 0=error, 1=info, 2=debug
 SVN_PASSWORD=${SVN_PASSWORD:-""}        # This should be set automatically
@@ -99,14 +99,14 @@ svn_s() {
     # For some commands, we need the output and they don't support -q
     if [ "$cmd" = "cat" ] || [ "$cmd" = "diff" ] || [ "$cmd" = "info" ] || [ "$cmd" = "update" ]; then
         if [ -n "$SVN_USERNAME" ] && [ -n "$SVN_PASSWORD" ]; then
-            svn "$cmd" "$@" --non-interactive --username "$SVN_USERNAME" --password "$SVN_PASSWORD"
+            svn "$cmd" "$@" --non-interactive --password "$SVN_PASSWORD" --username "$SVN_USERNAME"
         else
             svn "$cmd" "$@" --non-interactive
         fi
     else
         # For other commands, use quiet mode
         if [ -n "$SVN_USERNAME" ] && [ -n "$SVN_PASSWORD" ]; then
-            svn "$cmd" "$@" -q --non-interactive --username "$SVN_USERNAME" --password "$SVN_PASSWORD"
+            svn "$cmd" "$@" -q --non-interactive --password "$SVN_PASSWORD" --username "$SVN_USERNAME"
         else
             svn "$cmd" "$@" -q --non-interactive
         fi
@@ -121,6 +121,7 @@ remove_shadow_branch() {
         return 0
     fi
 
+    log_info "Removing shadow branch: $shadow_branch_url"
     if ! svn_s delete -m "Removing shadow branch" "$shadow_branch_url"; then
         log_error "Failed to remove shadow branch."
         exit 1
@@ -134,13 +135,13 @@ create_shadow_branch() {
     local current_branch_url="$1"
     local shadow_branch_url="$2"
 
-    # Create shadow branch
-    log_debug "Running: svn copy --parents \"$current_branch_url\" \"$shadow_branch_url\" -m \"Creating shadow branch for $current_branch_url\""
+    log_info "Creating shadow branch: $shadow_branch_url"
     if ! svn_s copy --parents "$current_branch_url" "$shadow_branch_url" -m "Creating shadow branch for $current_branch_url"; then
         log_error "Failed to create shadow branch."
         exit 1
     fi
     log_info "Shadow branch created"
+    return 0
 }
 
 apply_changes_to_shadow_branch() {
@@ -174,9 +175,9 @@ apply_changes_to_shadow_branch() {
         local action="$1"
         local target_path
         if [[ "$shadow_branch_url" == *"cmwcode-public"* ]]; then
-            target_path="$temp_dir/$2"
-        else
             target_path="$temp_dir/PUBLIC/$2"
+        else
+            target_path="$temp_dir/$2"
         fi
 
         svn_s update --parents --set-depth empty "$target_path" >/dev/null 2>&1
@@ -280,12 +281,6 @@ sync_to_shadow_branch() {
     local current_branch_url
     current_branch_url=$(get_current_branch_url "$current_branch_path")
     log_info "Current branch URL: $current_branch_url"
-    if [[ "$current_branch_url" == *"cmwcode-public"* ]]; then
-        # Use a hardcoded SVN credentials if current branch is a public branch
-        # TODO: Find a better way to replace this stupid method
-        SVN_PASSWORD="Zpr758258#"
-        SVN_USERNAME="z11187"
-    fi
 
     # Check for uncommitted changes
     local current_branch_status
@@ -300,10 +295,20 @@ sync_to_shadow_branch() {
         log_info "Uncommitted changes found, proceeding to commit to shadow branch."
     fi
 
-    # Create shadow branch
+    # Get shadow branch URL
     local shadow_branch_url
     shadow_branch_url="$(get_shadow_branch_url "$current_branch_url")"
     log_info "Shadow branch URL: $shadow_branch_url"
+
+    # Check if shadow branch is a public branch
+    if [[ "$shadow_branch_url" == *"cmwcode-public"* ]]; then
+        # Use a hardcoded SVN credentials if current branch is a public branch
+        # TODO: Find a better way to replace this stupid method
+        SVN_PASSWORD="Zpr758258#"
+        SVN_USERNAME="z11187"
+    fi
+
+    # Recreate shadow branch
     remove_shadow_branch "$shadow_branch_url"
     create_shadow_branch "$current_branch_url" "$shadow_branch_url"
 
@@ -379,17 +384,19 @@ main() {
         current_branch_url=$(get_current_branch_url "$@")
         log_info "Current branch URL: $current_branch_url"
 
-        if [[ "$current_branch_url" == *"cmwcode-public"* ]]; then
-            # Use a hardcoded SVN credentials if current branch is a public branch
+        # Get shadow branch URL
+        local shadow_branch_url
+        shadow_branch_url="$(get_shadow_branch_url "$current_branch_url")"
+        log_info "Shadow branch URL: $shadow_branch_url"
+
+        # Check if shadow branch is a public branch
+        if [[ "$shadow_branch_url" == *"cmwcode-public"* ]]; then
             # TODO: Find a better way to replace this stupid method
             SVN_PASSWORD="Zpr758258#"
             SVN_USERNAME="z11187"
         fi
 
         # Remove shadow branch
-        local shadow_branch_url
-        shadow_branch_url="$(get_shadow_branch_url "$current_branch_url")"
-        log_info "Shadow branch URL: $shadow_branch_url"
         remove_shadow_branch "$shadow_branch_url"
         return $?
     else

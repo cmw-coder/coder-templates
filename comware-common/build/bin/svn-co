@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Get configuration from environment variables, use defaults as fallback
+SVN_PASSWORD=${SVN_PASSWORD:-""}            # This should be set automatically
+SVN_USERNAME=${SVN_USERNAME:-$(whoami)}     # This should be set automatically
+
 # 颜色支持检测
 if [ -n "$CODER" ] || [ -t 1 ]; then
     COLOR_GREEN=$(echo -e "\033[32m")
@@ -21,11 +25,9 @@ PARAM_BASE_SVN_URL="$1"
 # shellcheck disable=SC2001
 PARAM_FOLDER_LIST=$(echo "${2//[\[\]]/}" | sed 's/,/ /g')
 PARAM_LOCAL_DIR="$3"
-PARAM_SVN_USERNAME="$4"
-PARAM_SVN_PASSWORD="$5"
 
 function svn_with_auth() {
-    svn "$@" --non-interactive --username "$PARAM_SVN_USERNAME" --password "$PARAM_SVN_PASSWORD"
+    svn "$@" --non-interactive --password "$SVN_PASSWORD" --username "$SVN_USERNAME"
 }
 function format_duration() {
     local seconds=$1

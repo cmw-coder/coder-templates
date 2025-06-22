@@ -21,21 +21,21 @@ provider "docker" {
 provider "coder" {
 }
 
-data "coder_parameter" "project_base_svn" {
-  name          = "project_base_svn"
-  display_name  = "Project base SVN"
-  description   = "Please provide the **base project branch** SVN URL for checkout."
+data "coder_parameter" "project_open_svn" {
+  name          = "project_open_svn"
+  display_name  = "Project cmwcode-open SVN"
+  description   = "Please provide the **cmwcode-open project branch** SVN URL for checkout."
   icon          = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
   order         = 0
   type          = "string"
   mutable       = false
   default       = "http://10.153.120.80/cmwcode-open/V9R1/trunk"
 }
-data "coder_parameter" "project_base_folder_list" {
-  name          = "project_base_folder_list"
-  display_name  = "Project base folder list"
+data "coder_parameter" "project_open_folder_list" {
+  name          = "project_open_folder_list"
+  display_name  = "Project `cmwcode-open` folder list"
   description   = <<-EOT
-    Please provide a list of **folder paths** for `Project base SVN` to checkout.\
+    Please provide a list of **folder paths** for `Project cmwcode-open SVN` to checkout.\
     If you want to check out the **entire project**, leave this field **empty**.
   EOT
   icon          = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
@@ -46,34 +46,34 @@ data "coder_parameter" "project_base_folder_list" {
 }
 data "coder_parameter" "project_public_svn" {
   name          = "project_public_svn"
-  display_name  = "Project public SVN"
+  display_name  = "Project cmwcode-public SVN"
   description   = <<-EOT
-    Please provide the **base public** SVN URL for `Project Base SVN`.\
+    Please provide the **cmwcode-public project branch** SVN URL for checkout.\
     If you want to **skip** checking out the public folder, leave this field **empty**.
   EOT
   icon          = "${data.coder_workspace.me.access_url}/emojis/1f310.png"
   order         = 2
   type          = "string"
   mutable       = false
-  default       = "http://10.153.120.104/cmwcode-public/V9R1/trunk/PUBLIC"
+  default       = "http://10.153.120.104/cmwcode-public/V9R1/trunk"
 }
 data "coder_parameter" "project_public_folder_list" {
   name          = "project_public_folder_list"
-  display_name  = "Public SVN List"
+  display_name  = "Project cmwcode-public folder list"
   description   = <<-EOT
-    Please provide a list of **folder paths** for `Project public SVN` to checkout.\
-    Including the `include` folder is recommended for **symbol highlighting**.\
-    If you want to check out the **entire public folder**, leave this field **empty**.
+    Please provide a list of **folder paths** for `Project cmwcode-public SVN` to checkout.\
+    Including the `PUBLIC/include` folder is recommended for **symbol highlighting**.\
+    If you want to check out the **entire project**, leave this field **empty**.
   EOT
   icon          = "${data.coder_workspace.me.access_url}/emojis/1f310.png"
   order         = 3
   type          = "list(string)"
   mutable       = false
   default       = jsonencode([
-    "include",
-    "proto",
-    "xsd",
-    "yang",
+    "PUBLIC/include",
+    "PUBLIC/proto",
+    "PUBLIC/xsd",
+    "PUBLIC/yang",
   ])
 }
 data "coder_parameter" "svn_username" {
@@ -123,6 +123,8 @@ resource "coder_agent" "main" {
     GIT_AUTHOR_EMAIL    = "${data.coder_workspace_owner.me.email}"
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, local.username)
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
+    SVN_PASSWORD        = "${data.coder_parameter.svn_password.value}"
+    SVN_USERNAME        = "${data.coder_parameter.svn_username.value}"
   }
 
   display_apps {
@@ -237,20 +239,20 @@ resource "coder_env" "node_extra_ca_certs" {
   name     = "NODE_EXTRA_CA_CERTS"
   value    = "/etc/ssl/certs/ca-certificates.crt"
 }
-resource "coder_env" "project_base_folder_list" {
+resource "coder_env" "project_open_folder_list" {
   agent_id = coder_agent.main.id
-  name     = "PROJECT_BASE_FOLDER_LIST"
-  value    = "${data.coder_parameter.project_base_folder_list.value}"
+  name     = "PROJECT_OPEN_FOLDER_LIST"
+  value    = "${data.coder_parameter.project_open_folder_list.value}"
 }
 resource "coder_env" "project_path" {
   agent_id = coder_agent.main.id
-  name     = "PROJECT_BASE_PATH"
+  name     = "PROJECT_OPEN_PATH"
   value    = "${local.project_path}/open"
 }
-resource "coder_env" "project_base_svn" {
+resource "coder_env" "project_open_svn" {
   agent_id = coder_agent.main.id
-  name     = "PROJECT_BASE_SVN"
-  value    = "${data.coder_parameter.project_base_svn.value}"
+  name     = "PROJECT_OPEN_SVN"
+  value    = "${data.coder_parameter.project_open_svn.value}"
 }
 resource "coder_env" "project_public_folder_list" {
   agent_id = coder_agent.main.id
@@ -267,15 +269,15 @@ resource "coder_env" "project_public_svn" {
   name     = "PROJECT_PUBLIC_SVN"
   value    = "${data.coder_parameter.project_public_svn.value}"
 }
-resource "coder_env" "svn_username" {
-  agent_id = coder_agent.main.id
-  name     = "SVN_USERNAME"
-  value    = "${data.coder_parameter.svn_username.value}"
-}
 resource "coder_env" "svn_password" {
   agent_id = coder_agent.main.id
   name     = "SVN_PASSWORD"
   value    = "${data.coder_parameter.svn_password.value}"
+}
+resource "coder_env" "svn_username" {
+  agent_id = coder_agent.main.id
+  name     = "SVN_USERNAME"
+  value    = "${data.coder_parameter.svn_username.value}"
 }
 
 resource "coder_script" "start_code_server" {
@@ -291,21 +293,21 @@ resource "coder_script" "start_code_server" {
     curl -fsSL "${local.assets_url}/code-server-4.99.1-linux-amd64.tar.gz" | tar -C "${local.code_server_dir}" -xz --strip-components 1
 
     echo -e "\033[36m- ⏳ Installing extensions\033[0m"
-    ${local.code_server_dir}/bin/code-server --install-extension --force "alefragnani.bookmarks"
-    ${local.code_server_dir}/bin/code-server --install-extension --force "Alibaba-Cloud.tongyi-lingma-onpremise"
-    ${local.code_server_dir}/bin/code-server --install-extension --force "anjali.clipboard-history"
-    ${local.code_server_dir}/bin/code-server --install-extension --force "beaugust.blamer-vs"
-    ${local.code_server_dir}/bin/code-server --install-extension --force "bierner.markdown-mermaid"
-    ${local.code_server_dir}/bin/code-server --install-extension --force "dbaeumer.vscode-eslint@prerelease"
-    ${local.code_server_dir}/bin/code-server --install-extension --force "esbenp.prettier-vscode"
-    ${local.code_server_dir}/bin/code-server --install-extension --force "johnstoncode.svn-scm"
-    ${local.code_server_dir}/bin/code-server --install-extension --force "ms-ceintl.vscode-language-pack-zh-hans"
-    ${local.code_server_dir}/bin/code-server --install-extension --force "ms-python.debugpy@prerelease"
-    ${local.code_server_dir}/bin/code-server --install-extension --force "ms-vscode.cpptools@prerelease"
-    ${local.code_server_dir}/bin/code-server --install-extension --force "timonwong.shellcheck"
-    ${local.code_server_dir}/bin/code-server --install-extension --force "rangav.vscode-thunder-client"
-    ${local.code_server_dir}/bin/code-server --install-extension --force "redhat.vscode-xml@prerelease"
-    ${local.code_server_dir}/bin/code-server --install-extension --force "rsbondi.highlight-words"
+    ${local.code_server_dir}/bin/code-server --install-extension "alefragnani.bookmarks" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "Alibaba-Cloud.tongyi-lingma-onpremise" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "anjali.clipboard-history" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "beaugust.blamer-vs" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "bierner.markdown-mermaid" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "dbaeumer.vscode-eslint@prerelease" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "esbenp.prettier-vscode" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "johnstoncode.svn-scm" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "ms-ceintl.vscode-language-pack-zh-hans" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "ms-python.debugpy@prerelease" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "ms-vscode.cpptools@prerelease" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "timonwong.shellcheck" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "rangav.vscode-thunder-client" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "redhat.vscode-xml@prerelease" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "rsbondi.highlight-words" --force
 
     echo -e "\033[36m- ⏳ Starting code-server\033[0m"
     ${local.code_server_dir}/bin/code-server \
@@ -329,11 +331,9 @@ resource "coder_script" "checkout_base_svn" {
   script = <<EOF
     #!/bin/bash
     if [ ! -d "${local.project_path}/open" ]; then
-      svn-co "${data.coder_parameter.project_base_svn.value}" \
-        "${data.coder_parameter.project_base_folder_list.value}" \
-        "${local.project_path}/open" \
-        "${data.coder_parameter.svn_username.value}" \
-        "${data.coder_parameter.svn_password.value}"
+      svn-co "${data.coder_parameter.project_open_svn.value}" \
+        "${data.coder_parameter.project_open_folder_list.value}" \
+        "${local.project_path}/open"
     fi
   EOF
 }
@@ -348,9 +348,7 @@ resource "coder_script" "checkout_public_svn" {
     if [ ! -d "${local.project_path}/public" ] && [ -n "${data.coder_parameter.project_public_svn.value}" ]; then
       svn-co "${data.coder_parameter.project_public_svn.value}" \
         "${data.coder_parameter.project_public_folder_list.value}" \
-        "${local.project_path}/public" \
-        "${data.coder_parameter.svn_username.value}" \
-        "${data.coder_parameter.svn_password.value}"
+        "${local.project_path}/public"
     fi
   EOF
 }
