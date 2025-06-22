@@ -15,8 +15,8 @@ else
 fi
 
 # 参数检查
-if [ $# -ne 5 ]; then
-    echo "- ❔ Usage: svn-co <url> <folder-list> <path> <username> <password>"
+if [ $# -ne 3 ]; then
+    echo "- ❔ Usage: svn-co <url> <folder-list> <path>"
     exit 1
 fi
 

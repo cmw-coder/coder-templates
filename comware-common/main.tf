@@ -71,9 +71,6 @@ data "coder_parameter" "project_public_folder_list" {
   mutable       = false
   default       = jsonencode([
     "PUBLIC/include",
-    "PUBLIC/proto",
-    "PUBLIC/xsd",
-    "PUBLIC/yang",
   ])
 }
 data "coder_parameter" "svn_username" {

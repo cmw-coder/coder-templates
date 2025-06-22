@@ -173,12 +173,7 @@ apply_changes_to_shadow_branch() {
 
     process_file() {
         local action="$1"
-        local target_path
-        if [[ "$shadow_branch_url" == *"cmwcode-public"* ]]; then
-            target_path="$temp_dir/PUBLIC/$2"
-        else
-            target_path="$temp_dir/$2"
-        fi
+        local target_path="$temp_dir/$2"
 
         svn_s update --parents --set-depth empty "$target_path" >/dev/null 2>&1
 
