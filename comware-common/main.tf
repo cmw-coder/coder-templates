@@ -297,6 +297,7 @@ resource "coder_script" "start_code_server" {
     ${local.code_server_dir}/bin/code-server --install-extension "bierner.markdown-mermaid" --force
     ${local.code_server_dir}/bin/code-server --install-extension "dbaeumer.vscode-eslint@prerelease" --force
     ${local.code_server_dir}/bin/code-server --install-extension "esbenp.prettier-vscode" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "h3c-rd.h3c-vscode-all-in-one" --force
     ${local.code_server_dir}/bin/code-server --install-extension "johnstoncode.svn-scm" --force
     ${local.code_server_dir}/bin/code-server --install-extension "ms-ceintl.vscode-language-pack-zh-hans" --force
     ${local.code_server_dir}/bin/code-server --install-extension "ms-python.debugpy@prerelease" --force
