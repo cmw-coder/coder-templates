@@ -1,4 +1,4 @@
-FROM ubuntu
+FROM registry.coder.h3c.com/ubuntu:24.04
 
 COPY --chmod=755 bin /usr/local/bin
 COPY ca-certs /usr/local/share/ca-certificates/

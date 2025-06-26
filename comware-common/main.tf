@@ -305,6 +305,7 @@ resource "coder_script" "start_code_server" {
     ${local.code_server_dir}/bin/code-server --install-extension "timonwong.shellcheck" --force
     ${local.code_server_dir}/bin/code-server --install-extension "rangav.vscode-thunder-client" --force
     ${local.code_server_dir}/bin/code-server --install-extension "redhat.vscode-xml@prerelease" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "rogalmic.bash-debug" --force
     ${local.code_server_dir}/bin/code-server --install-extension "rsbondi.highlight-words" --force
 
     echo -e "\033[36m- ⏳ Starting code-server\033[0m"

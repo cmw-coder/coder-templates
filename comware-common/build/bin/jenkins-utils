@@ -1,0 +1,266 @@
+#!/bin/bash
+
+# shellcheck source=/dev/null
+source "log-utils"
+
+# Error handling function
+jenkins_handle_error() {
+    log_error "$1"
+    # Also return error info in JSON format, ensuring meaningful output even when stderr is redirected
+    echo "{\"result\":-2,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[{\"FILE\":\"\",\"LINENUMBER\":0,\"ALARM\":\"$1\"}]}"
+}
+
+# Get Jenkins Crumb to prevent CSRF protection
+jenkins_get_crumb() {
+    curl -s --fail --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/crumbIssuer/api/json" | jq -r '.crumb'
+}
+
+# Get build number, with timeout control
+jenkins_get_build_number() {
+    local task_name=$1
+    local build_cmd=$2
+    local start_time
+    start_time=$(date +%s)
+
+    log_info "Looking for build number for task: ${task_name}"
+    log_debug "Build command: ${build_cmd}"
+
+    # Wait for the queued task to start running
+    while [ $(($(date +%s) - start_time)) -lt "$TIMEOUT" ]; do
+        # Check tasks in the queue
+        local queue_info
+        queue_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/queue/api/json")
+
+        # Use simplified jq query to check if there's a matching task
+        if echo "$queue_info" | jq -e '.items[] | select(.task.name == "'"$task_name"'") | 
+      (.actions[] | select(.parameters != null) | .parameters[] | select(.value == "'"$build_cmd"'")) and 
+      (.actions[] | select(.causes != null) | .causes[] | select(.userId == "'"$JENKINS_USERNAME"'"))' >/dev/null; then
+            log_info "Matching task found in queue, waiting..."
+            sleep 3
+            continue
+        fi
+
+        log_info "Task not found in queue or has started running"
+        break
+    done
+
+    # Timeout check
+    if [ $(($(date +%s) - start_time)) -ge "$TIMEOUT" ]; then
+        log_error "Timeout waiting for build to start after ${TIMEOUT} seconds"
+        echo "-1"
+        return 1
+    fi
+
+    # Get the latest build number
+    local next_build_number
+    next_build_number=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/api/json" | jq '.nextBuildNumber - 1')
+    log_info "Latest build number for ${task_name}: ${next_build_number}"
+
+    # Find matching build
+    local i=0
+    log_debug "Checking recent builds for matching command and user..."
+    while [ "$next_build_number" -gt 0 ] && [ $i -lt 10 ]; do
+        log_debug "Checking build #${next_build_number}"
+        local job_info
+        job_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${next_build_number}/api/json")
+
+        # Handle two possible parameter orders
+        if echo "$job_info" | jq -e '(.actions[0].parameters[0].value == "'"$build_cmd"'" and .actions[1].causes[0].userId == "'"$JENKINS_USERNAME"'") or
+        (.actions[1].parameters[0].value == "'"$build_cmd"'" and .actions[0].causes[0].userId == "'"$JENKINS_USERNAME"'")' >/dev/null; then
+            log_info "Found matching build: #${next_build_number}"
+            echo "$next_build_number"
+            return 0
+        fi
+
+        next_build_number=$((next_build_number - 1))
+        i=$((i + 1))
+    done
+
+    log_error "Failed to find matching build after checking ${i} builds"
+    echo "-1"
+    return 1
+}
+
+# Extract version path from build console output
+jenkins_get_version_path() {
+    local task_name="$1"
+    local console_output="$2"
+
+    # Find Build.html path
+    local version_path_prefix
+    version_path_prefix=$(echo "$console_output" | grep -E '^\s*.*Build\.html' | head -1 |
+        sed -E 's/^\s*(.*Build\.html).*/\1/' |
+        sed 's/\\Build.html$//' |
+        sed 's/\\/\//g')
+
+    if [ -z "$version_path_prefix" ]; then
+        log_debug "No Build.html path found in console output"
+        echo ""
+        return 0
+    fi
+
+    local last_path_name
+    last_path_name=$(echo "$version_path_prefix" | awk -F/ '{print $NF}')
+    local version_file_path=""
+
+    # Find appropriate file path based on task type
+    if [ "$task_name" = "V9ABUILD_CI" ]; then
+        version_file_path=$(echo "$console_output" | grep -E "${last_path_name}.*TARGET.*\.tar\.gz" | head -1 |
+            sed -E "s/.*($last_path_name\/TARGET\/.*)/\1/")
+    else
+        version_file_path=$(echo "$console_output" | grep -E "${last_path_name}.*TARGET.*\.ipe" | head -1 |
+            sed -E "s/.*($last_path_name\/TARGET\/.*\.ipe\/)/\1/")
+    fi
+
+    # Return complete version path
+    if [ -n "$version_file_path" ]; then
+        echo "file:${version_path_prefix}/${version_file_path}"
+    else
+        log_debug "No version file path found in console output"
+        echo ""
+    fi
+}
+
+# Get build error information
+jenkins_get_build_result() {
+    local build_number="$1"
+    local task_name="$2"
+
+    # Get build info and console output
+    local build_url=""
+    local build_info
+
+    if ! build_info=$(curl -s --fail --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json"); then
+        log_error "Failed to get build info for job ${task_name} #${build_number}"
+        echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
+        return 1
+    fi
+
+    if [ -z "$build_info" ]; then
+        log_error "Empty build info received for job ${task_name} #${build_number}"
+        echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
+        return 1
+    fi
+
+    build_url=$(echo "$build_info" | jq -r '.url')
+    if [ -z "$build_url" ] || [ "$build_url" = "null" ]; then
+        log_error "Invalid build URL retrieved for job ${task_name} #${build_number}"
+        echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
+        return 1
+    fi
+
+    local console_output
+    console_output=$(curl -s --fail --user "${JENKINS_AUTH}" "${build_url}consoleText")
+    # Remove unused variables
+
+    local job_status
+    job_status=$(echo "$build_info" | jq -r '.result')
+
+    # Initialize result variables
+    local ret=0
+    local version_path=""
+    local error_info="[]"
+
+    if [ "$job_status" = "SUCCESS" ]; then
+        version_path=$(get_version_path "$task_name" "$console_output")
+    else
+        ret=-1
+        # Extract error information
+        local error_list
+        error_list=$(echo "$console_output" | grep -E '^(.*):([0-9]+):\s*(error:|undefined reference|fatal error:)(.*)$')
+
+        if [ -n "$error_list" ]; then
+            # Count unique error files
+            local unique_files=()
+            while IFS= read -r line; do
+                local file
+                file=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\1/')
+                [[ "$file" == *":"* ]] && file=${file%:*}
+                unique_files+=("$file")
+            done <<<"$error_list"
+
+            mapfile -t unique_files < <(printf "%s\n" "${unique_files[@]}" | sort -u)
+
+            # If error files don't exceed 5, format error info
+            if [ ${#unique_files[@]} -le 5 ]; then
+                error_info="["
+                local first=true
+
+                while IFS= read -r line; do
+                    local file
+                    local line_num
+                    file=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\1/')
+                    line_num=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\2/')
+
+                    [[ "$file" == *":"* ]] && {
+                        line_num=${file##*:}
+                        file=${file%:*}
+                    }
+
+                    $first || error_info="${error_info},"
+                    first=false
+                    error_info="${error_info}{\"FILE\":\"${file}\",\"LINENUMBER\":${line_num},\"ALARM\":\"${line}\"}"
+                done <<<"$error_list"
+
+                error_info="${error_info}]"
+            fi
+        fi
+    fi
+
+    # Build JSON result
+    echo "{\"result\":${ret},\"version_path\":\"${version_path}\",\"build_info_output\":\"${build_url}console\",\"error_info\":${error_info}}"
+}
+
+# Monitor build results
+jenkins_monitor_build_progress() {
+    local task_name="$1"
+    local build_number="$2"
+
+    if [ "$build_number" = "-1" ]; then
+        log_error "Build canceled or not found"
+        return 1
+    fi
+
+    local start_time
+    start_time=$(date +"%Y%m%d.%H%M%S")
+
+    local timestamp_seconds
+    timestamp_seconds=$(date -d "$start_time" +%s 2>/dev/null || date +%s)
+
+    local build_url
+    build_url=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json" | jq -r '.url')
+
+    log_info "Build #${build_number} started at ${start_time}"
+    log_info "Build console URL: ${build_url}console"
+
+    # Wait for build completion, with timeout check
+    local wait_time=0
+    local job_status="null"
+    log_info_n "Waiting for build to complete "
+
+    while [ "$job_status" = "null" ] && [ "$wait_time" -lt "$TIMEOUT" ]; do
+        sleep 3
+        wait_time=$((wait_time + 3))
+        job_status=$(curl -s --user "${JENKINS_AUTH}" "${build_url}/api/json" | jq -r '.result')
+        log_info_n "."
+    done
+    log_info "" # Just add a newline
+
+    if [ "$wait_time" -ge "$TIMEOUT" ]; then
+        log_error "Build timed out after ${TIMEOUT} seconds"
+        return 2
+    fi
+
+    local end_time
+    end_time=$(date +"%Y%m%d.%H%M%S")
+
+    local end_seconds
+    end_seconds=$(date -d "$end_time" +%s 2>/dev/null || date +%s)
+
+    local duration=$((end_seconds - timestamp_seconds))
+
+    log_info "Build completed at: ${end_time} (${duration}s)"
+    log_info "Build result: ${job_status}"
+
+    return 0
+}
