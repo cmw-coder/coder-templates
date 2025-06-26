@@ -418,14 +418,6 @@ resource "docker_service" "workspace" {
   }
 }
 
-resource "docker_registry_image" "main" {
-  name = docker_image.main.name
-  insecure_skip_verify  = true
-  triggers              = {
-    dir_sha1 = sha1(join("", [for f in fileset(path.module, "build/*") : filesha1(f)]))
-  }
-}
-
 resource "docker_image" "main" {
   name = "registry.coder.h3c.com/coder-${data.coder_workspace.me.id}"
   build {
@@ -434,7 +426,9 @@ resource "docker_image" "main" {
       USER = local.username
       EXTENSION_VERSION = "1.99.2025040909"
     }
+    force_remove = true
   }
+  force_remove = true
   triggers = {
     dir_sha1 = sha1(join("", [for f in fileset(path.module, "build/*") : filesha1(f)]))
   }
@@ -445,5 +439,14 @@ resource "docker_volume" "home_volume" {
   # Protect the volume from being deleted due to changes in attributes.
   lifecycle {
     ignore_changes = all
+  }
+}
+
+resource "docker_registry_image" "main" {
+  name = docker_image.main.name
+  insecure_skip_verify  = true
+  keep_remotely = false
+  triggers              = {
+    dir_sha1 = sha1(join("", [for f in fileset(path.module, "build/*") : filesha1(f)]))
   }
 }

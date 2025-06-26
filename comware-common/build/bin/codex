@@ -1,0 +1,224 @@
+#!/bin/bash
+
+# Get configuration from environment variables, use defaults as fallback
+TIMEOUT=${TIMEOUT:-600}   # Default wait timeout (seconds)
+LOG_LEVEL=${LOG_LEVEL:-1} # 0=error, 1=info, 2=debug
+JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.174:8080"}
+JENKINS_USERNAME=${JENKINS_USERNAME:-"h25380"}
+JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"117b0fdde578a988ec1be741dd777c1a1c"}
+PROJECT_OPEN_FOLDER_LIST=${PROJECT_OPEN_FOLDER_LIST:-""} # This should be set automatically
+PROJECT_OPEN_PATH=${PROJECT_OPEN_PATH:-""}               # This should be set automatically
+PROJECT_PUBLIC_PATH=${PROJECT_PUBLIC_PATH:-""}           # This should be set automatically
+SVN_USERNAME=${SVN_USERNAME:-$(whoami)}                  # This should be set automatically
+
+JENKINS_AUTH="${JENKINS_USERNAME}:${JENKINS_API_TOKEN}"
+
+# shellcheck source=/dev/null
+source "log-utils"
+# shellcheck source=/dev/null
+source "jenkins-utils"
+
+# Error handling function
+handle_error() {
+    log_error "$1"
+    # Also return error info in JSON format, ensuring meaningful output even when stderr is redirected
+    echo "{\"result\":-2,\"report_url\":\"\",\"console_output_url\":\"\",\"error_info\":[{\"FILE\":\"\",\"LINENUMBER\":0,\"ALARM\":\"$1\"}]}"
+}
+
+# Get build information
+get_build_result() {
+    local build_number="$1"
+    local task_name="$2"
+
+    # Get build info and console output
+    local build_info
+    if ! build_info=$(curl -s --fail --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json"); then
+        log_error "Failed to get build info for job ${task_name} #${build_number}"
+        echo "{\"result\":-3,\"report_url\":\"\",\"console_output_url\":\"\",\"error_info\":[]}"
+        return 1
+    fi
+    if [ -z "$build_info" ]; then
+        log_error "Empty build info received for job ${task_name} #${build_number}"
+        echo "{\"result\":-3,\"report_url\":\"\",\"console_output_url\":\"\",\"error_info\":[]}"
+        return 1
+    fi
+
+    # Get build URL
+    local build_url
+    build_url=$(echo "$build_info" | jq -r '.url')
+    if [ -z "$build_url" ] || [ "$build_url" = "null" ]; then
+        log_error "Invalid build URL retrieved for job ${task_name} #${build_number}"
+        echo "{\"result\":-3,\"report_url\":\"\",\"console_output_url\":\"\",\"error_info\":[]}"
+        return 1
+    fi
+
+    # Get console output
+    # local console_output
+    # console_output=$(curl -s --fail --user "${JENKINS_AUTH}" "${build_url}consoleText")
+
+    # Initialize result variables
+    local result
+    local error_info="[]"
+
+    # Get build result
+    local build_result
+    build_result=$(echo "$build_info" | jq -r '.result')
+    if [ "$build_result" = "SUCCESS" ]; then
+        log_info "Build #${build_number} succeeded"
+        result=0
+    elif [ "$build_result" = "FAILURE" ]; then
+        log_error "Build #${build_number} failed"
+        result=-1
+    elif [ "$build_result" = "ABORTED" ]; then
+        log_info "Build #${build_number} was aborted"
+        result=-2
+    else
+        log_error "Build #${build_number} is in an unknown state: ${build_result}"
+        result=-3
+    fi
+
+    local report_url="${build_url}report/codex__add_report.html"
+    log_info "CodeX report URL: ${report_url}"
+
+    # Build JSON result
+    echo "{\"result\":${result},\"report_url\":\"${report_url}\",\"console_output_url\":\"${build_url}console\",\"error_info\":${error_info}}"
+}
+
+# Execute build job
+build_job_codex() {
+    # Creating shadow branch
+    log_info "Creating shadow branch for project open folder: ${PROJECT_OPEN_PATH}"
+    local shadow_branch_url
+    shadow_branch_url=$(shadow-branch -f "$PROJECT_OPEN_PATH")
+    # Detect if shadow branch url contains cmwcode-open and extract the subsequent characters
+    if [[ "$shadow_branch_url" != *"cmwcode-open"* ]]; then
+        handle_error "Invalid shadow branch url, this may be caused by an incorrect PROJECT_OPEN_PATH."
+        return 1
+    fi
+    log_info "Creating shadow branch for project public folder: ${PROJECT_PUBLIC_PATH}"
+    shadow-branch -f "$PROJECT_PUBLIC_PATH"
+
+    local svn_path=${shadow_branch_url#*cmwcode-open}
+    log_debug "Found cmwcode-open in SVN path, extracted path: $svn_path"
+
+    # Determine task name
+    local task_name
+    if [[ "$svn_path" == *"V9R1"* ]]; then
+        task_name="V9CodeXV2"
+    else
+        task_name="CodeXV2"
+    fi
+
+    # Convert folder list from JSON array to a comma-separated string
+    local module_list
+    module_list=$(echo "$PROJECT_OPEN_FOLDER_LIST" | tr -d '[]"')
+
+    # Build command
+    local build_cmd="-s ${svn_path}"
+    [ -n "$module_list" ] && build_cmd="${build_cmd} -f ${module_list}"
+
+    log_info "Starting ${task_name}:\n- Repo: ${svn_path}\n- Modules: ${module_list}\n- User: ${SVN_USERNAME}"
+    log_debug "Build command: ${build_cmd}"
+
+    # Get CSRF token
+    local crumb
+    crumb=$(jenkins_get_crumb)
+    if [ -z "$crumb" ]; then
+        handle_error "Failed to get Jenkins crumb"
+        return 1
+    fi
+
+    # Trigger Jenkins build
+    if ! curl -s -X POST --user "${JENKINS_AUTH}" -H "Jenkins-Crumb: ${crumb}" \
+        "${JENKINS_SERVER_URL}/job/${task_name}/buildWithParameters" \
+        --data-urlencode "BuildCmd=${build_cmd}" \
+        --data-urlencode "FAKE_USER=${SVN_USERNAME}" >/dev/null; then
+        handle_error "Failed to trigger Jenkins build"
+        return 1
+    fi
+
+    # Get build number
+    local abuild_number
+    abuild_number=$(jenkins_get_build_number "$task_name" "$build_cmd")
+    if [ -z "$abuild_number" ] || [ "$abuild_number" = "-1" ]; then
+        handle_error "Build was cancelled or failed to get build number"
+        return 1
+    fi
+
+    # Monitor build results
+    if ! jenkins_monitor_build_progress "$task_name" "$abuild_number"; then
+        handle_error "Build monitoring failed"
+        return $?
+    fi
+
+    # Get build result
+    get_build_result "$abuild_number" "$task_name"
+}
+
+# Display help information
+show_help() {
+    echo "Usage: codex [options]"
+    echo
+    echo "Options:"
+    echo "  -h, --help                  Display this help information"
+    echo "  -t, --timeout               Set wait timeout in seconds"
+    echo "  -v, --verbose               Enable verbose logging"
+    echo
+    echo "Examples:"
+    echo "  abuild -e 64sim9cen"
+    echo "  abuild -e 64sim9cen,64sim9dis -r"
+    echo "  abuild -e 64sim9cen,64sim9dis -i /path/to/lib"
+    echo
+    echo "Configurable Environment Variables:"
+    echo "  LOG_LEVEL                   Log level, 0=error, 1=info, 2=debug, default is 1"
+    echo "  JENKINS_SERVER_URL          Jenkins server URL, default is http://10.153.3.174:8080"
+    echo "  JENKINS_USERNAME            Jenkins API username, default is h25380"
+    echo "  JENKINS_API_TOKEN           Jenkins API token, default is 117b0fdde578a988ec1be741dd777c1a1c"
+    echo "  PROJECT_OPEN_FOLDER_LIST    Project open folder list (JSON array), this should be set automatically"
+    echo "  PROJECT_OPEN_PATH           Project open folder path, this should be set automatically"
+    echo "  PROJECT_PUBLIC_PATH         Project public folder path, this should be set automatically"
+    echo "  SVN_USERNAME                SVN username to start ABuild, this should be set automatically"
+    echo "  TIMEOUT                     Default waiting timeout in seconds, default is 300"
+}
+
+# Main function
+main() {
+    while [ $# -gt 0 ]; do
+        case $1 in
+        -h | --help)
+            show_help
+            exit 0
+            ;;
+        -t | --timeout)
+            TIMEOUT=$2
+            shift 2
+            ;;
+        -v | --verbose)
+            LOG_LEVEL=2
+            shift
+            ;;
+        *)
+            log_error "Unknown option: $1"
+            show_help
+            exit 1
+            ;;
+        esac
+    done
+
+    if [ -z "$PROJECT_OPEN_PATH" ]; then
+        log_error "PROJECT_OPEN_PATH is not set, please set it before running this script."
+        exit 1
+    fi
+
+    build_job_codex
+    local build_result=$?
+
+    # Delete shadow branch
+    shadow-branch -r "$PROJECT_OPEN_PATH"
+    shadow-branch -r "$PROJECT_PUBLIC_PATH"
+
+    return $build_result
+}
+
+# Execute main function
+main "$@"
