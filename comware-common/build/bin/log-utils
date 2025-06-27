@@ -1,8 +1,12 @@
 #!/bin/bash
 
+# Get configuration from environment variables, use defaults as fallback
+LOG_LEVEL=${LOG_LEVEL:-1} # 0=error, 1=info, 2=debug
+
 # Track if the previous log output used the -n flag
-PREVIOUS_LOG_NONEWLINE=false
-PREVIOUS_LOG_LEVEL=""
+LOG_PREVIOUS_NONEWLINE=false
+LOG_PREVIOUS_LEVEL=""
+
 # Log processing function - supports line breaks and indentation, connecting multiple lines
 log_message() {
     local level="$1"
@@ -31,7 +35,7 @@ log_message() {
     continuation_prefix=$(printf "%$((level_length - 1))s|" "")
 
     # Determine whether to skip the prefix (if the previous output used -n and has the same level)
-    if [ "$PREVIOUS_LOG_NONEWLINE" = true ] && [ "$PREVIOUS_LOG_LEVEL" = "$level" ]; then
+    if [ "$LOG_PREVIOUS_NONEWLINE" = true ] && [ "$LOG_PREVIOUS_LEVEL" = "$level" ]; then
         skip_prefix=true
     fi
 
@@ -62,8 +66,8 @@ log_message() {
     done
 
     # Record the status of this log for next log output decision
-    PREVIOUS_LOG_NONEWLINE=$nonewline
-    PREVIOUS_LOG_LEVEL=$level
+    LOG_PREVIOUS_NONEWLINE=$nonewline
+    LOG_PREVIOUS_LEVEL=$level
 }
 # Increase/decrease indentation level
 log_indent_increase() { export LOG_INDENT=$((${LOG_INDENT:-0} + 2)); }
@@ -80,7 +84,7 @@ log_message_by_level() {
 
     [ "$LOG_LEVEL" -ge "$min_level" ] && log_message "$level" ${nonewline:+"-n"} "$@"
 }
-log_error() { log_message "[Error]" "$@"; }
+log_error() { log_message_by_level "[Error]" 0 "" "$@"; }
 log_info() { log_message_by_level "[Info]" 1 "" "$@"; }
 log_debug() { log_message_by_level "[Debug]" 2 "" "$@"; }
 log_info_n() { log_message_by_level "[Info]" 1 "nonewline" "$@"; }

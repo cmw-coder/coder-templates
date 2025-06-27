@@ -2,51 +2,11 @@
 
 # Get configuration from environment variables, use defaults as fallback
 CODER_WORKSPACE=${CODER_WORKSPACE:-""}  # This should be set automatically
-LOG_LEVEL=${LOG_LEVEL:-1}               # 0=error, 1=info, 2=debug
-SVN_PASSWORD=${SVN_PASSWORD:-""}        # This should be set automatically
-SVN_USERNAME=${SVN_USERNAME:-$(whoami)} # This should be set automatically
 
 # shellcheck source=/dev/null
 source "log-utils"
-
-svn_s() {
-    local cmd=$1
-    shift
-
-    # For some commands, we need the output and they don't support -q
-    if [ "$cmd" = "cat" ] || [ "$cmd" = "diff" ] || [ "$cmd" = "info" ] || [ "$cmd" = "update" ]; then
-        if [ -n "$SVN_USERNAME" ] && [ -n "$SVN_PASSWORD" ]; then
-            svn "$cmd" "$@" --non-interactive --password "$SVN_PASSWORD" --username "$SVN_USERNAME"
-        else
-            svn "$cmd" "$@" --non-interactive
-        fi
-    else
-        # For other commands, use quiet mode
-        if [ -n "$SVN_USERNAME" ] && [ -n "$SVN_PASSWORD" ]; then
-            svn "$cmd" "$@" -q --non-interactive --password "$SVN_PASSWORD" --username "$SVN_USERNAME"
-        else
-            svn "$cmd" "$@" -q --non-interactive
-        fi
-    fi
-}
-
-remove_shadow_branch() {
-    local shadow_branch_url="$1"
-
-    if ! svn_s info "$shadow_branch_url" >/dev/null 2>&1; then
-        log_info "No shadow branch found, nothing to remove."
-        return 0
-    fi
-
-    log_info "Removing shadow branch: $shadow_branch_url"
-    if ! svn_s delete -m "Removing shadow branch" "$shadow_branch_url"; then
-        log_error "Failed to remove shadow branch."
-        exit 1
-    fi
-
-    log_info "Shadow branch removed successfully."
-    return 0
-}
+# shellcheck source=/dev/null
+source "svn-utils"
 
 create_shadow_branch() {
     local current_branch_url="$1"
@@ -221,7 +181,7 @@ sync_to_shadow_branch() {
     fi
 
     # Recreate shadow branch
-    remove_shadow_branch "$shadow_branch_url"
+    svn_remove_branch "$shadow_branch_url"
     create_shadow_branch "$current_branch_url" "$shadow_branch_url"
 
     # Apply all changes to temporary directory
@@ -237,22 +197,26 @@ sync_to_shadow_branch() {
 }
 
 show_help() {
-    echo "Usage: $0 [options] <project_path>"
-    echo
+    echo "Usage: shadow-branch [options] <project_path>"
+    echo ""
     echo "Options:"
     echo "  -f, --force         Force creation of shadow branch even if no changes are found"
     echo "  -h, --help          Display help information"
     echo "  -r, --remove        Remove the shadow branch instead of creating it"
-    echo "  -v, --verbose       Enable verbose logging"
-    echo
+    echo ""
     echo "Arguments:"
     echo "  <project_path>      Path to the SVN working copy (required)"
-    echo
+    echo ""
     echo "Configurable Environment Variables:"
-    echo "  CODER_WORKSPACE     Coder workspace name, this should be set automatically"
-    echo "  LOG_LEVEL           Log level, 0=error, 1=info, 2=debug, default is 1"
-    echo "  SVN_PASSWORD        SVN password, this should be set automatically"
-    echo "  SVN_USERNAME        SVN username, this should be set automatically"
+    echo "  Current script:"
+    echo "    CODER_WORKSPACE               Coder workspace name, this should be set automatically"
+    echo ""
+    echo "  Inherited from log-utils:"
+    echo "    LOG_LEVEL                     Log level, 0=error, 1=info, 2=debug, default is 1"
+    echo ""
+    echo "  Inherited from svn-utils:"
+    echo "    SVN_PASSWORD                  SVN password, this should be set automatically"
+    echo "    SVN_USERNAME                  SVN username, this should be set automatically"
 }
 
 # Main function
@@ -271,10 +235,6 @@ main() {
             ;;
         -r | --remove)
             is_remove=true
-            shift
-            ;;
-        -v | --verbose)
-            LOG_LEVEL=2
             shift
             ;;
         *)
@@ -309,7 +269,7 @@ main() {
         fi
 
         # Remove shadow branch
-        remove_shadow_branch "$shadow_branch_url"
+        svn_remove_branch "$shadow_branch_url"
         return $?
     else
         sync_to_shadow_branch "$is_force" "$@"

@@ -1,11 +1,17 @@
 #!/bin/bash
 
+# Get configuration from environment variables, use defaults as fallback
+JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"117b0fdde578a988ec1be741dd777c1a1c"}
+JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.174:8080"}
+JENKINS_TIMEOUT=${JENKINS_TIMEOUT:-600}
+JENKINS_USERNAME=${JENKINS_USERNAME:-"h25380"}
+
 # shellcheck source=/dev/null
 source "log-utils"
 
 # Get Jenkins Crumb to prevent CSRF protection
 jenkins_get_crumb() {
-    curl -s --fail --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/crumbIssuer/api/json" | jq -r '.crumb'
+    curl -s --fail --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/crumbIssuer/api/json" | jq -r '.crumb'
 }
 
 # Get build number, with timeout control
@@ -19,15 +25,15 @@ jenkins_get_build_number() {
     log_debug "Build command: ${build_cmd}"
 
     # Wait for the queued task to start running
-    while [ $(($(date +%s) - start_time)) -lt "$TIMEOUT" ]; do
+    while [ $(($(date +%s) - start_time)) -lt "$JENKINS_TIMEOUT" ]; do
         # Check tasks in the queue
         local queue_info
-        queue_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/queue/api/json")
+        queue_info=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/queue/api/json")
 
         # Use simplified jq query to check if there's a matching task
         if echo "$queue_info" | jq -e '.items[] | select(.task.name == "'"$task_name"'") | 
-      (.actions[] | select(.parameters != null) | .parameters[] | select(.value == "'"$build_cmd"'")) and 
-      (.actions[] | select(.causes != null) | .causes[] | select(.userId == "'"$JENKINS_USERNAME"'"))' >/dev/null; then
+        (.actions[] | select(.parameters != null) | .parameters[] | select(.value == "'"$build_cmd"'")) and 
+        (.actions[] | select(.causes != null) | .causes[] | select(.userId == "'"$JENKINS_USERNAME"'"))' >/dev/null; then
             log_info "Matching task found in queue, waiting..."
             sleep 3
             continue
@@ -38,15 +44,15 @@ jenkins_get_build_number() {
     done
 
     # Timeout check
-    if [ $(($(date +%s) - start_time)) -ge "$TIMEOUT" ]; then
-        log_error "Timeout waiting for build to start after ${TIMEOUT} seconds"
+    if [ $(($(date +%s) - start_time)) -ge "$JENKINS_TIMEOUT" ]; then
+        log_error "Timeout waiting for build to start after ${JENKINS_TIMEOUT} seconds"
         echo "-1"
         return 1
     fi
 
     # Get the latest build number
     local next_build_number
-    next_build_number=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/api/json" | jq '.nextBuildNumber - 1')
+    next_build_number=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/api/json" | jq '.nextBuildNumber - 1')
     log_info "Latest build number for ${task_name}: ${next_build_number}"
 
     # Find matching build
@@ -55,7 +61,7 @@ jenkins_get_build_number() {
     while [ "$next_build_number" -gt 0 ] && [ $i -lt 10 ]; do
         log_debug "Checking build #${next_build_number}"
         local job_info
-        job_info=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${next_build_number}/api/json")
+        job_info=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/${next_build_number}/api/json")
 
         # Handle two possible parameter orders
         if echo "$job_info" | jq -e '(.actions[0].parameters[0].value == "'"$build_cmd"'" and .actions[1].causes[0].userId == "'"$JENKINS_USERNAME"'") or
@@ -91,7 +97,7 @@ jenkins_monitor_build_progress() {
     timestamp_seconds=$(date -d "$start_time" +%s 2>/dev/null || date +%s)
 
     local build_url
-    build_url=$(curl -s --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json" | jq -r '.url')
+    build_url=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json" | jq -r '.url')
 
     log_info "Build #${build_number} started at ${start_time}"
     log_info "Build console URL: ${build_url}console"
@@ -101,16 +107,16 @@ jenkins_monitor_build_progress() {
     local job_status="null"
     log_info_n "Waiting for build to complete "
 
-    while [ "$job_status" = "null" ] && [ "$wait_time" -lt "$TIMEOUT" ]; do
+    while [ "$job_status" = "null" ] && [ "$wait_time" -lt "$JENKINS_TIMEOUT" ]; do
         sleep 3
         wait_time=$((wait_time + 3))
-        job_status=$(curl -s --user "${JENKINS_AUTH}" "${build_url}/api/json" | jq -r '.result')
+        job_status=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${build_url}/api/json" | jq -r '.result')
         log_info_n "."
     done
     log_info "" # Just add a newline
 
-    if [ "$wait_time" -ge "$TIMEOUT" ]; then
-        log_error "Build timed out after ${TIMEOUT} seconds"
+    if [ "$wait_time" -ge "$JENKINS_TIMEOUT" ]; then
+        log_error "Build timed out after ${JENKINS_TIMEOUT} seconds"
         return 2
     fi
 

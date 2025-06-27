@@ -1,17 +1,10 @@
 #!/bin/bash
 
 # Get configuration from environment variables, use defaults as fallback
-TIMEOUT=${TIMEOUT:-600}   # Default wait timeout (seconds)
-LOG_LEVEL=${LOG_LEVEL:-1} # 0=error, 1=info, 2=debug
-JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.174:8080"}
-JENKINS_USERNAME=${JENKINS_USERNAME:-"h25380"}
-JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"117b0fdde578a988ec1be741dd777c1a1c"}
 PROJECT_OPEN_FOLDER_LIST=${PROJECT_OPEN_FOLDER_LIST:-""} # This should be set automatically
 PROJECT_OPEN_PATH=${PROJECT_OPEN_PATH:-""}               # This should be set automatically
 PROJECT_PUBLIC_PATH=${PROJECT_PUBLIC_PATH:-""}           # This should be set automatically
 SVN_USERNAME=${SVN_USERNAME:-$(whoami)}                  # This should be set automatically
-
-JENKINS_AUTH="${JENKINS_USERNAME}:${JENKINS_API_TOKEN}"
 
 # shellcheck source=/dev/null
 source "log-utils"
@@ -161,6 +154,14 @@ build_job_compile() {
     local lib_path="$3"
     local version_type="$4"
 
+    # Get Jenkins crumb
+    local jenkins_crumb
+    jenkins_crumb=$(jenkins_get_crumb)
+    if [ -z "$jenkins_crumb" ]; then
+        handle_error "Failed to get Jenkins crumb"
+        return 1
+    fi
+
     # Creating shadow branch
     log_info "Creating shadow branch for project open folder: ${PROJECT_OPEN_PATH}"
     local shadow_branch_url
@@ -188,7 +189,7 @@ build_job_compile() {
     local module_list
     module_list=$(echo "$PROJECT_OPEN_FOLDER_LIST" | tr -d '[]"')
 
-    # Build command
+    # Construct build command
     local build_cmd="-e ${ipe_package_name} -s ${svn_path}"
     [ -n "$module_list" ] && build_cmd="${build_cmd}:${module_list}"
     [ -n "$folder_list" ] && build_cmd="${build_cmd} -f ${folder_list}"
@@ -198,16 +199,8 @@ build_job_compile() {
     log_info "Starting ${task_name}:\n- Packages: ${ipe_package_name}\n- Repo: ${svn_path}\n- Modules: ${module_list}\n- Type: ${version_type}\n- Lib path: ${lib_path}\n- User: ${SVN_USERNAME}"
     log_debug "Build command: ${build_cmd}"
 
-    # Get CSRF token
-    local crumb
-    crumb=$(jenkins_get_crumb)
-    if [ -z "$crumb" ]; then
-        handle_error "Failed to get Jenkins crumb"
-        return 1
-    fi
-
     # Trigger Jenkins build
-    if ! curl -s -X POST --user "${JENKINS_AUTH}" -H "Jenkins-Crumb: ${crumb}" \
+    if ! curl -s -X POST --user "${JENKINS_AUTH}" -H "Jenkins-Crumb: ${jenkins_crumb}" \
         "${JENKINS_SERVER_URL}/job/${task_name}/buildWithParameters" \
         --data-urlencode "BUILD_CMD_PARAM=${build_cmd}" \
         --data-urlencode "FAKE_USER=${SVN_USERNAME}" >/dev/null; then
@@ -236,31 +229,34 @@ build_job_compile() {
 # Display help information
 show_help() {
     echo "Usage: abuild [options] <-e> <ipe_package_name>"
-    echo
+    echo ""
     echo "Options:"
-    echo "  -e, --ipe-package <name>    Specify the IPE package name, e.g., 64sim9cen (required)"
-    echo "  -f, --folder <folder_list>  Specify to only build the folder list, e.g., ospf,nqa"
-    echo "  -h, --help                  Display this help information"
-    echo "  -i, --input-lib <lib_path>  Specify the library path to use, e.g., /path/to/lib"
-    echo "  -r, --release               Build in release mode (default is debug)"
-    echo "  -t, --timeout               Set wait timeout in seconds"
-    echo "  -v, --verbose               Enable verbose logging"
-    echo
+    echo "  -e, --ipe-package <name>        Specify the IPE package name, e.g., 64sim9cen (required)"
+    echo "  -f, --folder <folder_list>      Specify to only build the folder list, e.g., ospf,nqa"
+    echo "  -h, --help                      Display this help information"
+    echo "  -i, --input-lib <lib_path>      Specify the library path to use, e.g., /path/to/lib"
+    echo "  -r, --release                   Build in release mode (default is debug)"
+    echo ""
     echo "Examples:"
     echo "  abuild -e 64sim9cen"
     echo "  abuild -e 64sim9cen,64sim9dis -r"
     echo "  abuild -e 64sim9cen,64sim9dis -i /path/to/lib"
-    echo
+    echo ""
     echo "Configurable Environment Variables:"
-    echo "  LOG_LEVEL                   Log level, 0=error, 1=info, 2=debug, default is 1"
-    echo "  JENKINS_SERVER_URL          Jenkins server URL, default is http://10.153.3.174:8080"
-    echo "  JENKINS_USERNAME            Jenkins API username, default is h25380"
-    echo "  JENKINS_API_TOKEN           Jenkins API token, default is 117b0fdde578a988ec1be741dd777c1a1c"
-    echo "  PROJECT_OPEN_FOLDER_LIST    Project open folder list (JSON array), this should be set automatically"
-    echo "  PROJECT_OPEN_PATH           Project open folder path, this should be set automatically"
-    echo "  PROJECT_PUBLIC_PATH         Project public folder path, this should be set automatically"
-    echo "  SVN_USERNAME                SVN username to start ABuild, this should be set automatically"
-    echo "  TIMEOUT                     Default waiting timeout in seconds, default is 300"
+    echo "  Current script:"
+    echo "    PROJECT_OPEN_FOLDER_LIST      Project open folder list (JSON array), this should be set automatically"
+    echo "    PROJECT_OPEN_PATH             Project open folder path, this should be set automatically"
+    echo "    PROJECT_PUBLIC_PATH           Project public folder path, this should be set automatically"
+    echo "    SVN_USERNAME                  SVN username to start ABuild, this should be set automatically"
+    echo ""
+    echo "  Inherited from jenkins-utils:"
+    echo "    JENKINS_API_TOKEN             Jenkins API token, default is 117b0fdde578a988ec1be741dd777c1a1c"
+    echo "    JENKINS_SERVER_URL            Jenkins server URL, default is http://10.153.3.174:8080"
+    echo "    JENKINS_TIMEOUT               Jenkins waiting timeout in seconds, default is 600"
+    echo "    JENKINS_USERNAME              Jenkins API username, default is h25380"
+    echo ""
+    echo "  Inherited from log-utils:"
+    echo "    LOG_LEVEL                     Log level, 0=error, 1=info, 2=debug, default is 1"
 }
 
 # Main function
@@ -304,14 +300,6 @@ main() {
             ;;
         -r | --release)
             version_type="release"
-            shift
-            ;;
-        -t | --timeout)
-            TIMEOUT=$2
-            shift 2
-            ;;
-        -v | --verbose)
-            LOG_LEVEL=2
             shift
             ;;
         *)
