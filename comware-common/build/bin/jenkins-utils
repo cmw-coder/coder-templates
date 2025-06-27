@@ -14,14 +14,14 @@ jenkins_get_crumb() {
     curl -s --fail --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/crumbIssuer/api/json" | jq -r '.crumb'
 }
 
-# Get build number, with timeout control
-jenkins_get_build_number() {
+# Get job number, with timeout control
+jenkins_get_job_number() {
     local task_name=$1
     local build_cmd=$2
     local start_time
     start_time=$(date +%s)
 
-    log_info "Looking for build number for task: ${task_name}"
+    log_info "Looking for job number for task: ${task_name}"
     log_debug "Build command: ${build_cmd}"
 
     # Wait for the queued task to start running
@@ -45,28 +45,28 @@ jenkins_get_build_number() {
 
     # Timeout check
     if [ $(($(date +%s) - start_time)) -ge "$JENKINS_TIMEOUT" ]; then
-        log_error "Timeout waiting for build to start after ${JENKINS_TIMEOUT} seconds"
+        log_error "Timeout waiting for job to start after ${JENKINS_TIMEOUT} seconds"
         echo "-1"
         return 1
     fi
 
-    # Get the latest build number
+    # Get the latest job number
     local next_build_number
     next_build_number=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/api/json" | jq '.nextBuildNumber - 1')
-    log_info "Latest build number for ${task_name}: ${next_build_number}"
+    log_info "Latest job number for ${task_name}: ${next_build_number}"
 
-    # Find matching build
+    # Find matching job
     local i=0
     log_debug "Checking recent builds for matching command and user..."
     while [ "$next_build_number" -gt 0 ] && [ $i -lt 10 ]; do
-        log_debug "Checking build #${next_build_number}"
+        log_debug "Checking job #${next_build_number}"
         local job_info
         job_info=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/${next_build_number}/api/json")
 
         # Handle two possible parameter orders
         if echo "$job_info" | jq -e '(.actions[0].parameters[0].value == "'"$build_cmd"'" and .actions[1].causes[0].userId == "'"$JENKINS_USERNAME"'") or
         (.actions[1].parameters[0].value == "'"$build_cmd"'" and .actions[0].causes[0].userId == "'"$JENKINS_USERNAME"'")' >/dev/null; then
-            log_info "Found matching build: #${next_build_number}"
+            log_info "Found matching job: #${next_build_number}"
             echo "$next_build_number"
             return 0
         fi
@@ -75,18 +75,18 @@ jenkins_get_build_number() {
         i=$((i + 1))
     done
 
-    log_error "Failed to find matching build after checking ${i} builds"
+    log_error "Failed to find matching job after checking ${i} builds"
     echo "-1"
     return 1
 }
 
-# Monitor build results
-jenkins_monitor_build_progress() {
+# Monitor job results
+jenkins_monitor_job_progress() {
     local task_name="$1"
     local build_number="$2"
 
     if [ "$build_number" = "-1" ]; then
-        log_error "Build canceled or not found"
+        log_error "Job canceled or not found"
         return 1
     fi
 
@@ -99,13 +99,13 @@ jenkins_monitor_build_progress() {
     local build_url
     build_url=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json" | jq -r '.url')
 
-    log_info "Build #${build_number} started at ${start_time}"
-    log_info "Build console URL: ${build_url}console"
+    log_info "Task #${build_number} started at ${start_time}"
+    log_info "Task console URL: ${build_url}console"
 
-    # Wait for build completion, with timeout check
+    # Wait for job completion, with timeout check
     local wait_time=0
     local job_status="null"
-    log_info_n "Waiting for build to complete "
+    log_info_n "Waiting for job to complete "
 
     while [ "$job_status" = "null" ] && [ "$wait_time" -lt "$JENKINS_TIMEOUT" ]; do
         sleep 3
@@ -116,7 +116,7 @@ jenkins_monitor_build_progress() {
     log_info "" # Just add a newline
 
     if [ "$wait_time" -ge "$JENKINS_TIMEOUT" ]; then
-        log_error "Build timed out after ${JENKINS_TIMEOUT} seconds"
+        log_error "Job timed out after ${JENKINS_TIMEOUT} seconds"
         return 2
     fi
 
@@ -128,8 +128,8 @@ jenkins_monitor_build_progress() {
 
     local duration=$((end_seconds - timestamp_seconds))
 
-    log_info "Build completed at: ${end_time} (${duration}s)"
-    log_info "Build result: ${job_status}"
+    log_info "Job completed at: ${end_time} (${duration}s)"
+    log_info "Job result: ${job_status}"
 
     return 0
 }

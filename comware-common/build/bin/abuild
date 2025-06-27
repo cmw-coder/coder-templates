@@ -210,14 +210,14 @@ build_job_compile() {
 
     # Get build number
     local abuild_number
-    abuild_number=$(jenkins_get_build_number "$task_name" "$build_cmd")
+    abuild_number=$(jenkins_get_job_number "$task_name" "$build_cmd")
     if [ -z "$abuild_number" ] || [ "$abuild_number" = "-1" ]; then
         handle_error "Build was cancelled or failed to get build number"
         return 1
     fi
 
     # Monitor build results
-    if ! jenkins_monitor_build_progress "$task_name" "$abuild_number"; then
+    if ! jenkins_monitor_job_progress "$task_name" "$abuild_number"; then
         handle_error "Build monitoring failed"
         return $?
     fi
