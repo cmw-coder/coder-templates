@@ -65,7 +65,7 @@ get_build_result() {
 
     # Get build info and console output
     local build_info
-    if ! build_info=$(curl -s --fail --user "${JENKINS_AUTH}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json"); then
+    if ! build_info=$(curl -s --fail --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json"); then
         log_error "Failed to get build info for job ${task_name} #${build_number}"
         echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
         return 1
@@ -87,7 +87,7 @@ get_build_result() {
 
     # Get console output
     local console_output
-    console_output=$(curl -s --fail --user "${JENKINS_AUTH}" "${build_url}consoleText")
+    console_output=$(curl -s --fail --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${build_url}consoleText")
 
     # Initialize result variables
     local ret=0
@@ -200,7 +200,7 @@ build_job_compile() {
     log_debug "Build command: ${build_cmd}"
 
     # Trigger Jenkins build
-    if ! curl -s -X POST --user "${JENKINS_AUTH}" -H "Jenkins-Crumb: ${jenkins_crumb}" \
+    if ! curl -s -X POST --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" -H "Jenkins-Crumb: ${jenkins_crumb}" \
         "${JENKINS_SERVER_URL}/job/${task_name}/buildWithParameters" \
         --data-urlencode "BUILD_CMD_PARAM=${build_cmd}" \
         --data-urlencode "FAKE_USER=${SVN_USERNAME}" >/dev/null; then
