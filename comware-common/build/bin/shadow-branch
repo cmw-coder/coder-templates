@@ -66,7 +66,7 @@ apply_changes_to_shadow_branch() {
     local current_branch_status="$2"
     local shadow_branch_url="$3"
 
-    # Extract added/deleted/unknown files
+    # Extract added/deleted/modified files
     local added_files
     local deleted_files
     local modified_files

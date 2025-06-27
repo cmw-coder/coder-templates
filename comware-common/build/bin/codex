@@ -6,10 +6,9 @@ LOG_LEVEL=${LOG_LEVEL:-1} # 0=error, 1=info, 2=debug
 JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.174:8080"}
 JENKINS_USERNAME=${JENKINS_USERNAME:-"h25380"}
 JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"117b0fdde578a988ec1be741dd777c1a1c"}
-PROJECT_OPEN_FOLDER_LIST=${PROJECT_OPEN_FOLDER_LIST:-""} # This should be set automatically
-PROJECT_OPEN_PATH=${PROJECT_OPEN_PATH:-""}               # This should be set automatically
-PROJECT_PUBLIC_PATH=${PROJECT_PUBLIC_PATH:-""}           # This should be set automatically
-SVN_USERNAME=${SVN_USERNAME:-$(whoami)}                  # This should be set automatically
+PROJECT_OPEN_PATH=${PROJECT_OPEN_PATH:-""}     # This should be set automatically
+PROJECT_PUBLIC_PATH=${PROJECT_PUBLIC_PATH:-""} # This should be set automatically
+SVN_USERNAME=${SVN_USERNAME:-$(whoami)}        # This should be set automatically
 
 JENKINS_AUTH="${JENKINS_USERNAME}:${JENKINS_API_TOKEN}"
 
@@ -17,6 +16,27 @@ JENKINS_AUTH="${JENKINS_USERNAME}:${JENKINS_API_TOKEN}"
 source "log-utils"
 # shellcheck source=/dev/null
 source "jenkins-utils"
+
+svn_s() {
+    local cmd=$1
+    shift
+
+    # For some commands, we need the output and they don't support -q
+    if [ "$cmd" = "cat" ] || [ "$cmd" = "diff" ] || [ "$cmd" = "info" ] || [ "$cmd" = "update" ]; then
+        if [ -n "$SVN_USERNAME" ] && [ -n "$SVN_PASSWORD" ]; then
+            svn "$cmd" "$@" --non-interactive --password "$SVN_PASSWORD" --username "$SVN_USERNAME"
+        else
+            svn "$cmd" "$@" --non-interactive
+        fi
+    else
+        # For other commands, use quiet mode
+        if [ -n "$SVN_USERNAME" ] && [ -n "$SVN_PASSWORD" ]; then
+            svn "$cmd" "$@" -q --non-interactive --password "$SVN_PASSWORD" --username "$SVN_USERNAME"
+        else
+            svn "$cmd" "$@" -q --non-interactive
+        fi
+    fi
+}
 
 # Error handling function
 handle_error() {
@@ -109,9 +129,24 @@ build_job_codex() {
         task_name="CodeXV2"
     fi
 
-    # Convert folder list from JSON array to a comma-separated string
+    # Collect minor modules from changed files
+    local -A module_set
+    for file_path in $(svn_s status "$PROJECT_OPEN_PATH" | grep -E "^[ADM]|^MM" | awk '{print $2}'); do
+        log_info "Changed file: $file_path"
+        local minor_module=${file_path#*/src/sbin/}
+        minor_module=${minor_module%%/*}
+        if [[ -z "$minor_module" ]]; then
+            minor_module=${file_path#*/src/kernel/}
+            minor_module=${minor_module%%/*}
+        fi
+        if [[ -z "$minor_module" ]] && [[ -z "${module_set[$minor_module]}" ]]; then
+            module_set[$minor_module]=1
+        fi
+    done
+
+    # Convert associative array to a comma-separated list
     local module_list
-    module_list=$(echo "$PROJECT_OPEN_FOLDER_LIST" | tr -d '[]"')
+    module_list=$(IFS=,; echo "${!module_set[*]}")
 
     # Build command
     local build_cmd="-s ${svn_path}"
@@ -174,7 +209,6 @@ show_help() {
     echo "  JENKINS_SERVER_URL          Jenkins server URL, default is http://10.153.3.174:8080"
     echo "  JENKINS_USERNAME            Jenkins API username, default is h25380"
     echo "  JENKINS_API_TOKEN           Jenkins API token, default is 117b0fdde578a988ec1be741dd777c1a1c"
-    echo "  PROJECT_OPEN_FOLDER_LIST    Project open folder list (JSON array), this should be set automatically"
     echo "  PROJECT_OPEN_PATH           Project open folder path, this should be set automatically"
     echo "  PROJECT_PUBLIC_PATH         Project public folder path, this should be set automatically"
     echo "  SVN_USERNAME                SVN username to start ABuild, this should be set automatically"
