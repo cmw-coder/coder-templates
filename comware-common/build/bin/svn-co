@@ -119,9 +119,6 @@ function update_with_progress() {
 
     # SVN命令进度循环 - 使用--parents选项自动创建父目录
     while read -r line; do
-        # 调试：输出 SVN 命令的所有行（可选，调试时启用）
-        # echo "DEBUG: SVN output line: $line" >&2
-        
         # 解析原始文件名
         raw_filename=$(echo "$line" | sed -E 's/^[A-Z] +//')
 
@@ -257,9 +254,6 @@ if [ -n "$PARAM_FOLDER_LIST" ]; then
         folder_path="$PARAM_LOCAL_DIR/$folder"
         
         checkouted_count=$((checkouted_count + $(update_with_progress "$folder_path" "${folder_count_map[$folder]}" "  " | tail -n 1)))
-        echo -e "  ${COLOR_GREEN}DEBUG: After checking out '$folder', directory contents:${COLOR_RESET}" >&2
-        ls -la "$PARAM_LOCAL_DIR" >&2 || echo "  Directory listing failed" >&2
-        echo "" >&2
     done
 else
     checkouted_count=$((checkouted_count + $(update_with_progress "$PARAM_LOCAL_DIR" "$total_entry_count" | tail -n 1)))
