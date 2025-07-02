@@ -23,7 +23,7 @@ fi
 # 入参处理
 PARAM_BASE_SVN_URL="$1"
 # shellcheck disable=SC2001
-PARAM_FOLDER_LIST=$(echo "${2//[\[\]]/}" | sed 's/,/ /g')
+PARAM_FOLDER_LIST=$(echo "${2//[\[\]]/}" | sed 's/"//g' | sed 's/,/ /g')
 PARAM_LOCAL_DIR="$3"
 
 function svn_with_auth() {
@@ -117,53 +117,11 @@ function update_with_progress() {
     update_interval=$((entry_count / 800))
     update_interval=$((update_interval > 5 ? update_interval : 5))
 
-    # 处理多级路径，先将所有路径的反斜杠转为正斜杠
-    local normalized_path="${update_path//\\//}"
-    local normalized_local_dir="${PARAM_LOCAL_DIR//\\//}"
-    
-    # 如果路径是以PARAM_LOCAL_DIR开头的，提取相对路径部分
-    if [[ "$normalized_path" == "$normalized_local_dir"* ]]; then
-        local relative_path="${normalized_path#$normalized_local_dir}"
-        # 移除可能存在的开头斜杠
-        relative_path="${relative_path#/}"
-        
-        # 如果相对路径包含斜杠，表示有多级目录需要处理
-        if [[ "$relative_path" == */* ]]; then
-            # 分割相对路径为数组
-            local path_parts
-            IFS='/' read -ra path_parts <<< "$relative_path"
-            
-            # 逐级创建目录结构
-            local current_path="$PARAM_LOCAL_DIR"
-            for ((i=0; i<${#path_parts[@]}-1; i++)); do
-                current_path="${current_path}/${path_parts[i]}"
-                echo -e "${indentation}${COLOR_CYAN}- Creating directory: ${path_parts[i]}${COLOR_RESET}" >&2
-                svn_with_auth up --set-depth empty "$current_path" >/dev/null 2>&1
-            done
-        fi
-    else
-        # 如果不是以PARAM_LOCAL_DIR开头，按原来的方式处理
-        if [[ "$normalized_path" == */* ]]; then
-            # 分割路径为数组
-            local path_parts
-            IFS='/' read -ra path_parts <<< "$normalized_path"
-            
-            # 逐级创建目录结构
-            local current_path=""
-            for ((i=0; i<${#path_parts[@]}-1; i++)); do
-                if [ -z "$current_path" ]; then
-                    current_path="${path_parts[i]}"
-                else
-                    current_path="${current_path}/${path_parts[i]}"
-                fi
-                echo -e "${indentation}${COLOR_CYAN}- Creating directory: $current_path${COLOR_RESET}" >&2
-                svn_with_auth up --set-depth empty "$current_path" >/dev/null 2>&1
-            done
-        fi
-    fi
-    
-    # 命令进度循环
+    # SVN命令进度循环 - 使用--parents选项自动创建父目录
     while read -r line; do
+        # 调试：输出 SVN 命令的所有行（可选，调试时启用）
+        # echo "DEBUG: SVN output line: $line" >&2
+        
         # 解析原始文件名
         raw_filename=$(echo "$line" | sed -E 's/^[A-Z] +//')
 
@@ -177,8 +135,8 @@ function update_with_progress() {
             s/^(.{${filename_max_length}}).+/\1.../;
         ")
 
-        # 进度计算
-        if echo "$line" | grep -q "A    "; then
+        # 进度计算 - 统计所有有效的SVN操作
+        if echo "$line" | grep -qE "^[ADUCG] +"; then
             ((index++))
         fi
         percentage=$(awk "BEGIN {printf \"%.2f\", $index*100/$entry_count}")
@@ -210,10 +168,9 @@ function update_with_progress() {
                 "$display_filename" \
                 "$COLOR_RESET"
         fi
-    done < <(svn_with_auth up --set-depth infinity "$update_path" 2>&1)
+    done < <(svn_with_auth up --set-depth infinity --parents "$update_path" 2>&1)
 
     # 处理最后一次输出
-    index=$((index > 0 ? index - 1 : 0))
     percentage=$(awk "BEGIN {printf \"%.2f\", $index*100/$entry_count}")
     if [ -n "$CODER" ]; then
         current_time=$(date +%s)
@@ -277,13 +234,32 @@ echo -e "${COLOR_GREEN}- ✔️ Found total $total_entry_count entries${COLOR_RE
 # 开始检出
 checkouted_count=0
 echo -e "${COLOR_CYAN}- ⏳ Checking out repo '$PARAM_BASE_SVN_URL'${COLOR_RESET}"
-svn_with_auth co --depth empty "$PARAM_BASE_SVN_URL" "$PARAM_LOCAL_DIR" >/dev/null 2>&1
+
+# 检查目标目录是否已经是一个SVN工作副本
+if [ -d "$PARAM_LOCAL_DIR/.svn" ]; then
+    echo -e "  ${COLOR_CYAN}- 🔄 Using existing SVN working copy${COLOR_RESET}"
+else
+    # 如果目标目录已存在但不是SVN工作副本，先清理
+    if [ -d "$PARAM_LOCAL_DIR" ]; then
+        echo -e "  ${COLOR_CYAN}- 🧹 Cleaning existing directory${COLOR_RESET}"
+        rm -rf "$PARAM_LOCAL_DIR"
+    fi
+    svn_with_auth co --depth empty "$PARAM_BASE_SVN_URL" "$PARAM_LOCAL_DIR" >/dev/null 2>&1
+fi
 
 if [ -n "$PARAM_FOLDER_LIST" ]; then
-    # 处理文件夹列表
+    # 处理文件夹列表 - 使用最直接的SVN检出方法
     for folder in $PARAM_FOLDER_LIST; do
         echo -e "  ${COLOR_CYAN}- 📂 Checking out folder '$folder'${COLOR_RESET}"
-        checkouted_count=$((checkouted_count + $(update_with_progress "$PARAM_LOCAL_DIR/$folder" "${folder_count_map[$folder]}" "  " | tail -n 1)))
+        
+        # 直接从远程仓库检出特定文件夹到本地工作副本
+        # 使用 svn update 而不是 checkout，这样可以在现有工作副本中添加新内容
+        folder_path="$PARAM_LOCAL_DIR/$folder"
+        
+        checkouted_count=$((checkouted_count + $(update_with_progress "$folder_path" "${folder_count_map[$folder]}" "  " | tail -n 1)))
+        echo -e "  ${COLOR_GREEN}DEBUG: After checking out '$folder', directory contents:${COLOR_RESET}" >&2
+        ls -la "$PARAM_LOCAL_DIR" >&2 || echo "  Directory listing failed" >&2
+        echo "" >&2
     done
 else
     checkouted_count=$((checkouted_count + $(update_with_progress "$PARAM_LOCAL_DIR" "$total_entry_count" | tail -n 1)))

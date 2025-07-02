@@ -101,7 +101,6 @@ locals {
   code_server_dir = "/tmp/code-server"
   coder_docs_url = "https://coder-docs.cmwcoder.h3c.com"
   coder_tutorials_url = "https://tutorials.coder.h3c.com"
-  docker_image = "127.0.0.1:5000/comware-common:1"
   marketplace_url = "https://code-marketplace.cmwcoder.h3c.com"
   project_path = "/home/${data.coder_workspace_owner.me.name}/project"
   username = data.coder_workspace_owner.me.name
@@ -287,7 +286,7 @@ resource "coder_script" "start_code_server" {
     #!/bin/bash
     echo -e "\033[36m- 📦 Installing code-server\033[0m"
     mkdir -p ${local.code_server_dir}
-    curl -fsSL "${local.assets_url}/code-server-4.99.1-linux-amd64.tar.gz" | tar -C "${local.code_server_dir}" -xz --strip-components 1
+    curl -fsSL "${local.assets_url}/code-server-4.101.2-linux-amd64.tar.gz" | tar -C "${local.code_server_dir}" -xz --strip-components 1
 
     echo -e "\033[36m- ⏳ Installing extensions\033[0m"
     ${local.code_server_dir}/bin/code-server --install-extension "alefragnani.bookmarks" --force
