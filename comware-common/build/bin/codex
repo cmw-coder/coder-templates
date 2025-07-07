@@ -93,12 +93,19 @@ get_changed_modules() {
 
     # Convert associative array to a comma-separated list
     local module_list
-    module_list=$(IFS=,; echo "${!module_set[*]}")
+    module_list=$(
+        IFS=,
+        echo "${!module_set[*]}"
+    )
     echo "$module_list"
 }
 
 # Execute build job
 build_job_codex() {
+    local module_list="$1"
+    local svn_path="$2"
+    local extra_params="$3"
+
     # Get Jenkins crumb
     local jenkins_crumb
     jenkins_crumb=$(jenkins_get_crumb)
@@ -106,21 +113,6 @@ build_job_codex() {
         handle_error "Failed to get Jenkins crumb"
         return 1
     fi
-
-    # Creating shadow branch
-    log_info "Creating shadow branch for project open folder: ${PROJECT_OPEN_PATH}"
-    local shadow_branch_url
-    shadow_branch_url=$(shadow-branch -f "$PROJECT_OPEN_PATH")
-    # Detect if shadow branch url contains cmwcode-open and extract the subsequent characters
-    if [[ "$shadow_branch_url" != *"cmwcode-open"* ]]; then
-        handle_error "Invalid shadow branch url, this may be caused by an incorrect PROJECT_OPEN_PATH."
-        return 1
-    fi
-    log_info "Creating shadow branch for project public folder: ${PROJECT_PUBLIC_PATH}"
-    shadow-branch -f "$PROJECT_PUBLIC_PATH"
-
-    local svn_path=${shadow_branch_url#*cmwcode-open}
-    log_debug "Found cmwcode-open in SVN path, extracted path: $svn_path"
 
     # Determine task name
     local task_name
@@ -130,17 +122,10 @@ build_job_codex() {
         task_name="CodeXV2"
     fi
 
-    # Get changed modules
-    local module_list
-    module_list=$(get_changed_modules)
-    if [ -z "$module_list" ]; then
-        handle_error "No changed modules found, cannot proceed."
-        return 1
-    fi
-
     # Construct build command
     local build_cmd="-s ${svn_path}"
     [ -n "$module_list" ] && build_cmd="${build_cmd} -f ${module_list}"
+    [ -n "$extra_params" ] && build_cmd="${build_cmd} ${extra_params}"
     log_info "Starting ${task_name}:\n- Repo: ${svn_path}\n- Modules: ${module_list}\n- User: ${SVN_USERNAME}"
     log_debug "Build command: ${build_cmd}"
 
@@ -177,6 +162,11 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  -h, --help              Display this help information"
+    echo "  -f, --folders <list>    Override auto detected submodule folders,"
+    echo "                          Comma-separated list of submodule folders to build, e.g. 'module1,module2'"
+    echo "  -s, --svn-path <path>   Override auto detected SVN path,"
+    echo "                          e.g. 'cmwcode-open/branches/branch_name'"
+    echo "  [extra_params]          Additional parameters to forward to the codex job"
     echo ""
     echo "Configurable Environment Variables:"
     echo "  Current script:"
@@ -199,16 +189,29 @@ show_help() {
 
 # Main function
 main() {
+    local module_list
+    local svn_path
+    local extra_params
+
     while [ $# -gt 0 ]; do
         case $1 in
+        -f | --folders)
+            module_list="$2"
+            shift
+            shift
+            ;;
         -h | --help)
             show_help
             exit 0
             ;;
+        -s | --svn-path)
+            svn_path="$2"
+            shift
+            shift
+            ;;
         *)
-            log_error "Unknown option: $1"
-            show_help
-            exit 1
+            extra_params="$extra_params $1"
+            shift
             ;;
         esac
     done
@@ -218,7 +221,33 @@ main() {
         exit 1
     fi
 
-    build_job_codex
+    if [ -z "$module_list" ]; then
+        # Get changed modules
+        module_list=$(get_changed_modules)
+        if [ -z "$module_list" ]; then
+            handle_error "No changed modules found, cannot proceed."
+            return 1
+        fi
+    fi
+
+    if [ -z "$svn_path" ]; then
+        # Creating shadow branch
+        log_info "Creating shadow branch for project open folder: ${PROJECT_OPEN_PATH}"
+        local shadow_branch_url
+        shadow_branch_url=$(shadow-branch -f "$PROJECT_OPEN_PATH")
+        # Detect if shadow branch url contains cmwcode-open and extract the subsequent characters
+        if [[ "$shadow_branch_url" != *"cmwcode-open"* ]]; then
+            handle_error "Invalid shadow branch url, this may be caused by an incorrect PROJECT_OPEN_PATH."
+            return 1
+        fi
+        log_info "Creating shadow branch for project public folder: ${PROJECT_PUBLIC_PATH}"
+        shadow-branch -f "$PROJECT_PUBLIC_PATH"
+
+        svn_path=${shadow_branch_url#*cmwcode-open}
+        log_debug "Found cmwcode-open in SVN path, extracted path: $svn_path"
+    fi
+
+    build_job_codex "$module_list" "$svn_path" "$extra_params"
     local build_result=$?
 
     # Delete shadow branch
