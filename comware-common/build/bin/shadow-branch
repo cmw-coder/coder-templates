@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Get configuration from environment variables, use defaults as fallback
+CODER_USERNAME=$(whoami)
 CODER_WORKSPACE=${CODER_WORKSPACE:-""}  # This should be set automatically
 
 # shellcheck source=/dev/null
@@ -134,9 +135,9 @@ get_shadow_branch_url() {
         local latest_version_tag
         current_branch_url="${current_branch_url%%/trunk*}/trunk"
         latest_version_tag=$(svn_s cat "http://10.153.120.104/cmwcode-public/${current_branch_url#*/cmwcode-*/}/PUBLIC/init/all/platver.def" | grep -oP 'V\d+R\d+B\d+D\d+')
-        echo "${current_branch_url%/trunk}/branches_bugfix/COMWARE${latest_version_tag}/trunk_shadow_${SVN_USERNAME}_${CODER_WORKSPACE}"
+        echo "${current_branch_url%/trunk}/branches_bugfix/COMWARE${latest_version_tag}/trunk_shadow_${CODER_USERNAME}_${CODER_WORKSPACE}"
     else
-        echo "${current_branch_url}_shadow_${SVN_USERNAME}_${CODER_WORKSPACE}"
+        echo "${current_branch_url}_shadow_${CODER_USERNAME}_${CODER_WORKSPACE}"
     fi
 }
 

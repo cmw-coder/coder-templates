@@ -14,16 +14,16 @@ svn_s() {
     # For some commands, we need the output and they don't support -q
     if [ "$cmd" = "cat" ] || [ "$cmd" = "diff" ] || [ "$cmd" = "info" ] || [ "$cmd" = "update" ]; then
         if [ -n "$SVN_USERNAME" ] && [ -n "$SVN_PASSWORD" ]; then
-            svn "$cmd" "$@" --non-interactive --password "$SVN_PASSWORD" --username "$SVN_USERNAME"
+            svn "$cmd" "$@" --no-auth-cache --non-interactive --password "$SVN_PASSWORD" --username "$SVN_USERNAME"
         else
-            svn "$cmd" "$@" --non-interactive
+            svn "$cmd" "$@" --no-auth-cache --non-interactive
         fi
     else
         # For other commands, use quiet mode
         if [ -n "$SVN_USERNAME" ] && [ -n "$SVN_PASSWORD" ]; then
-            svn "$cmd" "$@" -q --non-interactive --password "$SVN_PASSWORD" --username "$SVN_USERNAME"
+            svn "$cmd" "$@" --no-auth-cache --non-interactive -q --password "$SVN_PASSWORD" --username "$SVN_USERNAME"
         else
-            svn "$cmd" "$@" -q --non-interactive
+            svn "$cmd" "$@" --no-auth-cache --non-interactive -q
         fi
     fi
 }
