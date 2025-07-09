@@ -21,22 +21,22 @@ provider "docker" {
 provider "coder" {
 }
 
-data "coder_parameter" "project_open_svn" {
-  name          = "project_open_svn"
-  display_name  = "Project cmwcode-open SVN"
-  description   = "Please provide the **cmwcode-open project branch** SVN URL for checkout."
+data "coder_parameter" "project_platform_svn" {
+  name          = "project_platform_svn"
+  display_name  = "Project platform SVN"
+  description   = "Please provide the **platform** SVN URL (till your project branch) for checkout."
   icon          = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
   order         = 0
   type          = "string"
   mutable       = false
   default       = "http://10.153.120.80/cmwcode-open/V9R1/trunk"
 }
-data "coder_parameter" "project_open_folder_list" {
-  name          = "project_open_folder_list"
-  display_name  = "Project `cmwcode-open` folder list"
+data "coder_parameter" "project_platform_folder_list" {
+  name          = "project_platform_folder_list"
+  display_name  = "Project platform folder list"
   description   = <<-EOT
-    Please provide a list of **folder paths** for `Project cmwcode-open SVN` to checkout.\
-    If you want to check out the **entire project**, leave this field **empty**.
+    Please provide a list of **folder paths** for `Project platform SVN` to checkout.\
+    If you want to check out the **entire folder**, leave this field **empty**.
   EOT
   icon          = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
   order         = 1
@@ -46,9 +46,9 @@ data "coder_parameter" "project_open_folder_list" {
 }
 data "coder_parameter" "project_public_svn" {
   name          = "project_public_svn"
-  display_name  = "Project cmwcode-public SVN"
+  display_name  = "Project public SVN"
   description   = <<-EOT
-    Please provide the **cmwcode-public project branch** SVN URL for checkout.\
+    Please provide the **public** SVN URL (till your project branch) for checkout.\
     If you want to **skip** checking out the public folder, leave this field **empty**.
   EOT
   icon          = "${data.coder_workspace.me.access_url}/emojis/1f310.png"
@@ -59,11 +59,11 @@ data "coder_parameter" "project_public_svn" {
 }
 data "coder_parameter" "project_public_folder_list" {
   name          = "project_public_folder_list"
-  display_name  = "Project cmwcode-public folder list"
+  display_name  = "Project public folder list"
   description   = <<-EOT
-    Please provide a list of **folder paths** for `Project cmwcode-public SVN` to checkout.\
-    Including the `PUBLIC/include` folder is recommended for **symbol highlighting**.\
-    If you want to check out the **entire project**, leave this field **empty**.
+    Please provide a list of **folder paths** for `Project public SVN` to checkout.\
+    Including the `PUBLIC/include` folder is highly recommended for **symbol highlighting**.\
+    If you want to check out the **entire folder**, leave this field **empty**.
   EOT
   icon          = "${data.coder_workspace.me.access_url}/emojis/1f310.png"
   order         = 3
@@ -235,20 +235,20 @@ resource "coder_env" "node_extra_ca_certs" {
   name     = "NODE_EXTRA_CA_CERTS"
   value    = "/etc/ssl/certs/ca-certificates.crt"
 }
-resource "coder_env" "project_open_folder_list" {
+resource "coder_env" "project_platform_folder_list" {
   agent_id = coder_agent.main.id
-  name     = "PROJECT_OPEN_FOLDER_LIST"
-  value    = "${data.coder_parameter.project_open_folder_list.value}"
+  name     = "PROJECT_PLATFORM_FOLDER_LIST"
+  value    = "${data.coder_parameter.project_platform_folder_list.value}"
 }
-resource "coder_env" "project_path" {
+resource "coder_env" "project_platform_path" {
   agent_id = coder_agent.main.id
-  name     = "PROJECT_OPEN_PATH"
-  value    = "${local.project_path}/open"
+  name     = "PROJECT_PLATFORM_PATH"
+  value    = "${local.project_path}/platform"
 }
-resource "coder_env" "project_open_svn" {
+resource "coder_env" "project_platform_svn" {
   agent_id = coder_agent.main.id
-  name     = "PROJECT_OPEN_SVN"
-  value    = "${data.coder_parameter.project_open_svn.value}"
+  name     = "PROJECT_PLATFORM_SVN"
+  value    = "${data.coder_parameter.project_platform_svn.value}"
 }
 resource "coder_env" "project_public_folder_list" {
   agent_id = coder_agent.main.id
@@ -328,11 +328,7 @@ resource "coder_script" "checkout_base_svn" {
   start_blocks_login = true
   script = <<EOF
     #!/bin/bash
-    if [ ! -d "${local.project_path}/open" ]; then
-      svn-co "${data.coder_parameter.project_open_svn.value}" \
-        "${data.coder_parameter.project_open_folder_list.value}" \
-        "${local.project_path}/open"
-    fi
+    checkout-list platform
   EOF
 }
 resource "coder_script" "checkout_public_svn" {
@@ -343,11 +339,7 @@ resource "coder_script" "checkout_public_svn" {
   start_blocks_login = true
   script = <<EOF
     #!/bin/bash
-    if [ ! -d "${local.project_path}/public" ] && [ -n "${data.coder_parameter.project_public_svn.value}" ]; then
-      svn-co "${data.coder_parameter.project_public_svn.value}" \
-        "${data.coder_parameter.project_public_folder_list.value}" \
-        "${local.project_path}/public"
-    fi
+    checkout-list public
   EOF
 }
 

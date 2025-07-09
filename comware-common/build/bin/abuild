@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Get configuration from environment variables, use defaults as fallback
-PROJECT_OPEN_FOLDER_LIST=${PROJECT_OPEN_FOLDER_LIST:-""} # This should be set automatically
-PROJECT_OPEN_PATH=${PROJECT_OPEN_PATH:-""}               # This should be set automatically
-PROJECT_PUBLIC_PATH=${PROJECT_PUBLIC_PATH:-""}           # This should be set automatically
-SVN_USERNAME=${SVN_USERNAME:-$(whoami)}                  # This should be set automatically
+PROJECT_PLATFORM_FOLDER_LIST=${PROJECT_PLATFORM_FOLDER_LIST:-""} # This should be set automatically
+PROJECT_PLATFORM_PATH=${PROJECT_PLATFORM_PATH:-""}               # This should be set automatically
+PROJECT_PUBLIC_PATH=${PROJECT_PUBLIC_PATH:-""}                   # This should be set automatically
+SVN_USERNAME=${SVN_USERNAME:-$(whoami)}                          # This should be set automatically
 
 # shellcheck source=/dev/null
 source "log-utils"
@@ -163,12 +163,12 @@ build_job_compile() {
     fi
 
     # Creating shadow branch
-    log_info "Creating shadow branch for project open folder: ${PROJECT_OPEN_PATH}"
+    log_info "Creating shadow branch for project platform folder: ${PROJECT_PLATFORM_PATH}"
     local shadow_branch_url
-    shadow_branch_url=$(shadow-branch -f "$PROJECT_OPEN_PATH")
-    # Detect if shadow branch url contains cmwcode-open and extract the subsequent characters
+    shadow_branch_url=$(shadow-branch -f "$PROJECT_PLATFORM_PATH")
+    # TODO: Support other platforms, currently only cmwcode-open is supported
     if [[ "$shadow_branch_url" != *"cmwcode-open"* ]]; then
-        handle_error "Invalid shadow branch url, this may be caused by an incorrect PROJECT_OPEN_PATH."
+        handle_error "Invalid shadow branch url, this may be caused by an incorrect PROJECT_PLATFORM_PATH."
         return 1
     fi
     log_info "Creating shadow branch for project public folder: ${PROJECT_PUBLIC_PATH}"
@@ -187,7 +187,7 @@ build_job_compile() {
 
     # Convert folder list from JSON array to a comma-separated string
     local module_list
-    module_list=$(echo "$PROJECT_OPEN_FOLDER_LIST" | tr -d '[]"')
+    module_list=$(echo "$PROJECT_PLATFORM_FOLDER_LIST" | tr -d '[]"')
 
     # Construct build command
     local build_cmd="-e ${ipe_package_name} -s ${svn_path}"
@@ -244,10 +244,10 @@ show_help() {
     echo ""
     echo "Configurable Environment Variables:"
     echo "  Current script:"
-    echo "    PROJECT_OPEN_FOLDER_LIST      Project open folder list (JSON array), this should be set automatically"
-    echo "    PROJECT_OPEN_PATH             Project open folder path, this should be set automatically"
-    echo "    PROJECT_PUBLIC_PATH           Project public folder path, this should be set automatically"
-    echo "    SVN_USERNAME                  SVN username to start ABuild, this should be set automatically"
+    echo "    PROJECT_PLATFORM_FOLDER_LIST      Project platform folder list (JSON array), this should be set automatically"
+    echo "    PROJECT_PLATFORM_PATH             Project platform folder path, this should be set automatically"
+    echo "    PROJECT_PUBLIC_PATH               Project public folder path, this should be set automatically"
+    echo "    SVN_USERNAME                      SVN username to start ABuild, this should be set automatically"
     echo ""
     echo "  Inherited from jenkins-utils:"
     echo "    JENKINS_API_TOKEN             Jenkins API token, default is 117b0fdde578a988ec1be741dd777c1a1c"
@@ -316,8 +316,8 @@ main() {
         exit 1
     fi
 
-    if [ -z "$PROJECT_OPEN_PATH" ]; then
-        log_error "PROJECT_OPEN_PATH is not set, please set it before running this script."
+    if [ -z "$PROJECT_PLATFORM_PATH" ]; then
+        log_error "PROJECT_PLATFORM_PATH is not set, please set it before running this script."
         exit 1
     fi
 
@@ -325,7 +325,7 @@ main() {
     local build_result=$?
 
     # Delete shadow branch
-    shadow-branch -r "$PROJECT_OPEN_PATH"
+    shadow-branch -r "$PROJECT_PLATFORM_PATH"
     shadow-branch -r "$PROJECT_PUBLIC_PATH"
 
     return $build_result

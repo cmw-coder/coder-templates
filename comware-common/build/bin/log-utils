@@ -1,7 +1,16 @@
 #!/bin/bash
 
 # Get configuration from environment variables, use defaults as fallback
-LOG_LEVEL=${LOG_LEVEL:-1} # 0=error, 1=info, 2=debug
+LOG_LEVEL=${LOG_LEVEL:-1} # 0=error, 1=warning, 2=info, 3=debug
+
+# Check if running in Coder environment or terminal
+if [ -n "$CODER" ] || [ -t 1 ]; then
+    COLOR_CYAN=$(echo -e "\033[36m")
+    COLOR_GREEN=$(echo -e "\033[32m")
+    COLOR_RED=$(echo -e "\033[31m")
+    COLOR_RESET=$(echo -e "\033[0m")
+    COLOR_YELLOW=$(echo -e "\033[33m")
+fi
 
 # Track if the previous log output used the -n flag
 LOG_PREVIOUS_NONEWLINE=false
@@ -85,7 +94,9 @@ log_message_by_level() {
     [ "$LOG_LEVEL" -ge "$min_level" ] && log_message "$level" ${nonewline:+"-n"} "$@"
 }
 log_error() { log_message_by_level "[Error]" 0 "" "$@"; }
-log_info() { log_message_by_level "[Info]" 1 "" "$@"; }
-log_debug() { log_message_by_level "[Debug]" 2 "" "$@"; }
+log_warn() { log_message_by_level "[Warn]" 1 "" "$@"; }
+log_info() { log_message_by_level "[Info]" 2 "" "$@"; }
+log_debug() { log_message_by_level "[Debug]" 3 "" "$@"; }
+
 log_info_n() { log_message_by_level "[Info]" 1 "nonewline" "$@"; }
 log_debug_n() { log_message_by_level "[Debug]" 2 "nonewline" "$@"; }

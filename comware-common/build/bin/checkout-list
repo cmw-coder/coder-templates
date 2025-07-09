@@ -1,0 +1,228 @@
+#!/bin/bash
+
+# Get configuration from environment variables, use defaults as fallback
+PROJECT_PLATFORM_FOLDER_LIST=${PROJECT_PLATFORM_FOLDER_LIST:-""} # This should be set automatically
+PROJECT_PLATFORM_PATH=${PROJECT_PLATFORM_PATH:-""}               # This should be set automatically
+PROJECT_PLATFORM_SVN=${PROJECT_PLATFORM_SVN:-""}                 # This should be set automatically
+PROJECT_PUBLIC_FOLDER_LIST=${PROJECT_PUBLIC_FOLDER_LIST:-""}     # This should be set automatically
+PROJECT_PUBLIC_PATH=${PROJECT_PUBLIC_PATH:-""}                   # This should be set automatically
+PROJECT_PUBLIC_SVN=${PROJECT_PUBLIC_SVN:-""}                     # This should be set automatically
+
+# shellcheck source=/dev/null
+source "log-utils"
+# shellcheck source=/dev/null
+source "svn-utils"
+
+ensure_target_local_path() {
+    local target_local_path="$1"
+    local base_svn_url="$2"
+
+    # Check if target_local_path is a svn directory
+    if [ -d "$target_local_path/.svn" ]; then
+        log_info "${COLOR_CYAN}Using existing SVN working copy${COLOR_RESET}"
+    else
+        # Clean up existing directory if it exists
+        if [ -d "$target_local_path" ]; then
+            log_info "${COLOR_CYAN}Cleaning existing directory${COLOR_RESET}"
+            rm -rf "$target_local_path"
+        fi
+        # Create empty svn working copy
+        log_info "${COLOR_CYAN}Creating empty SVN working copy at '$target_local_path'${COLOR_RESET}"
+        svn_s checkout --depth empty "$base_svn_url" "$target_local_path"
+    fi
+}
+
+get_elapsed_time() {
+    local elapsed_seconds=$(($(date +%s) - $1))
+
+    local hours=$((elapsed_seconds / 3600))
+    local minutes=$(((elapsed_seconds % 3600) / 60))
+    local seconds=$((elapsed_seconds % 60))
+    printf "%02d:%02d:%02d" $hours $minutes $seconds
+}
+
+get_entry_count_in_svn_url() {
+    local url="$1"
+    local entry_count
+    for retry in {1..3}; do
+        entry_count=$(svn_with_auth list -R "$url" 2>/dev/null | wc -l)
+        [ "$entry_count" -gt 0 ] && break
+        log_warn "${COLOR_YELLOW}Retry $retry/3 getting file count...${COLOR_YELLOW}"
+        sleep 1
+    done
+    echo "$entry_count"
+}
+
+update_with_progress() {
+    local update_path="$1"
+    local entry_count="$2"
+    local indentation="$3"
+
+    local start_seconds
+    start_seconds=$(date +%s)
+
+    local update_interval
+    update_interval=$((entry_count / 800))
+    update_interval=$((update_interval > 5 ? update_interval : 5))
+
+    local index=0
+    local last_update_time=0
+    local percentage
+    while read -r line; do
+        # Count entries based on the first character
+        if echo "$line" | grep -qE "^[ADUCG] +"; then
+            ((index++))
+        fi
+
+        # Calculate percentage
+        percentage=$(awk "BEGIN {printf \"%.2f\", $index*100/$entry_count}")
+
+        # Print progress every update_interval seconds
+        local current_time
+        current_time=$(date +%s)
+        if ((current_time - last_update_time >= update_interval)); then
+            # local elapsed_time
+            # elapsed_time=$(get_elapsed_time "$start_seconds")
+            log_info "${indentation}Progress: ${COLOR_CYAN}${percentage}%${COLOR_RESET} | Time: $(get_elapsed_time "$start_seconds") | Files: ${index}/${entry_count}"
+            last_update_time=$current_time
+        fi
+    done < <(svn_with_auth up --set-depth infinity --parents "$update_path" 2>&1)
+
+    # Print final progress
+    percentage=$(awk "BEGIN {printf \"%.2f\", $index*100/$entry_count}")
+    log_info "${indentation}Progress: ${COLOR_CYAN}${percentage}%${COLOR_RESET} | Time: $(get_elapsed_time "$start_seconds") | Files: ${index}/${entry_count}"
+
+    echo "$index"
+}
+
+# 注册中断处理函数
+interrupt_handler() {
+    echo -e "${COLOR_RED}Checkout interrupted${COLOR_RESET}" >&2
+    exit 1
+}
+
+batch_checkout() {
+    local base_svn_url="$1"
+    local folder_list="$2"
+    local target_local_path="$3"
+
+    local indentation="  "
+
+    # Get entry count
+    total_entry_count=0
+    declare -A folder_count_map
+    log_info "${COLOR_CYAN}Getting entry count in repo '$base_svn_url'${COLOR_RESET}"
+    if [ -n "$folder_list" ]; then
+        for folder in $folder_list; do
+            log_info "${COLOR_CYAN}${indentation}Getting entry count in folder '$folder'${COLOR_RESET}"
+            folder_count_map["$folder"]=$(get_entry_count_in_svn_url "$base_svn_url/$folder")
+            if [ $((folder_count_map["$folder"])) -eq 0 ]; then
+                log_info "${COLOR_RED}${indentation}Unable to get entry count in folder '$folder'${COLOR_RESET}"
+                return 1
+            fi
+            log_info "${COLOR_GREEN}${indentation}Found ${folder_count_map[$folder]} entries"
+            total_entry_count=$((total_entry_count + folder_count_map[$folder]))
+        done
+    else
+        total_entry_count=$(get_entry_count_in_svn_url "$base_svn_url")
+    fi
+    if [ "$total_entry_count" -le 0 ]; then
+        echo -e "${COLOR_RED}Unable to get total entry count${COLOR_RESET}" >&2
+        return 1
+    fi
+    log_info "${COLOR_GREEN}Found total $total_entry_count entries${COLOR_RESET}"
+
+    # Ensure target local path is a valid SVN working copy
+    ensure_target_local_path "$target_local_path" "$base_svn_url"
+
+    # Start checkout
+    checkouted_count=0
+    if [ -n "$folder_list" ]; then
+        for folder in $folder_list; do
+            log_info "${COLOR_CYAN}${indentation}Checking out folder '$folder'${COLOR_RESET}"
+            checkouted_count=$((checkouted_count + $(update_with_progress "$target_local_path/$folder" "${folder_count_map[$folder]}" "  " | tail -n 1)))
+        done
+    else
+        log_info "${COLOR_CYAN}Checking out entire repository${COLOR_RESET}"
+        checkouted_count=$((checkouted_count + $(update_with_progress "$target_local_path" "$total_entry_count" | tail -n 1)))
+    fi
+
+    if [ "$checkouted_count" -ne "$total_entry_count" ]; then
+        log_warn "${COLOR_YELLOW}Inconsistant entry count: ${checkouted_count}/${total_entry_count}${COLOR_RESET}" >&2
+    fi
+
+    log_info "${COLOR_GREEN}Checkout completed${COLOR_RESET}"
+}
+
+show_help() {
+    echo "Usage: checkout-list [options] <folder-type>"
+    echo ""
+    echo "Options:"
+    echo "  -h, --help          Display help information"
+    echo ""
+    echo "Arguments:"
+    echo "  <folder-type>       Type of folder to checkout, can be 'platform' or 'public'"
+    echo ""
+    echo "Configurable Environment Variables:"
+    echo "  Current script:"
+    echo "    PROJECT_PLATFORM_FOLDER_LIST  Project platform folder list (JSON array), this should be set automatically"
+    echo "    PROJECT_PLATFORM_PATH         Project platform folder path, this should be set automatically"
+    echo "    PROJECT_PLATFORM_SVN          Project platform SVN URL, this should be set automatically"
+    echo "    PROJECT_PUBLIC_FOLDER_LIST    Project public folder list (JSON array), this should be set automatically"
+    echo "    PROJECT_PUBLIC_PATH           Project public folder path, this should be set automatically"
+    echo "    PROJECT_PUBLIC_SVN            Project public SVN URL, this should be set automatically"
+    echo ""
+    echo "  Inherited from log-utils:"
+    echo "    LOG_LEVEL                     Log level, 0=error, 1=info, 2=debug, default is 1"
+    echo ""
+    echo "  Inherited from svn-utils:"
+    echo "    SVN_PASSWORD                  SVN password, this should be set automatically"
+    echo "    SVN_USERNAME                  SVN username, this should be set automatically"
+}
+
+main() {
+    trap interrupt_handler SIGINT
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+        -h | --help)
+            show_help
+            exit 0
+            ;;
+        *)
+            break
+            ;;
+        esac
+    done
+
+    if [ $# -ne 1 ]; then
+        log_error "${COLOR_RED}Invalid number of arguments. Expected 1 argument: <folder-type>.${COLOR_RESET}"
+        show_help
+        exit 1
+    fi
+
+    local base_svn_url
+    local folder_list
+    local target_local_path
+    case "$1" in
+    platform)
+        base_svn_url="$PROJECT_PLATFORM_SVN"
+        folder_list=$(echo "${PROJECT_PLATFORM_FOLDER_LIST//[\[\]]/}" | sed 's/"//g' | sed 's/,/ /g')
+        target_local_path="$PROJECT_PLATFORM_PATH"
+        ;;
+    public)
+        base_svn_url="$PROJECT_PUBLIC_SVN"
+        folder_list=$(echo "${PROJECT_PUBLIC_FOLDER_LIST//[\[\]]/}" | sed 's/"//g' | sed 's/,/ /g')
+        target_local_path="$PROJECT_PUBLIC_PATH"
+        ;;
+    *)
+        log_error "${COLOR_RED}Invalid folder type '$1'. Valid types are 'platform' or 'public'.${COLOR_RESET}"
+        return 1
+        ;;
+    esac
+
+    batch_checkout "$base_svn_url" "$folder_list" "$target_local_path"
+}
+
+# Execute main function
+main "$@"
