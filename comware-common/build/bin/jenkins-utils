@@ -1,13 +1,41 @@
 #!/bin/bash
 
 # Get configuration from environment variables, use defaults as fallback
-JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"117b0fdde578a988ec1be741dd777c1a1c"}
+JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"11c7798a2446cc8acb1f871ad486a4b8ff"}
 JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.174:8080"}
 JENKINS_TIMEOUT=${JENKINS_TIMEOUT:-600}
-JENKINS_USERNAME=${JENKINS_USERNAME:-"h25380"}
+JENKINS_USERNAME=${JENKINS_USERNAME:-"g29624"}
 
 # shellcheck source=/dev/null
 source "log-utils"
+
+jenkins_build_with_parameters() {
+    local task_name="$1"
+    shift # Remove task_name from parameters array
+
+    # Get Jenkins Crumb to prevent CSRF protection
+    local jenkins_crumb
+    jenkins_crumb=$(jenkins_get_crumb)
+    [[ -z "$jenkins_crumb" ]] && {
+        handle_error "Failed to get Jenkins crumb"
+        return 1
+    }
+
+    # Build data parameters array
+    local data_params=()
+    for param in "$@"; do
+        data_params+=("--data-urlencode" "$param")
+    done
+
+    # Trigger Jenkins build
+    curl -s -X POST --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" \
+        -H "Jenkins-Crumb: ${jenkins_crumb}" \
+        "${JENKINS_SERVER_URL}/job/${task_name}/buildWithParameters" \
+        "${data_params[@]}" >/dev/null || {
+        handle_error "Failed to trigger Jenkins build with parameters"
+        return 1
+    }
+}
 
 # Get Jenkins Crumb to prevent CSRF protection
 jenkins_get_crumb() {

@@ -41,7 +41,7 @@ data "coder_parameter" "project_platform_folder_list" {
   icon          = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
   order         = 1
   type          = "list(string)"
-  mutable       = false
+  mutable       = true
   default       = jsonencode([])
 }
 data "coder_parameter" "project_public_svn" {
@@ -68,7 +68,7 @@ data "coder_parameter" "project_public_folder_list" {
   icon          = "${data.coder_workspace.me.access_url}/emojis/1f310.png"
   order         = 3
   type          = "list(string)"
-  mutable       = false
+  mutable       = true
   default       = jsonencode([
     "PUBLIC/include",
   ])
@@ -87,7 +87,7 @@ data "coder_parameter" "svn_password" {
   order         = 5
   description   = "Specify a SVN password to checkout codes"
   type          = "string"
-  mutable       = false
+  mutable       = true
 }
 data "coder_provisioner" "me" {
 }

@@ -152,6 +152,8 @@ batch_checkout() {
     fi
 
     log_info "${COLOR_GREEN}Checkout completed${COLOR_RESET}"
+
+    return 0
 }
 
 show_help() {

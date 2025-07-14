@@ -98,5 +98,5 @@ log_warn() { log_message_by_level "[Warn]" 1 "" "$@"; }
 log_info() { log_message_by_level "[Info]" 2 "" "$@"; }
 log_debug() { log_message_by_level "[Debug]" 3 "" "$@"; }
 
-log_info_n() { log_message_by_level "[Info]" 1 "nonewline" "$@"; }
-log_debug_n() { log_message_by_level "[Debug]" 2 "nonewline" "$@"; }
+log_info_n() { log_message_by_level "[Info]" 2 "nonewline" "$@"; }
+log_debug_n() { log_message_by_level "[Debug]" 3 "nonewline" "$@"; }

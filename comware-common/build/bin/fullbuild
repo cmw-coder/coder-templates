@@ -1,8 +1,7 @@
 #!/bin/bash
-
 # Get configuration from environment variables, use defaults as fallback
-JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"11c7798a2446cc8acb1f871ad486a4b8ff"}    # This should be set automatically
-JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.174:8080"}            # This should be set automatically
+JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"11f97ad64a077b6190737e4f604ee201ec"}
+JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.127:8080"}
 PROJECT_PLATFORM_FOLDER_LIST=${PROJECT_PLATFORM_FOLDER_LIST:-""}                # This should be set automatically
 
 # shellcheck source=/dev/null
@@ -10,12 +9,11 @@ source "log-utils"
 
 # Display help information
 show_help() {
-    echo "Usage: abuild [options] <-e> <ipe_package_name>"
+    echo "Usage: fullbuild [options] <-e> <ipe_package_name>"
     echo ""
     echo "Options:"
     echo "  -h, --help                      Display this help information"
     echo "  -e, --ipe-package <name>        Specify the IPE package name, e.g., 64sim9cen (required)"
-    echo "  -f, --folder <folder_list>      Specify to only build the folder list, e.g., ospf,nqa"
     echo "  -i, --input-lib <lib_path>      Specify the library path to use, e.g., /path/to/lib"
     echo "  -r, --release                   Build in release mode (default is debug)"
     echo "  -m, --module-list <modules>     Overwrite the module list to build, e.g., L2VPN,LSM (auto detected)"
@@ -81,7 +79,7 @@ main() {
     fi
 
     # shellcheck source=/dev/null
-    source build-job --type abuild -e "$ipe_package_name" -m "$module_list" "$extra_params"
+    source build-job --type fullbuild -e "$ipe_package_name" -m "$module_list" "$extra_params"
 }
 
 # Execute main function
