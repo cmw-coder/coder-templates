@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Get configuration from environment variables, use defaults as fallback
-LOG_LEVEL=${LOG_LEVEL:-2} # 0=error, 1=warning, 2=info, 3=debug
+LOG_INDENT=${LOG_INDENT:-0} # Indentation level for log messages
+LOG_LEVEL=${LOG_LEVEL:-2}   # 0=error, 1=warning, 2=info, 3=debug
 
 # Check if running in Coder environment or terminal
 if [ -n "$CODER" ] || [ -t 1 ]; then
@@ -13,61 +14,48 @@ if [ -n "$CODER" ] || [ -t 1 ]; then
 fi
 
 # Track if the previous log output used the -n flag
-LOG_PREVIOUS_NONEWLINE=false
-LOG_PREVIOUS_LEVEL=""
+LOG_PREVIOUS_NO_NEW_LOG=false
 
 # Log processing function - supports line breaks and indentation, connecting multiple lines
 log_message() {
     local level="$1"
-    local nonewline=false
-    shift
-
-    # Check if newlines should be omitted
-    if [ "$1" = "-n" ]; then
-        nonewline=true
-        shift
-    fi
+    local no_new_log="$2"
+    shift 2 # Remove level and no_new_log from parameters
 
     local indent="${LOG_INDENT:-0}"
-    local indent_str=""
-    local level_length=${#level}
-    local continuation_prefix
-    local is_first_line=true
-    local skip_prefix=false
 
     # Create indentation string
+    local indent_str
     if [ "$indent" -gt 0 ]; then
         indent_str=$(printf "%${indent}s" "")
     fi
 
     # Create prefix for continuation lines, aligned with the first line level
-    continuation_prefix=$(printf "%$((level_length - 1))s|" "")
-
-    # Determine whether to skip the prefix (if the previous output used -n and has the same level)
-    if [ "$LOG_PREVIOUS_NONEWLINE" = true ] && [ "$LOG_PREVIOUS_LEVEL" = "$level" ]; then
-        skip_prefix=true
-    fi
+    local continuation_prefix
+    continuation_prefix=$(printf "%$((${#level} - 1))s|" "")
 
     # Process each line of the message, preserving line breaks
+    local is_first_line=true
     echo -e "$*" | while IFS= read -r line || [ -n "$line" ]; do
         if [ "$is_first_line" = true ]; then
-            # The first line uses normal level prefix or skips the prefix
-            if [ "$skip_prefix" = true ]; then
-                # If previous output used -n and has the same log level, output directly without prefix
+            if [ "$no_new_log" = true ]; then
+                if [ "$LOG_PREVIOUS_NO_NEW_LOG" = false ]; then
+                    printf "%s %s" "$level" "$indent_str" >&2
+                fi
                 printf "%s" "$line" >&2
-            elif [ "$nonewline" = true ]; then
-                printf "%s %s%s" "$level" "$indent_str" "$line" >&2
             else
+                if [ "$LOG_PREVIOUS_NO_NEW_LOG" = true ]; then
+                    printf "\n" >&2
+                fi
                 printf "%s %s%s\n" "$level" "$indent_str" "$line" >&2
             fi
             is_first_line=false
         else
             # Subsequent lines use connecting lines and maintain the same indentation as the first line
-            if [ "$nonewline" = true ] && [ -z "$line" ]; then
-                # Don't output anything
-                :
-            elif [ "$nonewline" = true ]; then
-                printf "\n%s %s%s" "$continuation_prefix" "$indent_str" "$line" >&2
+            if [ "$no_new_log" = true ]; then
+                if [ -n "$line" ]; then
+                    printf "\n%s %s%s" "$continuation_prefix" "$indent_str" "$line" >&2
+                fi
             else
                 printf "%s %s%s\n" "$continuation_prefix" "$indent_str" "$line" >&2
             fi
@@ -75,28 +63,29 @@ log_message() {
     done
 
     # Record the status of this log for next log output decision
-    LOG_PREVIOUS_NONEWLINE=$nonewline
-    LOG_PREVIOUS_LEVEL=$level
+    LOG_PREVIOUS_NO_NEW_LOG=$no_new_log
 }
 # Increase/decrease indentation level
-log_indent_increase() { export LOG_INDENT=$((${LOG_INDENT:-0} + 2)); }
+log_indent_increase() {
+    LOG_INDENT=$(("$LOG_INDENT" + 2))
+}
 log_indent_decrease() {
-    export LOG_INDENT=$((${LOG_INDENT:-0} > 2 ? LOG_INDENT - 2 : 0))
+    LOG_INDENT=$(("$LOG_INDENT" > 2 ? "$LOG_INDENT" - 2 : 0))
 }
 # Log functions - redirect all output to stderr to avoid interfering with function return values
 # Define log output functions, supporting different levels
 log_message_by_level() {
     local level=$1
     local min_level=$2
-    local nonewline=$3
-    shift 3
+    local no_new_log=$3
+    shift 3 # Remove level, min_level, and no_new_log from parameters
 
-    [ "$LOG_LEVEL" -ge "$min_level" ] && log_message "$level" ${nonewline:+"-n"} "$@"
+    [ "$LOG_LEVEL" -ge "$min_level" ] && log_message "$level" "$no_new_log" "$@"
 }
-log_error() { log_message_by_level "[Error]" 0 "" "$@"; }
-log_warn() { log_message_by_level "[Warn]" 1 "" "$@"; }
-log_info() { log_message_by_level "[Info]" 2 "" "$@"; }
-log_debug() { log_message_by_level "[Debug]" 3 "" "$@"; }
+log_error() { log_message_by_level "[Error]" 0 false "$@"; }
+log_warn() { log_message_by_level "[Warn]" 1 false "$@"; }
+log_info() { log_message_by_level "[Info]" 2 false "$@"; }
+log_debug() { log_message_by_level "[Debug]" 3 false "$@"; }
 
-log_info_n() { log_message_by_level "[Info]" 2 "nonewline" "$@"; }
-log_debug_n() { log_message_by_level "[Debug]" 3 "nonewline" "$@"; }
+log_info_n() { log_message_by_level "[Info]" 2 true "$@"; }
+log_debug_n() { log_message_by_level "[Debug]" 3 true "$@"; }

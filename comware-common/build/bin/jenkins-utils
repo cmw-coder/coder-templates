@@ -8,6 +8,8 @@ JENKINS_TIMEOUT=${JENKINS_TIMEOUT:-600}
 JENKINS_USERNAME=${JENKINS_USERNAME:-"g29624"}
 
 # shellcheck source=/dev/null
+source "format-utils"
+# shellcheck source=/dev/null
 source "log-utils"
 
 jenkins_build_with_parameters() {
@@ -47,34 +49,36 @@ jenkins_get_crumb() {
 jenkins_get_job_number() {
     local task_name=$1
     local build_cmd=$2
-    local start_time
-    start_time=$(date +%s)
 
     log_info "Looking for job number for task: ${task_name}"
     log_debug "Build command: ${build_cmd}"
 
     # Wait for the queued task to start running
-    while [ $(($(date +%s) - start_time)) -lt "$JENKINS_TIMEOUT" ]; do
+    log_info_n "Waiting for task to start "
+    local start_seconds
+    start_seconds=$(date +%s)
+    local is_timeout=false
+    while [ "$is_timeout" = "false" ]; do
+        (( $(date +%s) - start_seconds >= JENKINS_TIMEOUT )) && is_timeout=true
+
         # Check tasks in the queue
         local queue_info
         queue_info=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/queue/api/json")
-
-        # Use simplified jq query to check if there's a matching task
-        if echo "$queue_info" | jq -e '.items[] | select(.task.name == "'"$task_name"'") | 
-        (.actions[] | select(.parameters != null) | .parameters[] | select(.value == "'"$build_cmd"'")) and 
-        (.actions[] | select(.causes != null) | .causes[] | select(.userId == "'"$JENKINS_USERNAME"'"))' >/dev/null; then
-            log_info "Matching task found in queue, waiting..."
-            sleep 3
-            continue
+        local queue_build_cmd
+        queue_build_cmd=$(echo "$queue_info" | jq -e '.items[] | select(.task.name == "'"$task_name"'") | .actions[] | select(.parameters != null) | .parameters[] | select(.value == "'"$build_cmd"'")')
+        local queue_cause_user_id
+        queue_cause_user_id=$(echo "$queue_info" | jq -e '.items[] | select(.task.name == "'"$task_name"'") | .actions[] | select(.causes != null) | .causes[] | select(.userId == "'"$JENKINS_USERNAME"'")')
+        if [ -z "$queue_build_cmd" ] && [ -z "$queue_cause_user_id" ]; then
+            log_info ""
+            break
         fi
-
-        log_info "Task not found in queue or has started running"
-        break
+        log_info_n "."
+        sleep 3
     done
 
     # Timeout check
-    if [ $(($(date +%s) - start_time)) -ge "$JENKINS_TIMEOUT" ]; then
-        log_error "Timeout waiting for job to start after ${JENKINS_TIMEOUT} seconds"
+    if [ "$is_timeout" = "true" ]; then
+        log_error "Timeout waiting for job to start: Exceeded ${JENKINS_TIMEOUT} seconds"
         echo "-1"
         return 1
     fi
@@ -82,7 +86,7 @@ jenkins_get_job_number() {
     # Get the latest job number
     local last_build_number
     last_build_number=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/api/json" | jq '.nextBuildNumber - 1')
-    log_info "Latest job number for ${task_name}: ${last_build_number}"
+    log_debug "Latest job number for ${task_name}: ${last_build_number}"
 
     # Find matching job
     local counter=0
@@ -97,8 +101,8 @@ jenkins_get_job_number() {
         job_build_cmd=$(echo "$job_info" | jq -e '.actions[] | select(._class == "hudson.model.ParametersAction") | .parameters[] | select(.value == "'"${build_cmd}"'") | .value')
         local job_cause_user_id
         job_cause_user_id=$(echo "$job_info" | jq -e '.actions[] | select(._class == "hudson.model.CauseAction") | .causes[] | select(.userId == "'"${JENKINS_USERNAME}"'") | .userId')
-        if [ -n "$job_build_cmd" ] && [ -n "$job_cause_user_id" ]; then 
-            log_info "Found matching job: #${last_build_number}"
+        if [ -n "$job_build_cmd" ] && [ -n "$job_cause_user_id" ]; then
+            log_debug "Found matching job: #${last_build_number}"
             echo "$last_build_number"
             return 0
         fi
@@ -122,46 +126,34 @@ jenkins_monitor_job_progress() {
         return 1
     fi
 
-    local start_time
-    start_time=$(date +"%Y%m%d.%H%M%S")
-
-    local timestamp_seconds
-    timestamp_seconds=$(date -d "$start_time" +%s 2>/dev/null || date +%s)
-
     local build_url
     build_url=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json" | jq -r '.url')
 
-    log_info "Task #${build_number} started at ${start_time}"
     log_info "Task console URL: ${build_url}console"
 
     # Wait for job completion, with timeout check
-    local wait_time=0
-    local job_status="null"
     log_info_n "Waiting for job to complete "
-
-    while [ "$job_status" = "null" ] && [ "$wait_time" -lt "$JENKINS_TIMEOUT" ]; do
-        sleep 3
-        wait_time=$((wait_time + 3))
+    local start_seconds
+    start_seconds=$(date +%s)
+    local is_timeout=false
+    local job_status
+    while [ "$is_timeout" = "false" ]; do
+        (( $(date +%s) - start_seconds >= JENKINS_TIMEOUT )) && is_timeout=true
         job_status=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${build_url}/api/json" | jq -r '.result')
+        if [ "$job_status" != "null" ]; then
+            log_info ""
+            break
+        fi
         log_info_n "."
+        sleep 3
     done
-    log_info "" # Just add a newline
 
-    if [ "$wait_time" -ge "$JENKINS_TIMEOUT" ]; then
-        log_error "Job timed out after ${JENKINS_TIMEOUT} seconds"
+    if [ "$is_timeout" = "true" ]; then
+        log_error "Timeout waiting job result: Exceeded ${JENKINS_TIMEOUT} seconds"
         return 2
     fi
 
-    local end_time
-    end_time=$(date +"%Y%m%d.%H%M%S")
-
-    local end_seconds
-    end_seconds=$(date -d "$end_time" +%s 2>/dev/null || date +%s)
-
-    local duration=$((end_seconds - timestamp_seconds))
-
-    log_info "Job completed at: ${end_time} (${duration}s)"
-    log_info "Job result: ${job_status}"
+    log_info "Job completed: ${job_status}. Time: $(format_elapsed_seconds "$start_seconds")"
 
     return 0
 }

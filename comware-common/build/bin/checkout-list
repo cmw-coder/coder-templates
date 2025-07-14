@@ -9,6 +9,8 @@ PROJECT_PUBLIC_PATH=${PROJECT_PUBLIC_PATH:-""}                   # This should b
 PROJECT_PUBLIC_SVN=${PROJECT_PUBLIC_SVN:-""}                     # This should be set automatically
 
 # shellcheck source=/dev/null
+source "format-utils"
+# shellcheck source=/dev/null
 source "log-utils"
 # shellcheck source=/dev/null
 source "svn-utils"
@@ -30,15 +32,6 @@ ensure_target_local_path() {
         log_info "${COLOR_CYAN}Creating empty SVN working copy at '$target_local_path'${COLOR_RESET}"
         svn_s checkout --depth empty "$base_svn_url" "$target_local_path"
     fi
-}
-
-get_elapsed_time() {
-    local elapsed_seconds=$(($(date +%s) - $1))
-
-    local hours=$((elapsed_seconds / 3600))
-    local minutes=$(((elapsed_seconds % 3600) / 60))
-    local seconds=$((elapsed_seconds % 60))
-    printf "%02d:%02d:%02d" $hours $minutes $seconds
 }
 
 get_entry_count_in_svn_url() {
@@ -81,16 +74,14 @@ update_with_progress() {
         local current_time
         current_time=$(date +%s)
         if ((current_time - last_update_time >= update_interval)); then
-            # local elapsed_time
-            # elapsed_time=$(get_elapsed_time "$start_seconds")
-            log_info "${indentation}Progress: ${COLOR_CYAN}${percentage}%${COLOR_RESET} | Time: $(get_elapsed_time "$start_seconds") | Files: ${index}/${entry_count}"
+            log_info "${indentation}Progress: ${COLOR_CYAN}${percentage}%${COLOR_RESET} | Time: $(format_elapsed_seconds "$start_seconds") | Files: ${index}/${entry_count}"
             last_update_time=$current_time
         fi
     done < <(svn_with_auth up --set-depth infinity --parents "$update_path" 2>&1)
 
     # Print final progress
     percentage=$(awk "BEGIN {printf \"%.2f\", $index*100/$entry_count}")
-    log_info "${indentation}Progress: ${COLOR_CYAN}${percentage}%${COLOR_RESET} | Time: $(get_elapsed_time "$start_seconds") | Files: ${index}/${entry_count}"
+    log_info "${indentation}Progress: ${COLOR_CYAN}${percentage}%${COLOR_RESET} | Time: $(format_elapsed_seconds "$start_seconds") | Files: ${index}/${entry_count}"
 
     echo "$index"
 }
@@ -125,7 +116,7 @@ batch_checkout() {
         total_entry_count=$(get_entry_count_in_svn_url "$base_svn_url")
     fi
     if [ "$total_entry_count" -le 0 ]; then
-        echo -e "${COLOR_RED}Unable to get total entry count${COLOR_RESET}" >&2
+        log_error "${COLOR_RED}Unable to get total entry count${COLOR_RESET}"
         return 1
     fi
     log_info "${COLOR_GREEN}Found total $total_entry_count entries${COLOR_RESET}"
@@ -150,7 +141,7 @@ batch_checkout() {
     fi
 
     if [ "$checkouted_count" -ne "$total_entry_count" ]; then
-        log_warn "${COLOR_YELLOW}Inconsistant entry count: ${checkouted_count}/${total_entry_count}${COLOR_RESET}" >&2
+        log_warn "${COLOR_YELLOW}Inconsistant entry count: ${checkouted_count}/${total_entry_count}${COLOR_RESET}"
     fi
 
     log_info "${COLOR_GREEN}Checkout completed${COLOR_RESET}"

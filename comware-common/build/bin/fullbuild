@@ -2,6 +2,7 @@
 # Get configuration from environment variables, use defaults as fallback
 JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"11f97ad64a077b6190737e4f604ee201ec"}
 JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.127:8080"}
+JENKINS_TIMEOUT=${JENKINS_TIMEOUT:-1200}
 PROJECT_PLATFORM_FOLDER_LIST=${PROJECT_PLATFORM_FOLDER_LIST:-""}                # This should be set automatically
 
 # shellcheck source=/dev/null
@@ -79,7 +80,7 @@ main() {
     fi
 
     # shellcheck source=/dev/null
-    source build-job --type fullbuild ":$module_list" -e "$ipe_package_name" "$extra_params"
+    source build-job --type fullbuild --modules "$module_list" -e "$ipe_package_name" "$extra_params"
 }
 
 # Execute main function

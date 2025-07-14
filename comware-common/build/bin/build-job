@@ -160,9 +160,9 @@ get_task_name() {
         ;;
     fullbuild)
         if [[ "$svn_url" == *"/V9R1/"* ]]; then
-            echo "V9ABUILD"
+            echo "V9BUILD_FULL"
         else
-            echo "ABUILD"
+            echo "BUILD_FULL"
         fi
         ;;
     *)
