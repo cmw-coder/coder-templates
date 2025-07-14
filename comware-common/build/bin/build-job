@@ -181,7 +181,7 @@ run_build_job() {
     # Creating shadow branch
     log_info "Creating shadow branch for project platform folder: ${PROJECT_PLATFORM_PATH}"
     local shadow_branch_url
-    shadow_branch_url=$(shadow-branch -f "$PROJECT_PLATFORM_PATH")
+    shadow_branch_url=$(shadow-branch -f -k "$PROJECT_PLATFORM_PATH")
     # TODO: Support other platforms, currently only cmwcode-open is supported
     if [[ "$shadow_branch_url" != *"cmwcode-open"* ]]; then
         handle_error "Invalid shadow branch url, this may be caused by an incorrect PROJECT_PLATFORM_PATH."
@@ -196,7 +196,7 @@ run_build_job() {
     fi
 
     log_info "Creating shadow branch for project public folder: ${PROJECT_PUBLIC_PATH}"
-    shadow-branch -f "$PROJECT_PUBLIC_PATH"
+    shadow-branch -f -k "$PROJECT_PUBLIC_PATH"
 
     local svn_path=${shadow_branch_url#*cmwcode-open}
     log_debug "Found cmwcode-open in SVN path, extracted path: $svn_path"
@@ -263,8 +263,19 @@ show_help() {
     echo "    LOG_LEVEL                     Log level, 0=error, 1=info, 2=debug, default is 1"
 }
 
-# Main function
+interrupt_handler() {
+    log_warn "${COLOR_YELLOW}Interrupted, cleanup shadow branches${COLOR_RESET}"
+
+    # Delete shadow branch
+    shadow-branch -r "$PROJECT_PLATFORM_PATH"
+    shadow-branch -r "$PROJECT_PUBLIC_PATH"
+
+    return 1
+}
+
 main() {
+    trap interrupt_handler SIGINT SIGTERM
+
     local build_type
     local module_list
     local extra_params

@@ -143,7 +143,8 @@ get_shadow_branch_url() {
 
 sync_to_shadow_branch() {
     local is_force="$1"
-    local current_branch_path="$2"
+    local keep_existing="$2"
+    local current_branch_path="$3"
 
     if [ ! -d "${current_branch_path}/.svn" ]; then
         log_error "'${current_branch_path}' is not an SVN working copy."
@@ -173,11 +174,19 @@ sync_to_shadow_branch() {
     shadow_branch_url="$(get_shadow_branch_url "$current_branch_url")"
     log_info "Shadow branch URL: $shadow_branch_url"
 
+    # Check if shadow branch already exists and if we should keep it
+    if [ "$keep_existing" = true ] && svn_s info "$shadow_branch_url" >/dev/null 2>&1; then
+        log_info "Shadow branch already exists and --keep-existing specified, returning existing branch."
+        echo "$shadow_branch_url"
+        exit 0
+    fi
+
     # Check if shadow branch is a public branch
     if [[ "$shadow_branch_url" == *"cmwcode-public"* ]]; then
         # Use a hardcoded SVN credentials if current branch is a public branch
         # TODO: Find a better way to replace this stupid method
         SVN_PASSWORD="Zpr758258#"
+        SVN_USERNAME="z11187"
         SVN_USERNAME="z11187"
     fi
 
@@ -203,6 +212,7 @@ show_help() {
     echo "Options:"
     echo "  -f, --force         Force creation of shadow branch even if no changes are found"
     echo "  -h, --help          Display help information"
+    echo "  -k, --keep-existing Keep existing shadow branch instead of recreating it"
     echo "  -r, --remove        Remove the shadow branch instead of creating it"
     echo ""
     echo "Arguments:"
@@ -224,6 +234,7 @@ show_help() {
 main() {
     local is_force=false
     local is_remove=false
+    local keep_existing=false
     while [[ $# -gt 0 ]]; do
         case $1 in
         -f | --force)
@@ -233,6 +244,10 @@ main() {
         -h | --help)
             show_help
             exit 0
+            ;;
+        -k | --keep-existing)
+            keep_existing=true
+            shift
             ;;
         -r | --remove)
             is_remove=true
@@ -247,7 +262,7 @@ main() {
 
     if [ $# -lt 1 ]; then
         show_help
-        exit 1
+        return 1
     fi
 
     # if is remove, delete the shadow branch
@@ -273,7 +288,7 @@ main() {
         svn_remove_branch "$shadow_branch_url"
         return $?
     else
-        sync_to_shadow_branch "$is_force" "$@"
+        sync_to_shadow_branch "$is_force" "$keep_existing" "$@"
         return $?
     fi
 }
