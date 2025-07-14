@@ -15,7 +15,9 @@ show_help() {
     echo "Options:"
     echo "  -e, --ipe-package <name>        Specify the IPE package name, e.g., 64sim9cen (required)"
     echo "  -f, --folder <folder_list>      Specify to only build the folder list, e.g., ospf,nqa"
-    echo "  -i, --input-lib <lib_path>      Specify the library path to use, e.g., /path/to/lib"
+    echo "  -i, --input-lib <lib_path>      Specify the library path to use, e.g., /path/to/lib."
+    # shellcheck disable=SC2028
+    echo '                                  If using \ for separators, surround with single quotes, e.g., '"\path\to\lib"''
     echo "  -r, --release                   Build in release mode (default is debug)"
     echo ""
     echo "Examples:"

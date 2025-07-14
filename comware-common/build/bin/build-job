@@ -292,6 +292,9 @@ main() {
             build_type="$2"
             shift 2
             ;;
+        "")
+            shift
+            ;;
         *)
             if [ -z "$extra_params" ]; then
                 extra_params="$1"

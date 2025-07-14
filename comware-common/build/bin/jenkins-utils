@@ -2,6 +2,7 @@
 
 # Get configuration from environment variables, use defaults as fallback
 JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"11c7798a2446cc8acb1f871ad486a4b8ff"}
+JENKINS_JOB_SEARCH_LIMIT=${JENKINS_JOB_SEARCH_LIMIT:-10} # Limit for job search, default is 10
 JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.174:8080"}
 JENKINS_TIMEOUT=${JENKINS_TIMEOUT:-600}
 JENKINS_USERNAME=${JENKINS_USERNAME:-"g29624"}
@@ -79,31 +80,34 @@ jenkins_get_job_number() {
     fi
 
     # Get the latest job number
-    local next_build_number
-    next_build_number=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/api/json" | jq '.nextBuildNumber - 1')
-    log_info "Latest job number for ${task_name}: ${next_build_number}"
+    local last_build_number
+    last_build_number=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/api/json" | jq '.nextBuildNumber - 1')
+    log_info "Latest job number for ${task_name}: ${last_build_number}"
 
     # Find matching job
-    local i=0
+    local counter=0
     log_debug "Checking recent builds for matching command and user..."
-    while [ "$next_build_number" -gt 0 ] && [ $i -lt 10 ]; do
-        log_debug "Checking job #${next_build_number}"
+    while [ "$last_build_number" -gt 0 ] && [ "$counter" -lt "$JENKINS_JOB_SEARCH_LIMIT" ]; do
+        log_debug "Checking job #${last_build_number}"
         local job_info
-        job_info=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/${next_build_number}/api/json")
+        job_info=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/${last_build_number}/api/json")
 
-        # Handle two possible parameter orders
-        if echo "$job_info" | jq -e '(.actions[0].parameters[0].value == "'"$build_cmd"'" and .actions[1].causes[0].userId == "'"$JENKINS_USERNAME"'") or
-        (.actions[1].parameters[0].value == "'"$build_cmd"'" and .actions[0].causes[0].userId == "'"$JENKINS_USERNAME"'")' >/dev/null; then
-            log_info "Found matching job: #${next_build_number}"
-            echo "$next_build_number"
+        # Check if job has the correct build command and user
+        local job_build_cmd
+        job_build_cmd=$(echo "$job_info" | jq -e '.actions[] | select(._class == "hudson.model.ParametersAction") | .parameters[] | select(.value == "'"${build_cmd}"'") | .value')
+        local job_cause_user_id
+        job_cause_user_id=$(echo "$job_info" | jq -e '.actions[] | select(._class == "hudson.model.CauseAction") | .causes[] | select(.userId == "'"${JENKINS_USERNAME}"'") | .userId')
+        if [ -n "$job_build_cmd" ] && [ -n "$job_cause_user_id" ]; then 
+            log_info "Found matching job: #${last_build_number}"
+            echo "$last_build_number"
             return 0
         fi
 
-        next_build_number=$((next_build_number - 1))
-        i=$((i + 1))
+        last_build_number=$((last_build_number - 1))
+        counter=$((counter + 1))
     done
 
-    log_error "Failed to find matching job after checking ${i} builds"
+    log_error "Failed to find matching job after checking ${counter} builds"
     echo "-1"
     return 1
 }
