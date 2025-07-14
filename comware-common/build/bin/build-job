@@ -175,7 +175,8 @@ get_task_name() {
 # Execute build job
 run_build_job() {
     local build_type="$1"
-    local extra_params="$2"
+    local module_list="$2"
+    local extra_params="$3"
 
     # Creating shadow branch
     log_info "Creating shadow branch for project platform folder: ${PROJECT_PLATFORM_PATH}"
@@ -202,6 +203,7 @@ run_build_job() {
 
     # Construct build command
     local build_cmd="-s ${svn_path}"
+    [ -n "$module_list" ] && build_cmd="${build_cmd}:${module_list}"
     [ -n "$extra_params" ] && build_cmd="${build_cmd} ${extra_params}"
 
     log_info "Starting ${task_name}:\n- Repo: ${svn_path}\n- User: ${SVN_USERNAME}\n- Params: ${build_cmd}"
@@ -235,8 +237,9 @@ show_help() {
     echo "Usage: build-job <--type> <build_type> [extra_params]"
     echo ""
     echo "Options:"
-    echo "  -h, --help                  Display this help information"
-    echo "  --type <build_type>         Specify the type of build, can be 'abuild' or 'fullbuild' (required)"
+    echo "  --help                          Display this help information"
+    echo "  --modules <modules>             Specify the module list to build, e.g., L2VPN,LSM"
+    echo "  --type <build_type>             Specify the type of build, can be 'abuild' or 'fullbuild' (required)"
     echo ""
     echo "Examples:"
     echo "  build-job --type abuild -e 64sim9cen"
@@ -263,24 +266,38 @@ show_help() {
 # Main function
 main() {
     local build_type
+    local module_list
     local extra_params
     while [ $# -gt 0 ]; do
         case $1 in
-        -h | --help)
+        --help)
             show_help
-            exit 0
+            return 0
+            ;;
+        --modules)
+            if [ -z "$2" ]; then
+                log_error "Module list is required when using --modules option"
+                show_help
+                return 1
+            fi
+            module_list="$2"
+            shift 2
             ;;
         --type)
             if [ -z "$2" ]; then
                 log_error "Build type is required after --type"
                 show_help
-                exit 1
+                return 1
             fi
             build_type="$2"
             shift 2
             ;;
         *)
-            extra_params="$extra_params $1"
+            if [ -z "$extra_params" ]; then
+                extra_params="$1"
+            else
+                extra_params="${extra_params} $1"
+            fi
             shift
             ;;
         esac
@@ -288,15 +305,15 @@ main() {
 
     if [ -z "$PROJECT_PLATFORM_PATH" ]; then
         log_error "PROJECT_PLATFORM_PATH is not set, please set it before running this script."
-        exit 1
+        return 1
     fi
 
     if [ -z "$PROJECT_PUBLIC_PATH" ]; then
         log_error "PROJECT_PUBLIC_PATH is not set, please set it before running this script."
-        exit 1
+        return 1
     fi
 
-    run_build_job "$build_type" "$extra_params"
+    run_build_job "$build_type" "$module_list" "$extra_params"
     local build_result=$?
 
     # Delete shadow branch

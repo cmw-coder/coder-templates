@@ -95,12 +95,6 @@ update_with_progress() {
     echo "$index"
 }
 
-# 注册中断处理函数
-interrupt_handler() {
-    echo -e "${COLOR_RED}Checkout interrupted${COLOR_RESET}" >&2
-    exit 1
-}
-
 batch_checkout() {
     local base_svn_url="$1"
     local folder_list="$2"
@@ -114,6 +108,10 @@ batch_checkout() {
     log_info "${COLOR_CYAN}Getting entry count in repo '$base_svn_url'${COLOR_RESET}"
     if [ -n "$folder_list" ]; then
         for folder in $folder_list; do
+            if [ -d "${target_local_path}/${folder}" ]; then
+                log_info "${COLOR_CYAN}${indentation}Folder '${target_local_path}/${folder}' already exists, skipping${COLOR_CYAN}"
+                continue
+            fi
             log_info "${COLOR_CYAN}${indentation}Getting entry count in folder '$folder'${COLOR_RESET}"
             folder_count_map["$folder"]=$(get_entry_count_in_svn_url "$base_svn_url/$folder")
             if [ $((folder_count_map["$folder"])) -eq 0 ]; then
@@ -139,8 +137,12 @@ batch_checkout() {
     checkouted_count=0
     if [ -n "$folder_list" ]; then
         for folder in $folder_list; do
+            if [ -d "${target_local_path}/${folder}" ]; then
+                log_info "${COLOR_CYAN}${indentation}Folder '${target_local_path}/${folder}' already exists, skipping${COLOR_CYAN}"
+                continue
+            fi
             log_info "${COLOR_CYAN}${indentation}Checking out folder '$folder'${COLOR_RESET}"
-            checkouted_count=$((checkouted_count + $(update_with_progress "$target_local_path/$folder" "${folder_count_map[$folder]}" "  " | tail -n 1)))
+            checkouted_count=$((checkouted_count + $(update_with_progress "${target_local_path}/${folder}" "${folder_count_map[$folder]}" "  " | tail -n 1)))
         done
     else
         log_info "${COLOR_CYAN}Checking out entire repository${COLOR_RESET}"
@@ -183,13 +185,11 @@ show_help() {
 }
 
 main() {
-    trap interrupt_handler SIGINT
-
     while [[ $# -gt 0 ]]; do
         case $1 in
         -h | --help)
             show_help
-            exit 0
+            return 0
             ;;
         *)
             break
@@ -200,7 +200,7 @@ main() {
     if [ $# -ne 1 ]; then
         log_error "${COLOR_RED}Invalid number of arguments. Expected 1 argument: <folder-type>.${COLOR_RESET}"
         show_help
-        exit 1
+        return 1
     fi
 
     local base_svn_url

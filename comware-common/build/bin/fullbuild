@@ -12,11 +12,11 @@ show_help() {
     echo "Usage: fullbuild [options] <-e> <ipe_package_name>"
     echo ""
     echo "Options:"
-    echo "  -h, --help                      Display this help information"
     echo "  -e, --ipe-package <name>        Specify the IPE package name, e.g., 64sim9cen (required)"
     echo "  -i, --input-lib <lib_path>      Specify the library path to use, e.g., /path/to/lib"
     echo "  -r, --release                   Build in release mode (default is debug)"
-    echo "  -m, --module-list <modules>     Overwrite the module list to build, e.g., L2VPN,LSM (auto detected)"
+    echo "  --help                          Display this help information"
+    echo "  --modules <modules>             Overwrite the module list to build, e.g., L2VPN,LSM (auto detected)"
     echo ""
     echo "Examples:"
     echo "  abuild -e 64sim9cen"
@@ -35,29 +35,29 @@ show_help() {
 
 # Main function
 main() {
-    local extra_params
-    local ipe_package_name
     local module_list
+    local ipe_package_name
+    local extra_params
     while [ $# -gt 0 ]; do
         case $1 in
         -e | --ipe-package)
             if [ -z "$2" ]; then
                 log_error "IPE package name is required after -e or --ipe-package"
                 show_help
-                exit 1
+                return 1
             fi
             ipe_package_name="$2"
             shift 2
             ;;
-        -h | --help)
+        --help)
             show_help
-            exit 0
+            return 0
             ;;
-        -m | --module-list)
+        --modules)
             if [ -z "$2" ]; then
-                log_error "Module list is required when using -m option"
+                log_error "Module list is required when using --modules option"
                 show_help
-                exit 1
+                return 1
             fi
             module_list="$2"
             shift 2
@@ -71,7 +71,7 @@ main() {
 
     if [ -z "$PROJECT_PLATFORM_FOLDER_LIST" ]; then
         log_error "PROJECT_PLATFORM_FOLDER_LIST is not set, please set it to the platform folder list"
-        exit 1
+        return 1
     fi
 
     if [ -z "$module_list" ]; then
@@ -79,7 +79,7 @@ main() {
     fi
 
     # shellcheck source=/dev/null
-    source build-job --type fullbuild -e "$ipe_package_name" -m "$module_list" "$extra_params"
+    source build-job --type fullbuild ":$module_list" -e "$ipe_package_name" "$extra_params"
 }
 
 # Execute main function
