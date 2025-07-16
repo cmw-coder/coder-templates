@@ -116,7 +116,7 @@ build_job_codex() {
 
     # Determine task name
     local task_name
-    if [[ "$svn_path" == *"V9R1"* ]]; then
+    if [[ "$svn_path" == *"/V9R1"* ]]; then
         task_name="V9CodeXV2"
     else
         task_name="CodeXV2"

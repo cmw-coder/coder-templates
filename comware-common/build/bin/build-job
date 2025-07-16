@@ -152,14 +152,14 @@ get_task_name() {
     local task_type="$2"
     case "$task_type" in
     abuild)
-        if [[ "$svn_url" == *"/V9R1/"* ]]; then
+        if [[ "$svn_url" == *"/V9R1"* ]]; then
             echo "V9ABUILD"
         else
             echo "ABUILD"
         fi
         ;;
     fullbuild)
-        if [[ "$svn_url" == *"/V9R1/"* ]]; then
+        if [[ "$svn_url" == *"/V9R1"* ]]; then
             echo "V9BUILD_FULL"
         else
             echo "BUILD_FULL"
