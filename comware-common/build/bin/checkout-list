@@ -112,12 +112,16 @@ batch_checkout() {
             log_info "${COLOR_GREEN}${indentation}Found ${folder_count_map[$folder]} entries"
             total_entry_count=$((total_entry_count + folder_count_map[$folder]))
         done
+        if [ "$total_entry_count" -eq 0 ]; then
+            log_info "${COLOR_RED}No need to checkout5${COLOR_RESET}"
+            return 0
+        fi
     else
         total_entry_count=$(get_entry_count_in_svn_url "$base_svn_url")
-    fi
-    if [ "$total_entry_count" -le 0 ]; then
-        log_error "${COLOR_RED}Unable to get total entry count${COLOR_RESET}"
-        return 1
+        if [ "$total_entry_count" -le 0 ]; then
+            log_error "${COLOR_RED}Unable to get total entry count${COLOR_RESET}"
+            return 1
+        fi
     fi
     log_info "${COLOR_GREEN}Found total $total_entry_count entries${COLOR_RESET}"
 
