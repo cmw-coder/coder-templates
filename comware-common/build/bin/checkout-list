@@ -113,7 +113,7 @@ batch_checkout() {
             total_entry_count=$((total_entry_count + folder_count_map[$folder]))
         done
         if [ "$total_entry_count" -eq 0 ]; then
-            log_info "${COLOR_RED}No need to checkout5${COLOR_RESET}"
+            log_info "${COLOR_GREEN}No need to checkout5${COLOR_RESET}"
             return 0
         fi
     else
