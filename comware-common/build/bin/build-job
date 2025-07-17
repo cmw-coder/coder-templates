@@ -286,11 +286,6 @@ main() {
             return 0
             ;;
         --modules)
-            if [ -z "$2" ]; then
-                log_error "Module list is required when using --modules option"
-                show_help
-                return 1
-            fi
             module_list="$2"
             shift 2
             ;;

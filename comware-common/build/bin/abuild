@@ -17,6 +17,9 @@ show_help() {
     echo "  -f, --folder <folder_list>      Specify to only build the folder list, e.g., ospf,nqa"
     echo "  -i, --input-lib <lib_path>      Specify the library path to use, e.g., /var/mntv9cmm."
     echo "  -r, --release                   Build in release mode (default is debug)"
+    echo "  --help                          Display this help information"
+    echo "  --build-all                     Build all modules, ignoring the '--modules' option"
+    echo "  --modules <modules>             Overwrite the module list to build, e.g., L2VPN,LSM (auto detected)."
     echo ""
     echo "Examples:"
     echo "  abuild -e 64sim9cen"
@@ -35,6 +38,7 @@ show_help() {
 
 # Main function
 main() {
+    local is_build_all=false
     local module_list
     local ipe_package_name
     local extra_params
@@ -52,6 +56,10 @@ main() {
         --help)
             show_help
             return 0
+            ;;
+        --build-all)
+            is_build_all=true
+            shift
             ;;
         --modules)
             if [ -z "$2" ]; then
@@ -80,7 +88,9 @@ main() {
         return 1
     fi
 
-    if [ -z "$module_list" ]; then
+    if [ "$is_build_all" = true ]; then
+        module_list=""
+    elif [ -z "$module_list" ]; then
         module_list=$(echo "$PROJECT_PLATFORM_FOLDER_LIST" | tr -d '[]"')
     fi
 
