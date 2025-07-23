@@ -103,8 +103,6 @@ locals {
   coder_tutorials_url = "https://tutorials.coder.h3c.com"
   marketplace_url = "https://code-marketplace.cmwcoder.h3c.com"
   project_path = "/home/${data.coder_workspace_owner.me.name}/project"
-  username = data.coder_workspace_owner.me.name
-  workspace = data.coder_workspace.me.name
   yunxiao = {
     organization_id = "864f6de3-3d59-46f2-9729-645fc20006b7"
   }
@@ -115,9 +113,9 @@ resource "coder_agent" "main" {
   os                     = "linux"
 
   env = {
-    GIT_AUTHOR_NAME     = coalesce(data.coder_workspace_owner.me.full_name, local.username)
+    GIT_AUTHOR_NAME     = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_AUTHOR_EMAIL    = "${data.coder_workspace_owner.me.email}"
-    GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, local.username)
+    GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
     SVN_PASSWORD        = "${data.coder_parameter.svn_password.value}"
     SVN_USERNAME        = "${data.coder_parameter.svn_username.value}"
@@ -209,11 +207,10 @@ resource "coder_app" "coder_tutorials" {
   external     = true
 }
 
-
 resource "coder_env" "coder_workspace" {
   agent_id = coder_agent.main.id
-  name     = "CODER_WORKSPACE"
-  value    = "${local.workspace}"
+  name     = "CODER_WORKSPACE_ID"
+  value    = "${data.coder_workspace.me.id}"
 }
 resource "coder_env" "extensions_gallery" {
   agent_id = coder_agent.main.id
@@ -228,7 +225,7 @@ resource "coder_env" "lingma_organization_id" {
 resource "coder_env" "lingma_username" {
   agent_id = coder_agent.main.id
   name     = "LINGMA_USERNAME"
-  value    = "${local.username}"
+  value    = "${data.coder_workspace_owner.me.name}"
 }
 resource "coder_env" "node_extra_ca_certs" {
   agent_id = coder_agent.main.id
@@ -344,7 +341,7 @@ resource "coder_script" "checkout_public_svn" {
 }
 
 resource "docker_service" "workspace" {
-  name = "coder-${local.username}-${lower(local.workspace)}"
+  name = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
   task_spec {
     container_spec {
       image = docker_registry_image.main.name
@@ -367,7 +364,7 @@ resource "docker_service" "workspace" {
       }
 
       command = ["sh", "-c", replace(coder_agent.main.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")]
-      hostname = lower(local.workspace)
+      hostname = lower(data.coder_workspace.me.name)
 
       env = {
         CODER_AGENT_TOKEN = "${coder_agent.main.token}"
@@ -383,7 +380,7 @@ resource "docker_service" "workspace" {
       }
 
       mounts {
-        target    = "/home/${local.username}"
+        target    = "/home/${data.coder_workspace_owner.me.name}"
         type      = "volume"
 
         read_only = false
@@ -414,7 +411,7 @@ resource "docker_image" "main" {
   build {
     context = "build"
     build_args = {
-      USER = local.username
+      USER = data.coder_workspace_owner.me.name
       EXTENSION_VERSION = "1.99.2025040909"
     }
     force_remove = true
