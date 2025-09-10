@@ -2,19 +2,6 @@
   // See https://go.microsoft.com/fwlink/?LinkId=733558
   // for the documentation about the tasks.json format
   "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "Open Coder Docs",
-      "command": "${input:openCoderDocs}",
-      "problemMatcher": [],
-    }
-  ],
-  "inputs": [
-    {
-      "id": "openCoderDocs",
-      "type": "command",
-      "command": "simpleBrowser.show",
-      "args": ["https://coder-docs.cmwcoder.h3c.com"]
-    }
-  ]
+  "tasks": [],
+  "inputs": []
 }

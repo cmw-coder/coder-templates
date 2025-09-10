@@ -1,28 +1,11 @@
 {
     "explorer.confirmPasteNative": false,
     "files.autoGuessEncoding": true,
-    "files.encoding": "gbk",
     "C_Cpp.default.compilerPath": "/usr/bin/gcc",
     "C_Cpp.default.cppStandard": "c++11",
     "C_Cpp.default.cStandard": "c99",
-    "C_Cpp.default.defines": [
-        "_SYS_STRING_BSD_",
-        "__LITTLE_ENDIAN_BITFIELD"
-    ],
-    "C_Cpp.default.forcedInclude": [
-        "~/project/public/include/comware/sys/basetype.h"
-    ],
-    "C_Cpp.default.includePath": [
-        "/opt/glibc/include",
-        "/opt/open-headers/include",
-        "~/project/public/include/comware"
-    ],
     "C_Cpp.intelliSenseCacheSize": 32768,
     "C_Cpp.intelliSenseMemoryLimit": 16384,
     "C_Cpp.maxSymbolSearchResults": 10000,
-    "svn.default.encoding": "gbk",
-    "svn.experimental.detect_encoding": true,
-    "svn.multipleFolders.enabled": true,
-    "svn.refresh.remoteChanges": true,
     "window.autoDetectColorScheme": true,
 }

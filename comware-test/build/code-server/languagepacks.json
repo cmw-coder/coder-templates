@@ -67,6 +67,7 @@
             "vscode.php-language-features": "/home/%USER%/.local/share/code-server/extensions/ms-ceintl.vscode-language-pack-zh-hans-%EXTENSION_VERSION%/translations/extensions/vscode.php-language-features.i18n.json",
             "vscode.php": "/home/%USER%/.local/share/code-server/extensions/ms-ceintl.vscode-language-pack-zh-hans-%EXTENSION_VERSION%/translations/extensions/vscode.php.i18n.json",
             "vscode.powershell": "/home/%USER%/.local/share/code-server/extensions/ms-ceintl.vscode-language-pack-zh-hans-%EXTENSION_VERSION%/translations/extensions/vscode.powershell.i18n.json",
+            "vscode.prompt": "/home/%USER%/.local/share/code-server/extensions/ms-ceintl.vscode-language-pack-zh-hans-%EXTENSION_VERSION%/translations/extensions/vscode.prompt.i18n.json",
             "vscode.pug": "/home/%USER%/.local/share/code-server/extensions/ms-ceintl.vscode-language-pack-zh-hans-%EXTENSION_VERSION%/translations/extensions/vscode.pug.i18n.json",
             "vscode.python": "/home/%USER%/.local/share/code-server/extensions/ms-ceintl.vscode-language-pack-zh-hans-%EXTENSION_VERSION%/translations/extensions/vscode.python.i18n.json",
             "vscode.r": "/home/%USER%/.local/share/code-server/extensions/ms-ceintl.vscode-language-pack-zh-hans-%EXTENSION_VERSION%/translations/extensions/vscode.r.i18n.json",
