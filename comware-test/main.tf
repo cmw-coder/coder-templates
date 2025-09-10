@@ -82,7 +82,11 @@ resource "coder_agent" "main" {
     display_name = "Code Server Version"
     script       = <<EOF
       #!/bin/bash
-      code-server --version | head -n1 | cut -d " " -f1 || echo unknown
+      if [ -f /usr/bin/code-server ]; then
+        code-server --version | head -n1 | cut -d " " -f1
+      else
+        echo unknown
+      fi
     EOF
     interval     = 30
     order        = 2
@@ -142,22 +146,16 @@ resource "coder_script" "start_code_server" {
     echo -e "\033[36m- 📦 Installing code-server\033[0m"
     curl -fsSL https://code-server.dev/install.sh | sh
 
-    # echo -e "\033[36m- ⏳ Installing extensions\033[0m"
-    # code-server --install-extension "alefragnani.bookmarks"
-    # code-server --install-extension "Alibaba-Cloud.tongyi-lingma-onpremise"
-    # code-server --install-extension "anjali.clipboard-history"
-    # code-server --install-extension "beaugust.blamer-vs"
-    # code-server --install-extension "bierner.markdown-mermaid"
-    # code-server --install-extension "dbaeumer.vscode-eslint@prerelease"
-    # code-server --install-extension "esbenp.prettier-vscode"
-    # code-server --install-extension "johnstoncode.svn-scm"
-    # code-server --install-extension "ms-ceintl.vscode-language-pack-zh-hans"
-    # code-server --install-extension "ms-python.debugpy@prerelease"
-    # code-server --install-extension "ms-vscode.cpptools@prerelease"
-    # code-server --install-extension "timonwong.shellcheck"
-    # code-server --install-extension "rangav.vscode-thunder-client"
-    # code-server --install-extension "redhat.vscode-xml@prerelease"
-    # code-server --install-extension "rsbondi.highlight-words"
+    echo -e "\033[36m- ⏳ Installing extensions\033[0m"
+    code-server --install-extension "alefragnani.bookmarks"
+    code-server --install-extension "bierner.markdown-mermaid"
+    code-server --install-extension "dbaeumer.vscode-eslint"
+    code-server --install-extension "esbenp.prettier-vscode"
+    code-server --install-extension "ms-ceintl.vscode-language-pack-zh-hans"
+    code-server --install-extension "ms-python.debugpy"
+    code-server --install-extension "timonwong.shellcheck"
+    code-server --install-extension "rangav.vscode-thunder-client"
+    code-server --install-extension "redhat.vscode-xml"
 
     code-server \
     --auth none \
@@ -168,6 +166,27 @@ resource "coder_script" "start_code_server" {
     >/home/${local.username}/.local/share/code-server/main.log 2>&1 &
 
     echo -e "\033[32m- ✔️ Code server started!\033[0m"
+  EOF
+}
+resource "coder_script" "create_project_folders" {
+  agent_id     = coder_agent.main.id
+  display_name = "Create Project Folders"
+  icon         = "/emojis/1f3e0.png"
+  run_on_start = true
+  start_blocks_login = true
+  script = <<EOF
+    #!/bin/bash
+    mkdir -p /home/${local.username}/project
+    cd /home/${local.username}/project
+    mkdir -p ./KE
+    mkdir -p ./press
+    mkdir -p ./pypilot
+    mkdir -p ./test_cases
+    mkdir -p ./test_scripts/module
+    mkdir -p ./test_scripts/topox
+    cd ./test_scripts
+    touch ./__init__.py
+    touch ./conftest.py
   EOF
 }
 
