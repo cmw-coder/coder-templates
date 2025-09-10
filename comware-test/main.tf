@@ -33,7 +33,7 @@ data "coder_workspace_owner" "me" {
 locals {
   username = data.coder_workspace_owner.me.name
   password = data.coder_parameter.domain_password.value
-  proxy_url = "http://${data.coder_workspace_owner.me.name}:${data.coder_parameter.domain_password.value}@proxy02.h3c.com:8080"
+  proxy_url = "http://${data.coder_workspace_owner.me.name}:${urlencode(data.coder_parameter.domain_password.value)}@proxy02.h3c.com:8080"
   workspace = data.coder_workspace.me.name
 }
 
@@ -97,7 +97,7 @@ resource "coder_app" "code_server" {
   agent_id     = coder_agent.main.id
   slug         = "code-server"
   display_name = "Code Server"
-  icon         = "/icon/code.svg"
+  icon         = "/icon/coder.svg"
   url          = "http://localhost:13337/?folder=/home/${local.username}/project"
   subdomain    = true
   share        = "public"
@@ -146,16 +146,16 @@ resource "coder_script" "start_code_server" {
     echo -e "\033[36m- 📦 Installing code-server\033[0m"
     curl -fsSL https://code-server.dev/install.sh | sh
 
-    echo -e "\033[36m- ⏳ Installing extensions\033[0m"
-    code-server --install-extension "alefragnani.bookmarks"
-    code-server --install-extension "bierner.markdown-mermaid"
-    code-server --install-extension "dbaeumer.vscode-eslint"
-    code-server --install-extension "esbenp.prettier-vscode"
-    code-server --install-extension "ms-ceintl.vscode-language-pack-zh-hans"
-    code-server --install-extension "ms-python.debugpy"
-    code-server --install-extension "timonwong.shellcheck"
-    code-server --install-extension "rangav.vscode-thunder-client"
-    code-server --install-extension "redhat.vscode-xml"
+    # echo -e "\033[36m- ⏳ Installing extensions\033[0m"
+    # code-server --install-extension "alefragnani.bookmarks"
+    # code-server --install-extension "bierner.markdown-mermaid"
+    # code-server --install-extension "dbaeumer.vscode-eslint"
+    # code-server --install-extension "esbenp.prettier-vscode"
+    # code-server --install-extension "ms-ceintl.vscode-language-pack-zh-hans"
+    # code-server --install-extension "ms-python.debugpy"
+    # code-server --install-extension "timonwong.shellcheck"
+    # code-server --install-extension "rangav.vscode-thunder-client"
+    # code-server --install-extension "redhat.vscode-xml"
 
     code-server \
     --auth none \
