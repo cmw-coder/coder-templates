@@ -29,9 +29,11 @@ COPY ca-certs /usr/local/share/ca-certificates/
 RUN update-ca-certificates
 
 # Install Claude Code
-RUN npm config set proxy "$PROXY_URL" \
-    && npm config set https-proxy "$PROXY_URL" \
-    && npm config set strict-ssl false
+RUN if [ -n "$PROXY_URL" ]; then \
+        npm config set proxy "$PROXY_URL" \
+        && npm config set https-proxy "$PROXY_URL" \
+        && npm config set strict-ssl false; \
+    fi
 RUN npm install -g @anthropic-ai/claude-code@latest
 
 # Create a non-root user with sudo privileges

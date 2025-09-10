@@ -216,8 +216,8 @@ resource "docker_image" "main" {
     context = "build"
     build_args = {
       EXTENSION_VERSION = "1.103.2025081309"
-      PROXY_URL = local.proxy_url
-      USER = local.username
+      PROXY_URL = "${local.proxy_url}"
+      USER = "${local.username}"
     }
   }
   force_remove = true
