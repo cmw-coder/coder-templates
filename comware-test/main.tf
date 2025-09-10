@@ -211,7 +211,11 @@ resource "docker_image" "main" {
       PROXY_URL = local.proxy_url
       USER = local.username
     }
+    build_id = "coder-${data.coder_workspace.me.id}"
+    build_log_file = "/tmp/coder-${data.coder_workspace.me.id}-build.log"
+    builder = "default"
   }
+  force_remove = true
   triggers = {
     dir_sha1 = sha1(join("", [for f in fileset(path.module, "build/*") : filesha1(f)]))
   }

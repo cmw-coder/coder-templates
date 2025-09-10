@@ -1,7 +1,7 @@
-FROM ubuntu:latest
+FROM node:trixie
 
 COPY --chmod=755 bin /usr/local/bin
-COPY ubuntu.sources /etc/apt/sources.list.d/
+COPY debian.sources /etc/apt/sources.list.d/
 
 # Write proxy configuration to /etc/apt/apt.conf.d/00proxy.conf if PROXY_URL is provided
 ARG PROXY_URL=""
@@ -10,8 +10,7 @@ RUN if [ -n "$PROXY_URL" ]; then \
     fi
 
 RUN apt-get update \
-    && apt-get install -y build-essential ca-certificates curl language-pack-en-base locales nano subversion sudo vim \
-    && rm -rf /var/lib/apt/lists/* \
+    && apt-get install -y build-essential ca-certificates curl language-pack-en-base locales nano neovim sudo \
     && sed -i '/en_US.UTF-8/s/^#//g' /etc/locale.gen \
     && locale-gen en_US.UTF-8
 
