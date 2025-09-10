@@ -165,7 +165,7 @@ resource "coder_script" "start_code_server" {
     --locale zh-cn \
     --port 13337 \
     --trusted-origins * \
-    >/home/${USER}/.local/share/code-server/main.log 2>&1 &
+    >/home/${local.username}/.local/share/code-server/main.log 2>&1 &
 
     echo -e "\033[32m- ✔️ Code server started!\033[0m"
   EOF
