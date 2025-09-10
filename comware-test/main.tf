@@ -159,7 +159,7 @@ resource "coder_script" "start_code_server" {
     code-server --install-extension "redhat.vscode-xml@prerelease"
     code-server --install-extension "rsbondi.highlight-words"
 
-    code-server --auth none --disable-workspace-trust --locale zh-cn --port 1333 --trusted-origins * &
+    code-server --auth none --disable-workspace-trust --locale zh-cn --port 13337 --trusted-origins * &
   EOF
 }
 
