@@ -205,19 +205,16 @@ resource "docker_container" "workspace" {
 resource "docker_image" "main" {
   name = "coder-${data.coder_workspace.me.id}"
   build {
-    context = "./build"
+    context = "build"
     build_args = {
       EXTENSION_VERSION = "1.103.2025081309"
       PROXY_URL = local.proxy_url
       USER = local.username
     }
-    build_id = "coder-${data.coder_workspace.me.id}"
-    build_log_file = "/tmp/coder-${data.coder_workspace.me.id}-build.log"
-    builder = "default"
   }
   force_remove = true
   triggers = {
-    dir_sha1 = sha1(join("", [for f in fileset(path.module, "build/*") : filesha1(f)]))
+    dir_sha1 = sha1(join("", [for f in fileset(path.module, "build/**") : filesha1(f)]))
   }
 }
 

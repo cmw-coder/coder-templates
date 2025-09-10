@@ -9,13 +9,13 @@ COPY debian.sources /etc/apt/sources.list.d/
 # Write proxy configuration to /etc/apt/apt.conf.d/00proxy.conf if PROXY_URL is provided
 ARG PROXY_URL=""
 RUN if [ -n "$PROXY_URL" ]; then \
-    echo -e "Acquire::http::Proxy \"${PROXY_URL}\";\nAcquire::https::Proxy \"${PROXY_URL}\";\nAcquire::ftp::Proxy \"${PROXY_URL}\";" > /etc/apt/apt.conf.d/00proxy.conf; \
+    printf 'Acquire::http::Proxy "%s";\nAcquire::https::Proxy "%s";\nAcquire::ftp::Proxy "%s";\n' "$PROXY_URL" "$PROXY_URL" "$PROXY_URL" > /etc/apt/apt.conf.d/00proxy.conf; \
     fi
 
 # Install essential packages and set locale and shell
 RUN apt-get update \
     && apt-get install -y build-essential ca-certificates curl \
-        fzf git jq language-pack-en-base locales man-db nano neovim sudo unzip zsh \
+        fzf git jq locales man-db nano neovim sudo unzip zsh \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
     && sed -i '/en_US.UTF-8/s/^#//g' /etc/locale.gen && locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
@@ -27,6 +27,12 @@ ENV VISUAL=nvim
 # Add the H3C CA certificate to the system trust store
 COPY ca-certs /usr/local/share/ca-certificates/
 RUN update-ca-certificates
+
+# Install Claude Code
+RUN npm config set proxy "$PROXY_URL" \
+    && npm config set https-proxy "$PROXY_URL" \
+    && npm config set strict-ssl false
+RUN npm install -g @anthropic-ai/claude-code@latest
 
 # Create a non-root user with sudo privileges
 ARG USER=coder
@@ -44,9 +50,6 @@ RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhisto
 # Set the default user and working directory
 USER ${USER}
 WORKDIR /home/${USER}
-
-# Install Claude
-RUN npm install -g @anthropic-ai/claude-code@latest
 
 # Install code-server configs
 COPY --chown=${USER}:${USER} code-server /home/${USER}/.local/share/code-server/
