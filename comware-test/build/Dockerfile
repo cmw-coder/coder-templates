@@ -1,7 +1,13 @@
-FROM ubuntu
+FROM ubuntu:latest
 
 COPY --chmod=755 bin /usr/local/bin
 COPY ubuntu.sources /etc/apt/sources.list.d/
+
+# Write proxy configuration to /etc/apt/apt.conf.d/00proxy.conf if PROXY_URL is provided
+ARG PROXY_URL=""
+RUN if [ -n "$PROXY_URL" ]; then \
+    echo -e "Acquire::http::Proxy \"${PROXY_URL}\";\nAcquire::https::Proxy \"${PROXY_URL}\";\nAcquire::ftp::Proxy \"${PROXY_URL}\";" > /etc/apt/apt.conf.d/00proxy.conf; \
+    fi
 
 RUN apt-get update \
     && apt-get install -y build-essential ca-certificates curl language-pack-en-base locales nano subversion sudo vim \
@@ -15,14 +21,15 @@ RUN update-ca-certificates
 
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
+# Create a non-root user with sudo privileges
 ARG USER=coder
 RUN useradd --groups sudo --no-create-home --shell /bin/bash ${USER} \
     && echo "${USER} ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/${USER} \
     && chmod 0440 /etc/sudoers.d/${USER}
-
 USER ${USER}
 WORKDIR /home/${USER}
 
+# Install code-server configs
 COPY --chown=${USER}:${USER} code-server /home/${USER}/.local/share/code-server/
 
 # Add languagepacks.json

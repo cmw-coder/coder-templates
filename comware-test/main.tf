@@ -33,7 +33,7 @@ data "coder_workspace_owner" "me" {
 locals {
   username = data.coder_workspace_owner.me.name
   password = data.coder_parameter.domain_password.value
-  http_proxy = "http://${data.coder_workspace_owner.me.name}:${data.coder_parameter.domain_password.value}@proxy02.h3c.com:8080"
+  proxy_url = "http://${data.coder_workspace_owner.me.name}:${data.coder_parameter.domain_password.value}@proxy02.h3c.com:8080"
   workspace = data.coder_workspace.me.name
 }
 
@@ -46,9 +46,9 @@ resource "coder_agent" "main" {
     GIT_AUTHOR_EMAIL    = "${data.coder_workspace_owner.me.email}"
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, local.username)
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
-    HTTP_PROXY         = "${local.http_proxy}"
-    HTTPS_PROXY        = "${local.http_proxy}"
-    FTP_PROXY          = "${local.http_proxy}"
+    HTTP_PROXY         = "${local.proxy_url}"
+    HTTPS_PROXY        = "${local.proxy_url}"
+    FTP_PROXY          = "${local.proxy_url}"
     NO_PROXY           = "localhost"
     PROJECT_BASE_DIR    = "/home/${local.username}/project"
   }
@@ -108,17 +108,17 @@ resource "coder_app" "code_server" {
 resource "coder_env" "http_proxy" {
   agent_id = coder_agent.main.id
   name     = "HTTP_PROXY"
-  value    = "${local.http_proxy}"
+  value    = "${local.proxy_url}"
 }
 resource "coder_env" "https_proxy" {
   agent_id = coder_agent.main.id
   name     = "HTTPS_PROXY"
-  value    = "${local.http_proxy}"
+  value    = "${local.proxy_url}"
 }
 resource "coder_env" "ftp_proxy" {
   agent_id = coder_agent.main.id
   name     = "FTP_PROXY"
-  value    = "${local.http_proxy}"
+  value    = "${local.proxy_url}"
 }
 resource "coder_env" "no_proxy" {
   agent_id = coder_agent.main.id
@@ -207,8 +207,9 @@ resource "docker_image" "main" {
   build {
     context = "./build"
     build_args = {
-      USER = local.username
       EXTENSION_VERSION = "1.103.2025081309"
+      PROXY_URL = local.proxy_url
+      USER = local.username
     }
   }
   triggers = {
