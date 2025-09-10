@@ -7,9 +7,7 @@ RUN apt-get update \
     && apt-get install -y build-essential ca-certificates curl language-pack-en-base locales nano subversion sudo vim \
     && rm -rf /var/lib/apt/lists/* \
     && sed -i '/en_US.UTF-8/s/^#//g' /etc/locale.gen \
-    && locale-gen en_US.UTF-8 \
-    && mkdir -p /opt/glibc/include \
-    && mkdir -p /opt/open-headers/include
+    && locale-gen en_US.UTF-8
 
 # Add the H3C CA certificate to the system trust store
 COPY ca-certs /usr/local/share/ca-certificates/

@@ -15,6 +15,14 @@ provider "docker" {
 provider "coder" {
 }
 
+data "coder_parameter" "domain_password" {
+  name          = "domain_password"
+  display_name  = "Domain password"
+  order         = 0
+  description   = "Specify a domain password to login with your domain account."
+  type          = "string"
+  mutable       = true
+}
 data "coder_provisioner" "me" {
 }
 data "coder_workspace" "me" {
@@ -24,10 +32,9 @@ data "coder_workspace_owner" "me" {
 
 locals {
   username = data.coder_workspace_owner.me.name
+  password = data.coder_parameter.domain_password.value
+  http_proxy = "http://${data.coder_workspace_owner.me.name}:${data.coder_parameter.domain_password.value}@proxy02.h3c.com:8080"
   workspace = data.coder_workspace.me.name
-  yunxiao = {
-    organization_id = "864f6de3-3d59-46f2-9729-645fc20006b7"
-  }
 }
 
 resource "coder_agent" "main" {
@@ -39,6 +46,10 @@ resource "coder_agent" "main" {
     GIT_AUTHOR_EMAIL    = "${data.coder_workspace_owner.me.email}"
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, local.username)
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
+    HTTP_PROXY         = "${local.http_proxy}"
+    HTTPS_PROXY        = "${local.http_proxy}"
+    FTP_PROXY          = "${local.http_proxy}"
+    NO_PROXY           = "localhost"
     PROJECT_BASE_DIR    = "/home/${local.username}/project"
   }
 
@@ -58,7 +69,6 @@ resource "coder_agent" "main" {
     timeout      = 1
     order = 0
   }
-
   metadata {
     key          = "ram_usage"
     display_name = "RAM Usage"
@@ -67,7 +77,6 @@ resource "coder_agent" "main" {
     timeout      = 1
     order = 1
   }
-
   metadata {
     key          = "code_server_version"
     display_name = "Code Server Version"
@@ -96,6 +105,26 @@ resource "coder_app" "code_server" {
   }
 }
 
+resource "coder_env" "http_proxy" {
+  agent_id = coder_agent.main.id
+  name     = "HTTP_PROXY"
+  value    = "${local.http_proxy}"
+}
+resource "coder_env" "https_proxy" {
+  agent_id = coder_agent.main.id
+  name     = "HTTPS_PROXY"
+  value    = "${local.http_proxy}"
+}
+resource "coder_env" "ftp_proxy" {
+  agent_id = coder_agent.main.id
+  name     = "FTP_PROXY"
+  value    = "${local.http_proxy}"
+}
+resource "coder_env" "no_proxy" {
+  agent_id = coder_agent.main.id
+  name     = "NO_PROXY"
+  value    = "localhost"
+}
 resource "coder_env" "node_extra_ca_certs" {
   agent_id = coder_agent.main.id
   name     = "NODE_EXTRA_CA_CERTS"
@@ -111,7 +140,7 @@ resource "coder_script" "start_code_server" {
   script = <<EOF
     #!/bin/bash
     echo -e "\033[36m- 📦 Installing code-server\033[0m"
-    curl -fsSL https://code-server.dev/install.sh | sh -s
+    curl -fsSL https://code-server.dev/install.sh | sh
 
     echo -e "\033[36m- ⏳ Installing extensions\033[0m"
     code-server --install-extension "alefragnani.bookmarks"
