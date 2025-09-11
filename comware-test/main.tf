@@ -227,6 +227,13 @@ resource "docker_container" "workspace" {
     read_only = true
     source    = "/opt/coder/assets/h3ccodecli"
   }
+  mounts {
+    target    = "/opt/coder/statistics/build"
+    type      = "bind"
+
+    read_only = false
+    source    = "/opt/coder/statistics/build"
+  }
 }
 
 resource "docker_image" "main" {
