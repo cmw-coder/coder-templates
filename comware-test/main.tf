@@ -15,14 +15,6 @@ provider "docker" {
 provider "coder" {
 }
 
-data "coder_parameter" "domain_password" {
-  name          = "domain_password"
-  display_name  = "Domain password"
-  order         = 0
-  description   = "Specify a domain password to login with your domain account."
-  type          = "string"
-  mutable       = true
-}
 data "coder_provisioner" "me" {
 }
 data "coder_workspace" "me" {
@@ -32,8 +24,7 @@ data "coder_workspace_owner" "me" {
 
 locals {
   username = data.coder_workspace_owner.me.name
-  password = data.coder_parameter.domain_password.value
-  proxy_url = "http://${data.coder_workspace_owner.me.name}:${urlencode(data.coder_parameter.domain_password.value)}@proxy02.h3c.com:8080"
+  proxy_url = "http://proxy02.h3c.com:8080"
   workspace = data.coder_workspace.me.name
 }
 
@@ -180,6 +171,7 @@ resource "coder_script" "create_project_folders" {
     mkdir -p /home/${local.username}/project/press
     mkdir -p /home/${local.username}/project/pypilot
     mkdir -p /home/${local.username}/project/test_cases
+    mkdir -p /home/${local.username}/project/test_scripts
   EOF
 }
 
