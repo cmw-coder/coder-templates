@@ -53,8 +53,9 @@ RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhisto
 USER ${USER}
 WORKDIR /home/${USER}
 
-# Install code-server configs
+# Copy user specific configuration files
 COPY --chown=${USER}:${USER} code-server /home/${USER}/.local/share/code-server/
+COPY --chown=${USER}:${USER} CLAUDE.md /home/${USER}/project
 
 # Add languagepacks.json
 ARG EXTENSION_VERSION=1.99.2025040909

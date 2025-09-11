@@ -176,17 +176,10 @@ resource "coder_script" "create_project_folders" {
   start_blocks_login = true
   script = <<EOF
     #!/bin/bash
-    mkdir -p /home/${local.username}/project
-    cd /home/${local.username}/project
-    mkdir -p ./KE
-    mkdir -p ./press
-    mkdir -p ./pypilot
-    mkdir -p ./test_cases
-    mkdir -p ./test_scripts/module
-    mkdir -p ./test_scripts/topox
-    cd ./test_scripts
-    touch ./__init__.py
-    touch ./conftest.py
+    mkdir -p /home/${local.username}/project/KE
+    mkdir -p /home/${local.username}/project/press
+    mkdir -p /home/${local.username}/project/pypilot
+    mkdir -p /home/${local.username}/project/test_cases
   EOF
 }
 
@@ -226,6 +219,13 @@ resource "docker_container" "workspace" {
   labels {
     label = "coder.workspace_name"
     value = data.coder_workspace.me.name
+  }
+  mounts {
+    target    = "/usr/local/bin/h3ccodecli"
+    type      = "bind"
+
+    read_only = true
+    source    = "/opt/coder/assets/h3ccodecli"
   }
 }
 
