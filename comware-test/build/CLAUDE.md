@@ -25,6 +25,7 @@
 ├── press/ # 业务参考资料
 ├── pypilot/ # pypilot 自研自动化框架使用文档
 ├── KE/ # 基础动作与参考脚本片段
+├── test_example/ # 模块历史相关测试脚本
 ├── test_cases/ # 测试点文件
 ├── test_scripts/ # 测试脚本目录
 │ └── module/ # 业务模块名称
@@ -33,8 +34,6 @@
 │ ├── conftest.py # 业务背景与公用函数（pytest 配置）
 │ ├── .topox # 网络拓扑描述文件
 │ └── init.py # 无实际意义，应忽略
-
-> `test_bed/` 目录（设备执行映射）在 Claude 分析中忽略。  
 
 ---
 

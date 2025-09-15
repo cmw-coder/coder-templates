@@ -171,6 +171,7 @@ resource "coder_script" "create_project_folders" {
     mkdir -p /home/${local.username}/project/press
     mkdir -p /home/${local.username}/project/pypilot
     mkdir -p /home/${local.username}/project/test_cases
+    mkdir -p /home/${local.username}/project/test_example
     mkdir -p /home/${local.username}/project/test_scripts
   EOF
 }
