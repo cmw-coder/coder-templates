@@ -15,7 +15,7 @@ RUN if [ -n "$PROXY_URL" ]; then \
 # Install essential packages and set locale and shell
 RUN apt-get update \
     && apt-get install -y build-essential ca-certificates curl fzf git jq locales man-db nano neovim sudo unzip \
-        python3 black zsh \
+        python3 python3-venv pip python-is-python3 black zsh \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
     && sed -i '/en_US.UTF-8/s/^#//g' /etc/locale.gen && locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
@@ -56,6 +56,7 @@ WORKDIR /home/${USER}
 # Copy user specific configuration files
 COPY --chown=${USER}:${USER} code-server /home/${USER}/.local/share/code-server/
 COPY --chown=${USER}:${USER} CLAUDE.md /home/${USER}/project/
+COPY --chown=${USER}:${USER} requirements.txt /home/${USER}/project/
 
 # Add languagepacks.json
 ARG EXTENSION_VERSION=1.99.2025040909
