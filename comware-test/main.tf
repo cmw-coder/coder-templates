@@ -169,17 +169,16 @@ resource "coder_script" "create_project_folders" {
   start_blocks_login = true
   script = <<EOF
     #!/bin/bash
-    cd /home/${local.username}
-    mkdir -p ./KE
-    mkdir -p ./press
-    mkdir -p ./pypilot
-    mkdir -p ./test_cases
-    mkdir -p ./test_example
-    mkdir -p ./test_scripts
-    python -m venv .venv
-    source .venv/bin/activate
+    mkdir -p /home/${local.username}/KE
+    mkdir -p /home/${local.username}/press
+    mkdir -p /home/${local.username}/pypilot
+    mkdir -p /home/${local.username}/test_cases
+    mkdir -p /home/${local.username}/test_example
+    mkdir -p /home/${local.username}/test_scripts
+    python -m venv /home/${local.username}/.venv
+    source /home/${local.username}/.venv/bin/activate
     pip install --upgrade pip
-    pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
+    pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r /home/${local.username}/requirements.txt
   EOF
 }
 
