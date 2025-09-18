@@ -221,17 +221,17 @@ query_openvsx_extension() {
     local extension_name="$2"
     local openvsx_url="$OPENVSX_API/$publisher/$extension_name"
     
-    log_info "Querying OpenVSX: $openvsx_url"
+    log_info "Querying OpenVSX: $openvsx_url" >&2
     
     local response
     if ! response=$(curl -s --max-time 30 "$openvsx_url"); then
-        log_error "Failed to query OpenVSX API"
+        log_error "Failed to query OpenVSX API" >&2
         exit 1
     fi
     
     # Check if extension was found
     if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
-        log_error "Extension $publisher.$extension_name not found in OpenVSX"
+        log_error "Extension $publisher.$extension_name not found in OpenVSX" >&2
         exit 1
     fi
     
@@ -241,7 +241,7 @@ query_openvsx_extension() {
     download_url=$(echo "$response" | jq -r '.files.download // empty')
     
     if [ -z "$latest_version" ] || [ -z "$download_url" ]; then
-        log_error "Unable to get extension information from OpenVSX"
+        log_error "Unable to get extension information from OpenVSX" >&2
         exit 1
     fi
     
@@ -285,7 +285,7 @@ EOF
         -H "Accept: application/json;api-version=3.0-preview.1" \
         -d "$query_json" \
         "$MS_MARKETPLACE_API"); then
-        log_error "Failed to query Microsoft marketplace"
+        log_error "Failed to query Microsoft marketplace" >&2
         exit 1
     fi
 
@@ -293,7 +293,7 @@ EOF
     local extension_count
     extension_count=$(echo "$response" | jq -r '.results[0].extensions | length')
     if [ "$extension_count" -eq 0 ]; then
-        log_error "Extension $extension_id not found"
+        log_error "Extension $extension_id not found" >&2
         exit 1
     fi
 
@@ -313,37 +313,37 @@ download_extension() {
     local extension_name="$4"
     
     if [ "$download_url" = "null" ] || [ -z "$download_url" ]; then
-        log_error "Unable to get download link"
+        log_error "Unable to get download link" >&2
         exit 1
     fi
 
-    log_info "Found version: $latest_version"
-    log_info "Download URL: $download_url"
+    log_info "Found version: $latest_version" >&2
+    log_info "Download URL: $download_url" >&2
 
     # Create filename
     local vsix_filename="${publisher}.${extension_name}-${latest_version}.vsix"
     local vsix_path="$TMP_DIR/$vsix_filename"
 
-    log_info "Downloading to: $vsix_path"
+    log_info "Downloading to: $vsix_path" >&2
 
     # Create temp directory if it doesn't exist
     mkdir -p "$TMP_DIR"
 
     # Download extension file
     if ! curl -L --progress-bar --max-time 300 -o "$vsix_path" "$download_url"; then
-        log_error "Download failed"
+        log_error "Download failed" >&2
         exit 1
     fi
 
-    log_success "Download completed!"
+    log_success "Download completed!" >&2
 
     # Check if file exists and is not empty
     if [ ! -f "$vsix_path" ] || [ ! -s "$vsix_path" ]; then
-        log_error "Downloaded file is invalid"
+        log_error "Downloaded file is invalid" >&2
         exit 1
     fi
 
-    log_info "File size: $(du -h "$vsix_path" | cut -f1)"
+    log_info "File size: $(du -h "$vsix_path" | cut -f1)" >&2
     echo "$vsix_path"
 }
 

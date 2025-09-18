@@ -137,16 +137,18 @@ resource "coder_script" "start_code_server" {
     echo -e "\033[36m- 📦 Installing code-server\033[0m"
     curl -fsSL https://code-server.dev/install.sh | sh
 
-    # echo -e "\033[36m- ⏳ Installing extensions\033[0m"
-    # code-server --install-extension "alefragnani.bookmarks"
-    # code-server --install-extension "bierner.markdown-mermaid"
-    # code-server --install-extension "dbaeumer.vscode-eslint"
-    # code-server --install-extension "esbenp.prettier-vscode"
-    # code-server --install-extension "ms-ceintl.vscode-language-pack-zh-hans"
-    # code-server --install-extension "ms-python.debugpy"
-    # code-server --install-extension "timonwong.shellcheck"
-    # code-server --install-extension "rangav.vscode-thunder-client"
-    # code-server --install-extension "redhat.vscode-xml"
+    echo -e "\033[36m- ⏳ Installing extensions\033[0m"
+    install-extension --local /opt/extensions/iceworks-team.iceworks-time-master-1.0.4.vsix
+    install-extension --open alefragnani.bookmarks
+    install-extension --open bierner.markdown-mermaid
+    install-extension --open dbaeumer.vscode-eslint
+    install-extension --open esbenp.prettier-vscode
+    install-extension --open ms-ceintl.vscode-language-pack-zh-hans
+    install-extension --open ms-python.python
+    install-extension --open ms-python.debugpy
+    install-extension --open timonwong.shellcheck
+    install-extension --open rangav.vscode-thunder-client
+    install-extension --open redhat.vscode-xml
 
     code-server \
     --auth none \
