@@ -15,20 +15,6 @@ provider "docker" {
 provider "coder" {
 }
 
-data "coder_parameter" "project_id" {
-  name          = "project_id"
-  display_name  = "Project ID"
-  description   = <<-EOT
-    Please provide **Project ID** (Typicaly like `NV*****`).\
-    If you don't have one, just leave it empty.
-  EOT
-  icon          = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
-  order         = 0
-  type          = "string"
-  mutable       = false
-  default       = ""
-}
-
 data "coder_provisioner" "me" {
 }
 data "coder_workspace" "me" {
@@ -139,11 +125,6 @@ resource "coder_env" "node_extra_ca_certs" {
   name     = "NODE_EXTRA_CA_CERTS"
   value    = "/etc/ssl/certs/ca-certificates.crt"
 }
-resource "coder_env" "project_id" {
-  agent_id = coder_agent.main.id
-  name     = "PROJECT_ID"
-  value    = "${data.coder_parameter.project_id.value}"
-}
 
 resource "coder_script" "start_code_server" {
   agent_id     = coder_agent.main.id
@@ -211,12 +192,7 @@ resource "coder_script" "copy_time_master_statistics" {
   run_on_stop = true
   script = <<EOF
     #!/bin/bash
-    if [ -n "$PROJECT_ID" ]; then
-      echo -e "\033[36m- 📋 Copying Time Master statistics\033[0m"
-      mkdir -p /opt/coder/statistics/build/${local.username}/$PROJECT_ID/TimeMaster
-      cp -r /home/${local.username}/.appworks/TimeMaster/days \
-        /opt/coder/statistics/build/${local.username}/$PROJECT_ID/TimeMaster/
-    fi
+    copy-time-master-statistics
   EOF
 }
 
