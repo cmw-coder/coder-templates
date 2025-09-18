@@ -1,29 +1,106 @@
 #!/bin/bash
 
 # VS Code Extension Installation Script
-# Usage: ./install-extension.sh <extension-id> [--download-only]
+# Usage: ./install-extension.sh [--download-only] [--open] [--local] <extension-id-or-path>
 # Example: ./install-extension.sh ms-python.python
+#          ./install-extension.sh --download-only ms-python.python
+#          ./install-extension.sh --open ms-python.python
+#          ./install-extension.sh --download-only --open ms-python.python
+#          ./install-extension.sh --local /path/to/extension.vsix
 
 set -e
 
 # Check parameters
-if [ $# -lt 1 ] || [ $# -gt 2 ]; then
-    echo "Usage: $0 <extension-id> [--download-only]"
+if [ $# -lt 1 ] || [ $# -gt 4 ]; then
+    echo "Usage: $0 [--download-only] [--open] [--local] <extension-id-or-path>"
     echo "Example: $0 ms-python.python"
-    echo "         $0 ms-python.python --download-only"
+    echo "         $0 --download-only ms-python.python"
+    echo "         $0 --open ms-python.python"
+    echo "         $0 --download-only --open ms-python.python"
+    echo "         $0 --local /path/to/extension.vsix"
     exit 1
 fi
 
-EXTENSION_ID="$1"
 DOWNLOAD_ONLY=false
+USE_OPENVSX=false
+USE_LOCAL=false
+EXTENSION_ID_OR_PATH=""
 
-# Check second parameter
-if [ $# -eq 2 ] && [ "$2" = "--download-only" ]; then
-    DOWNLOAD_ONLY=true
+# Parse parameters - the last parameter is extension-id or path
+for ((i=1; i<=$#; i++)); do
+    arg="${!i}"
+    case $arg in
+        --download-only)
+        DOWNLOAD_ONLY=true
+        ;;
+        --open)
+        USE_OPENVSX=true
+        ;;
+        --local)
+        USE_LOCAL=true
+        ;;
+        *)
+        # The last non-option parameter is the extension ID or path
+        EXTENSION_ID_OR_PATH="$arg"
+        ;;
+    esac
+done
+
+# Validate that we have extension ID or path
+if [ -z "$EXTENSION_ID_OR_PATH" ]; then
+    echo "Error: Extension ID or path is required"
+    exit 1
 fi
 
-TMP_DIR="/tmp"
-MARKETPLACE_URL="https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery"
+# Handle local vsix file installation
+if [ "$USE_LOCAL" = true ]; then
+    echo "Local vsix file mode enabled"
+    
+    # Check if file exists
+    if [ ! -f "$EXTENSION_ID_OR_PATH" ]; then
+        echo "Error: Local vsix file not found: $EXTENSION_ID_OR_PATH"
+        exit 1
+    fi
+    
+    # Check if it's a .vsix file
+    if [[ ! "$EXTENSION_ID_OR_PATH" =~ \.vsix$ ]]; then
+        echo "Error: File must have .vsix extension: $EXTENSION_ID_OR_PATH"
+        exit 1
+    fi
+    
+    VSIX_PATH="$EXTENSION_ID_OR_PATH"
+    echo "Using local vsix file: $VSIX_PATH"
+    echo "File size: $(du -h "$VSIX_PATH" | cut -f1)"
+    
+    # Skip download process for local files
+    echo "Installing extension from local file..."
+    
+    # Install extension
+    if code-server --force --install-extension "$VSIX_PATH"; then
+        echo "✅ Extension from $VSIX_PATH installed successfully!"
+    else
+        echo "❌ Extension installation failed"
+        exit 1
+    fi
+    
+    echo "🎉 Done!"
+    exit 0
+fi
+
+# Online download mode (existing logic)
+EXTENSION_ID="$EXTENSION_ID_OR_PATH"
+
+TMP_DIR="/tmp/extensions"
+mkdir -p "$TMP_DIR"
+
+# Set marketplace URL based on --open parameter
+if [ "$USE_OPENVSX" = true ]; then
+    MARKETPLACE_URL="https://open-vsx.org/api"
+    echo "Using OpenVSX marketplace"
+else
+    MARKETPLACE_URL="https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery"
+    echo "Using Microsoft VS Code marketplace"
+fi
 
 # Check required dependencies
 echo "Checking dependencies..."
@@ -58,6 +135,12 @@ else
     echo "✅ Basic dependency checks passed (download-only mode)"
 fi
 
+# Handle --local and --download-only conflict
+if [ "$USE_LOCAL" = true ] && [ "$DOWNLOAD_ONLY" = true ]; then
+    echo "Warning: --download-only flag is ignored when using --local"
+    DOWNLOAD_ONLY=false
+fi
+
 echo "Processing extension: $EXTENSION_ID"
 
 # Split extension ID into publisher and extension name
@@ -73,8 +156,34 @@ EXTENSION_NAME="${PARTS[1]}"
 echo "Publisher: $PUBLISHER"
 echo "Extension name: $EXTENSION_NAME"
 
-# Query extension information JSON payload
-QUERY_JSON=$(cat <<EOF
+echo "Querying extension information..."
+
+if [ "$USE_OPENVSX" = true ]; then
+    # OpenVSX API query
+    OPENVSX_URL="$MARKETPLACE_URL/$PUBLISHER/$EXTENSION_NAME"
+    echo "Querying OpenVSX: $OPENVSX_URL"
+    
+    RESPONSE=$(curl -s "$OPENVSX_URL")
+    
+    # Check if extension was found
+    if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+        echo "Error: Extension $EXTENSION_ID not found in OpenVSX"
+        exit 1
+    fi
+    
+    # Get latest version information from OpenVSX
+    LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.version // empty')
+    DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.files.download // empty')
+    
+    if [ -z "$LATEST_VERSION" ] || [ -z "$DOWNLOAD_URL" ]; then
+        echo "Error: Unable to get extension information from OpenVSX"
+        exit 1
+    fi
+    
+else
+    # Microsoft marketplace query
+    # Query extension information JSON payload
+    QUERY_JSON=$(cat <<EOF
 {
     "filters": [
         {
@@ -98,25 +207,24 @@ QUERY_JSON=$(cat <<EOF
 EOF
 )
 
-echo "Querying extension information..."
+    # Query extension information
+    RESPONSE=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json;api-version=3.0-preview.1" \
+        -d "$QUERY_JSON" \
+        "$MARKETPLACE_URL")
 
-# Query extension information
-RESPONSE=$(curl -s -X POST \
-    -H "Content-Type: application/json" \
-    -H "Accept: application/json;api-version=3.0-preview.1" \
-    -d "$QUERY_JSON" \
-    "$MARKETPLACE_URL")
+    # Check if extension was found
+    EXTENSION_COUNT=$(echo "$RESPONSE" | jq -r '.results[0].extensions | length')
+    if [ "$EXTENSION_COUNT" -eq 0 ]; then
+        echo "Error: Extension $EXTENSION_ID not found"
+        exit 1
+    fi
 
-# Check if extension was found
-EXTENSION_COUNT=$(echo "$RESPONSE" | jq -r '.results[0].extensions | length')
-if [ "$EXTENSION_COUNT" -eq 0 ]; then
-    echo "Error: Extension $EXTENSION_ID not found"
-    exit 1
+    # Get latest version information
+    LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.results[0].extensions[0].versions[0].version')
+    DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.results[0].extensions[0].versions[0].files[] | select(.assetType == "Microsoft.VisualStudio.Services.VSIXPackage") | .source')
 fi
-
-# Get latest version information
-LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.results[0].extensions[0].versions[0].version')
-DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.results[0].extensions[0].versions[0].files[] | select(.assetType == "Microsoft.VisualStudio.Services.VSIXPackage") | .source')
 
 if [ "$DOWNLOAD_URL" = "null" ] || [ -z "$DOWNLOAD_URL" ]; then
     echo "Error: Unable to get download link"
@@ -150,7 +258,8 @@ echo "File size: $(du -h "$VSIX_PATH" | cut -f1)"
 
 # If download-only mode, exit here
 if [ "$DOWNLOAD_ONLY" = true ]; then
-    echo "✅ Extension $EXTENSION_ID (version $LATEST_VERSION) downloaded successfully!"
+    MARKETPLACE_NAME=$(if [ "$USE_OPENVSX" = true ]; then echo "OpenVSX"; else echo "Microsoft marketplace"; fi)
+    echo "✅ Extension $EXTENSION_ID (version $LATEST_VERSION) downloaded successfully from $MARKETPLACE_NAME!"
     echo "📁 File location: $VSIX_PATH"
     echo "💡 To install this extension, run: code-server --force --install-extension '$VSIX_PATH'"
     exit 0
@@ -160,7 +269,8 @@ echo "Installing extension..."
 
 # Install extension
 if code-server --force --install-extension "$VSIX_PATH"; then
-    echo "✅ Extension $EXTENSION_ID (version $LATEST_VERSION) installed successfully!"
+    MARKETPLACE_NAME=$(if [ "$USE_OPENVSX" = true ]; then echo "OpenVSX"; else echo "Microsoft marketplace"; fi)
+    echo "✅ Extension $EXTENSION_ID (version $LATEST_VERSION) installed successfully from $MARKETPLACE_NAME!"
     
     # Optional: delete downloaded file to save space
     read -p "Delete the downloaded vsix file? (y/N): " -n 1 -r
