@@ -15,6 +15,20 @@ provider "docker" {
 provider "coder" {
 }
 
+data "coder_parameter" "project_id" {
+  name          = "project_id"
+  display_name  = "Project ID"
+  description   = <<-EOT
+    Please provide **Project ID** (Typicaly like `NV*****`).\
+    If you don't have one, just leave it empty.
+  EOT
+  icon          = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
+  order         = 0
+  type          = "string"
+  mutable       = false
+  default       = ""
+}
+
 data "coder_provisioner" "me" {
 }
 data "coder_workspace" "me" {
@@ -23,8 +37,8 @@ data "coder_workspace_owner" "me" {
 }
 
 locals {
-  username = data.coder_workspace_owner.me.name
   proxy_url = "http://proxy02.h3c.com:8080"
+  username = data.coder_workspace_owner.me.name
   workspace = data.coder_workspace.me.name
 }
 
@@ -125,6 +139,11 @@ resource "coder_env" "node_extra_ca_certs" {
   name     = "NODE_EXTRA_CA_CERTS"
   value    = "/etc/ssl/certs/ca-certificates.crt"
 }
+resource "coder_env" "project_id" {
+  agent_id = coder_agent.main.id
+  name     = "PROJECT_ID"
+  value    = "${data.coder_parameter.project_id.value}"
+}
 
 resource "coder_script" "start_code_server" {
   agent_id     = coder_agent.main.id
@@ -138,8 +157,8 @@ resource "coder_script" "start_code_server" {
     curl -fsSL https://code-server.dev/install.sh | sh
 
     echo -e "\033[36m- ⏳ Installing extensions\033[0m"
-    install-extension --local /opt/extensions/iceworks-team.iceworks-time-master-1.0.4.vsix
-    install-extension --local /opt/extensions/MS-CEINTL.vscode-language-pack-zh-hans-1.104.0.vsix
+    install-extension --local /opt/coder/assets/extensions/iceworks-team.iceworks-time-master-1.0.4.vsix
+    install-extension --local /opt/coder/assets/extensions/MS-CEINTL.vscode-language-pack-zh-hans-1.104.0.vsix
     install-extension --open alefragnani.bookmarks
     install-extension --open bierner.markdown-mermaid
     install-extension --open dbaeumer.vscode-eslint
@@ -180,6 +199,24 @@ resource "coder_script" "create_project_folders" {
     source .venv/bin/activate
     pip install --upgrade pip
     pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
+    tar -zxf /opt/coder/assets/site-packages.tgz -C .venv/lib/python3.13/site-packages/
+  EOF
+}
+
+resource "coder_script" "copy_time_master_statistics" {
+  agent_id     = coder_agent.main.id
+  display_name = "Copy Time Master Statistics"
+  icon         = "/emojis/1f3e0.png"
+  cron         = "0 0 * * * *"
+  run_on_stop = true
+  script = <<EOF
+    #!/bin/bash
+    if [ -n "$PROJECT_ID" ]; then
+      echo -e "\033[36m- 📋 Copying Time Master statistics\033[0m"
+      mkdir -p /opt/coder/statistics/build/${local.username}/$PROJECT_ID/TimeMaster
+      cp -r /home/${local.username}/.appworks/TimeMaster/days \
+        /opt/coder/statistics/build/${local.username}/$PROJECT_ID/TimeMaster/
+    fi
   EOF
 }
 
@@ -228,7 +265,14 @@ resource "docker_container" "workspace" {
     source    = "/opt/coder/assets/bin/h3ccodecli"
   }
   mounts {
-    target    = "/opt/extensions"
+    target    = "/opt/coder/assets/site-packages.tgz"
+    type      = "bind"
+
+    read_only = true
+    source    = "/opt/coder/assets/site-packages.tgz"
+  }
+  mounts {
+    target    = "/opt/coder/assets/extensions"
     type      = "bind"
 
     read_only = true
