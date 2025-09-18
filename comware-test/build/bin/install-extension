@@ -1,33 +1,179 @@
 #!/bin/bash
-if [ $# -ne 2 ]; then
-    echo "- ❔ Usage: install-extension <code-server-path> <extension-url>"
+
+# VS Code Extension Installation Script
+# Usage: ./install-extension.sh <extension-id> [--download-only]
+# Example: ./install-extension.sh ms-python.python
+
+set -e
+
+# Check parameters
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    echo "Usage: $0 <extension-id> [--download-only]"
+    echo "Example: $0 ms-python.python"
+    echo "         $0 ms-python.python --download-only"
     exit 1
 fi
 
-CODER_SERVER_PATH="$1"
-EXTENSION_URL="$2"
-EXTENSION_NAME=$(basename "$EXTENSION_URL")
+EXTENSION_ID="$1"
+DOWNLOAD_ONLY=false
 
-# 颜色支持检测
-if [ -n "$CODER" ] || [ -t 1 ]; then
-    COLOR_GREEN=$(echo -e "\033[32m")
-    COLOR_CYAN=$(echo -e "\033[36m")
-    COLOR_RED=$(echo -e "\033[31m")
-    COLOR_RESET=$(echo -e "\033[0m")
-else
-    COLOR_GREEN="" && COLOR_CYAN="" && COLOR_RED="" && COLOR_RESET=""
+# Check second parameter
+if [ $# -eq 2 ] && [ "$2" = "--download-only" ]; then
+    DOWNLOAD_ONLY=true
 fi
 
-temp_file=$(mktemp --suffix=.vsix) || exit 1
+TMP_DIR="/tmp"
+MARKETPLACE_URL="https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery"
 
-echo -e "${COLOR_CYAN}- 💾 Downloading extension '${EXTENSION_NAME}'${COLOR_RESET}"
-if curl -fsSL -o "$temp_file" "$EXTENSION_URL"; then
-    echo -e "${COLOR_CYAN}- ⚙️ Installing extension '${EXTENSION_NAME}'${COLOR_RESET}"
-    "$CODER_SERVER_PATH" --install-extension "$temp_file"
-    echo -e "${COLOR_GREEN}- ✅ Extension '${EXTENSION_NAME}' installed${COLOR_RESET}"
-    rm "$temp_file"
-else
-    echo -e "${COLOR_RED}- ❌ Download extension '${EXTENSION_NAME}' failed${COLOR_RESET}"
-    rm -f "$temp_file"
+# Check required dependencies
+echo "Checking dependencies..."
+
+# Check curl
+if ! command -v curl &> /dev/null; then
+    echo "Error: curl command not found, please install: sudo apt install curl"
     exit 1
 fi
+
+# Check jq
+if ! command -v jq &> /dev/null; then
+    echo "Error: jq command not found, please install: sudo apt install jq"
+    exit 1
+fi
+
+# Check if code-server is available
+CODE_SERVER_AVAILABLE=true
+if ! command -v code-server &> /dev/null; then
+    CODE_SERVER_AVAILABLE=false
+    if [ "$DOWNLOAD_ONLY" = false ]; then
+        echo "Warning: code-server command not found"
+        echo "Please ensure code-server is properly installed and available in PATH"
+        echo "Will only download extension files, not install"
+        DOWNLOAD_ONLY=true
+    fi
+fi
+
+if [ "$CODE_SERVER_AVAILABLE" = true ]; then
+    echo "✅ All dependency checks passed"
+else
+    echo "✅ Basic dependency checks passed (download-only mode)"
+fi
+
+echo "Processing extension: $EXTENSION_ID"
+
+# Split extension ID into publisher and extension name
+IFS='.' read -ra PARTS <<< "$EXTENSION_ID"
+if [ ${#PARTS[@]} -ne 2 ]; then
+    echo "Error: Extension ID format should be publisher.extension"
+    exit 1
+fi
+
+PUBLISHER="${PARTS[0]}"
+EXTENSION_NAME="${PARTS[1]}"
+
+echo "Publisher: $PUBLISHER"
+echo "Extension name: $EXTENSION_NAME"
+
+# Query extension information JSON payload
+QUERY_JSON=$(cat <<EOF
+{
+    "filters": [
+        {
+            "criteria": [
+                {
+                    "filterType": 7,
+                    "value": "$EXTENSION_ID"
+                }
+            ],
+            "pageNumber": 1,
+            "pageSize": 1,
+            "sortBy": 0,
+            "sortOrder": 0
+        }
+    ],
+    "assetTypes": [
+        "Microsoft.VisualStudio.Services.VSIXPackage"
+    ],
+    "flags": 914
+}
+EOF
+)
+
+echo "Querying extension information..."
+
+# Query extension information
+RESPONSE=$(curl -s -X POST \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json;api-version=3.0-preview.1" \
+    -d "$QUERY_JSON" \
+    "$MARKETPLACE_URL")
+
+# Check if extension was found
+EXTENSION_COUNT=$(echo "$RESPONSE" | jq -r '.results[0].extensions | length')
+if [ "$EXTENSION_COUNT" -eq 0 ]; then
+    echo "Error: Extension $EXTENSION_ID not found"
+    exit 1
+fi
+
+# Get latest version information
+LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.results[0].extensions[0].versions[0].version')
+DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.results[0].extensions[0].versions[0].files[] | select(.assetType == "Microsoft.VisualStudio.Services.VSIXPackage") | .source')
+
+if [ "$DOWNLOAD_URL" = "null" ] || [ -z "$DOWNLOAD_URL" ]; then
+    echo "Error: Unable to get download link"
+    exit 1
+fi
+
+echo "Found version: $LATEST_VERSION"
+echo "Download URL: $DOWNLOAD_URL"
+
+# Create filename
+VSIX_FILENAME="${PUBLISHER}.${EXTENSION_NAME}-${LATEST_VERSION}.vsix"
+VSIX_PATH="$TMP_DIR/$VSIX_FILENAME"
+
+echo "Downloading to: $VSIX_PATH"
+
+# Download extension file
+if ! curl -L -o "$VSIX_PATH" "$DOWNLOAD_URL"; then
+    echo "Error: Download failed"
+    exit 1
+fi
+
+echo "Download completed!"
+
+# Check if file exists and is not empty
+if [ ! -f "$VSIX_PATH" ] || [ ! -s "$VSIX_PATH" ]; then
+    echo "Error: Downloaded file is invalid"
+    exit 1
+fi
+
+echo "File size: $(du -h "$VSIX_PATH" | cut -f1)"
+
+# If download-only mode, exit here
+if [ "$DOWNLOAD_ONLY" = true ]; then
+    echo "✅ Extension $EXTENSION_ID (version $LATEST_VERSION) downloaded successfully!"
+    echo "📁 File location: $VSIX_PATH"
+    echo "💡 To install this extension, run: code-server --force --install-extension '$VSIX_PATH'"
+    exit 0
+fi
+
+echo "Installing extension..."
+
+# Install extension
+if code-server --force --install-extension "$VSIX_PATH"; then
+    echo "✅ Extension $EXTENSION_ID (version $LATEST_VERSION) installed successfully!"
+    
+    # Optional: delete downloaded file to save space
+    read -p "Delete the downloaded vsix file? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        rm "$VSIX_PATH"
+        echo "✅ Temporary file deleted"
+    else
+        echo "📁 vsix file kept at: $VSIX_PATH"
+    fi
+else
+    echo "❌ Extension installation failed"
+    exit 1
+fi
+
+echo "🎉 Done!"
