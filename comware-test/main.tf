@@ -148,7 +148,6 @@ resource "coder_script" "start_code_server" {
     install-extension --open ms-python.black-formatter
     install-extension --open ms-python.debugpy
     install-extension --open timonwong.shellcheck
-    install-extension --open rangav.vscode-thunder-client
     install-extension --open redhat.vscode-xml
 
     code-server \
@@ -244,7 +243,7 @@ resource "docker_image" "main" {
   build {
     context = "build"
     build_args = {
-      EXTENSION_VERSION = "1.103.2025081309"
+      EXTENSION_VERSION = "1.104.0"
       PROXY_URL = "${local.proxy_url}"
       USER = "${local.username}"
     }
