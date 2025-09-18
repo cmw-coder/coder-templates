@@ -218,7 +218,14 @@ resource "docker_container" "workspace" {
     type      = "bind"
 
     read_only = true
-    source    = "/opt/coder/assets/h3ccodecli"
+    source    = "/opt/coder/assets/bin/h3ccodecli"
+  }
+  mounts {
+    target    = "/opt/extensions"
+    type      = "bind"
+
+    read_only = true
+    source    = "/opt/coder/assets/extensions"
   }
   mounts {
     target    = "/opt/coder/statistics/build"

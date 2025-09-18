@@ -15,7 +15,7 @@ RUN if [ -n "$PROXY_URL" ]; then \
 # Install essential packages and set locale and shell
 RUN apt-get update \
     && apt-get install -y build-essential ca-certificates curl \
-        fzf git jq locales man-db nano neovim sudo unzip zsh \
+        fzf git jq locales man-db nano neovim python3 sudo unzip zsh \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
     && sed -i '/en_US.UTF-8/s/^#//g' /etc/locale.gen && locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8

@@ -8,189 +8,260 @@
 #          ./install-extension.sh --download-only --open ms-python.python
 #          ./install-extension.sh --local /path/to/extension.vsix
 
-set -e
+set -euo pipefail
 
-# Check parameters
-if [ $# -lt 1 ] || [ $# -gt 4 ]; then
+# Global variables
+readonly TMP_DIR="/tmp/extensions"
+readonly OPENVSX_API="https://open-vsx.org/api"
+readonly MS_MARKETPLACE_API="https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery"
+
+# Color codes for output
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly NC='\033[0m' # No Color
+
+# Configuration variables
+DOWNLOAD_ONLY=false
+USE_OPENVSX=false
+USE_LOCAL=false
+EXTENSION_ID_OR_PATH=""
+
+# Utility functions
+log_info() {
+    echo -e "${BLUE}ℹ️  $1${NC}"
+}
+
+log_success() {
+    echo -e "${GREEN}✅ $1${NC}"
+}
+
+log_warning() {
+    echo -e "${YELLOW}⚠️  $1${NC}"
+}
+
+log_error() {
+    echo -e "${RED}❌ $1${NC}" >&2
+}
+
+log_celebrate() {
+    echo -e "${GREEN}🎉 $1${NC}"
+}
+
+# Display usage information
+show_usage() {
     echo "Usage: $0 [--download-only] [--open] [--local] <extension-id-or-path>"
     echo "Example: $0 ms-python.python"
     echo "         $0 --download-only ms-python.python"
     echo "         $0 --open ms-python.python"
     echo "         $0 --download-only --open ms-python.python"
     echo "         $0 --local /path/to/extension.vsix"
-    exit 1
-fi
+}
 
-DOWNLOAD_ONLY=false
-USE_OPENVSX=false
-USE_LOCAL=false
-EXTENSION_ID_OR_PATH=""
+# Validate command line arguments
+validate_arguments() {
+    if [ $# -lt 1 ] || [ $# -gt 4 ]; then
+        log_error "Invalid number of arguments"
+        show_usage
+        exit 1
+    fi
+}
 
-# Parse parameters - the last parameter is extension-id or path
-for ((i=1; i<=$#; i++)); do
-    arg="${!i}"
-    case $arg in
-        --download-only)
-        DOWNLOAD_ONLY=true
-        ;;
-        --open)
-        USE_OPENVSX=true
-        ;;
-        --local)
-        USE_LOCAL=true
-        ;;
-        *)
-        # The last non-option parameter is the extension ID or path
-        EXTENSION_ID_OR_PATH="$arg"
-        ;;
-    esac
-done
+# Parse command line arguments
+parse_arguments() {
+    # Parse parameters - the last parameter is extension-id or path
+    for ((i=1; i<=$#; i++)); do
+        arg="${!i}"
+        case $arg in
+            --download-only)
+                DOWNLOAD_ONLY=true
+                ;;
+            --open)
+                USE_OPENVSX=true
+                ;;
+            --local)
+                USE_LOCAL=true
+                ;;
+            -h|--help)
+                show_usage
+                exit 0
+                ;;
+            -*)
+                log_error "Unknown option: $arg"
+                show_usage
+                exit 1
+                ;;
+            *)
+                # The last non-option parameter is the extension ID or path
+                EXTENSION_ID_OR_PATH="$arg"
+                ;;
+        esac
+    done
 
-# Validate that we have extension ID or path
-if [ -z "$EXTENSION_ID_OR_PATH" ]; then
-    echo "Error: Extension ID or path is required"
-    exit 1
-fi
+    # Validate that we have extension ID or path
+    if [ -z "$EXTENSION_ID_OR_PATH" ]; then
+        log_error "Extension ID or path is required"
+        show_usage
+        exit 1
+    fi
 
-# Handle local vsix file installation
-if [ "$USE_LOCAL" = true ]; then
-    echo "Local vsix file mode enabled"
+    # Handle --local and --download-only conflict
+    if [ "$USE_LOCAL" = true ] && [ "$DOWNLOAD_ONLY" = true ]; then
+        log_warning "--download-only flag is ignored when using --local"
+        DOWNLOAD_ONLY=false
+    fi
+}
+
+# Check if required dependencies are available
+check_dependencies() {
+    log_info "Checking dependencies..."
+
+    local missing_deps=()
+
+    # Check curl
+    if ! command -v curl &> /dev/null; then
+        missing_deps+=("curl")
+    fi
+
+    # Check jq
+    if ! command -v jq &> /dev/null; then
+        missing_deps+=("jq")
+    fi
+
+    # Report missing dependencies
+    if [ ${#missing_deps[@]} -gt 0 ]; then
+        log_error "Missing required dependencies: ${missing_deps[*]}"
+        log_info "Please install them using: sudo apt install ${missing_deps[*]}"
+        exit 1
+    fi
+
+    # Check if code-server is available
+    local code_server_available=true
+    if ! command -v code-server &> /dev/null; then
+        code_server_available=false
+        if [ "$DOWNLOAD_ONLY" = false ]; then
+            log_warning "code-server command not found"
+            log_warning "Please ensure code-server is properly installed and available in PATH"
+            log_warning "Will only download extension files, not install"
+            DOWNLOAD_ONLY=true
+        fi
+    fi
+
+    if [ "$code_server_available" = true ]; then
+        log_success "All dependency checks passed"
+    else
+        log_success "Basic dependency checks passed (download-only mode)"
+    fi
+}
+
+# Validate local vsix file
+validate_local_file() {
+    local file_path="$1"
     
     # Check if file exists
-    if [ ! -f "$EXTENSION_ID_OR_PATH" ]; then
-        echo "Error: Local vsix file not found: $EXTENSION_ID_OR_PATH"
+    if [ ! -f "$file_path" ]; then
+        log_error "Local vsix file not found: $file_path"
         exit 1
     fi
     
     # Check if it's a .vsix file
-    if [[ ! "$EXTENSION_ID_OR_PATH" =~ \.vsix$ ]]; then
-        echo "Error: File must have .vsix extension: $EXTENSION_ID_OR_PATH"
+    if [[ ! "$file_path" =~ \.vsix$ ]]; then
+        log_error "File must have .vsix extension: $file_path"
         exit 1
     fi
     
-    VSIX_PATH="$EXTENSION_ID_OR_PATH"
-    echo "Using local vsix file: $VSIX_PATH"
-    echo "File size: $(du -h "$VSIX_PATH" | cut -f1)"
+    # Check if file is not empty
+    if [ ! -s "$file_path" ]; then
+        log_error "Local vsix file is empty: $file_path"
+        exit 1
+    fi
+}
+
+# Install extension from local vsix file
+install_local_extension() {
+    local vsix_path="$1"
     
-    # Skip download process for local files
-    echo "Installing extension from local file..."
+    log_info "Local vsix file mode enabled"
+    validate_local_file "$vsix_path"
+    
+    log_info "Using local vsix file: $vsix_path"
+    log_info "File size: $(du -h "$vsix_path" | cut -f1)"
+    
+    log_info "Installing extension from local file..."
     
     # Install extension
-    if code-server --force --install-extension "$VSIX_PATH"; then
-        echo "✅ Extension from $VSIX_PATH installed successfully!"
+    if code-server --force --install-extension "$vsix_path"; then
+        log_success "Extension from $vsix_path installed successfully!"
     else
-        echo "❌ Extension installation failed"
+        log_error "Extension installation failed"
         exit 1
     fi
     
-    echo "🎉 Done!"
-    exit 0
-fi
+    log_celebrate "Done!"
+}
 
-# Online download mode (existing logic)
-EXTENSION_ID="$EXTENSION_ID_OR_PATH"
-
-TMP_DIR="/tmp/extensions"
-mkdir -p "$TMP_DIR"
-
-# Set marketplace URL based on --open parameter
-if [ "$USE_OPENVSX" = true ]; then
-    MARKETPLACE_URL="https://open-vsx.org/api"
-    echo "Using OpenVSX marketplace"
-else
-    MARKETPLACE_URL="https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery"
-    echo "Using Microsoft VS Code marketplace"
-fi
-
-# Check required dependencies
-echo "Checking dependencies..."
-
-# Check curl
-if ! command -v curl &> /dev/null; then
-    echo "Error: curl command not found, please install: sudo apt install curl"
-    exit 1
-fi
-
-# Check jq
-if ! command -v jq &> /dev/null; then
-    echo "Error: jq command not found, please install: sudo apt install jq"
-    exit 1
-fi
-
-# Check if code-server is available
-CODE_SERVER_AVAILABLE=true
-if ! command -v code-server &> /dev/null; then
-    CODE_SERVER_AVAILABLE=false
-    if [ "$DOWNLOAD_ONLY" = false ]; then
-        echo "Warning: code-server command not found"
-        echo "Please ensure code-server is properly installed and available in PATH"
-        echo "Will only download extension files, not install"
-        DOWNLOAD_ONLY=true
-    fi
-fi
-
-if [ "$CODE_SERVER_AVAILABLE" = true ]; then
-    echo "✅ All dependency checks passed"
-else
-    echo "✅ Basic dependency checks passed (download-only mode)"
-fi
-
-# Handle --local and --download-only conflict
-if [ "$USE_LOCAL" = true ] && [ "$DOWNLOAD_ONLY" = true ]; then
-    echo "Warning: --download-only flag is ignored when using --local"
-    DOWNLOAD_ONLY=false
-fi
-
-echo "Processing extension: $EXTENSION_ID"
-
-# Split extension ID into publisher and extension name
-IFS='.' read -ra PARTS <<< "$EXTENSION_ID"
-if [ ${#PARTS[@]} -ne 2 ]; then
-    echo "Error: Extension ID format should be publisher.extension"
-    exit 1
-fi
-
-PUBLISHER="${PARTS[0]}"
-EXTENSION_NAME="${PARTS[1]}"
-
-echo "Publisher: $PUBLISHER"
-echo "Extension name: $EXTENSION_NAME"
-
-echo "Querying extension information..."
-
-if [ "$USE_OPENVSX" = true ]; then
-    # OpenVSX API query
-    OPENVSX_URL="$MARKETPLACE_URL/$PUBLISHER/$EXTENSION_NAME"
-    echo "Querying OpenVSX: $OPENVSX_URL"
+# Validate extension ID format
+validate_extension_id() {
+    local extension_id="$1"
     
-    RESPONSE=$(curl -s "$OPENVSX_URL")
+    # Split extension ID into publisher and extension name
+    IFS='.' read -ra PARTS <<< "$extension_id"
+    if [ ${#PARTS[@]} -ne 2 ]; then
+        log_error "Extension ID format should be publisher.extension"
+        exit 1
+    fi
+
+    echo "${PARTS[0]}" "${PARTS[1]}"
+}
+
+# Query extension information from OpenVSX
+query_openvsx_extension() {
+    local publisher="$1"
+    local extension_name="$2"
+    local openvsx_url="$OPENVSX_API/$publisher/$extension_name"
+    
+    log_info "Querying OpenVSX: $openvsx_url"
+    
+    local response
+    if ! response=$(curl -s --max-time 30 "$openvsx_url"); then
+        log_error "Failed to query OpenVSX API"
+        exit 1
+    fi
     
     # Check if extension was found
-    if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
-        echo "Error: Extension $EXTENSION_ID not found in OpenVSX"
+    if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
+        log_error "Extension $publisher.$extension_name not found in OpenVSX"
         exit 1
     fi
     
     # Get latest version information from OpenVSX
-    LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.version // empty')
-    DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.files.download // empty')
+    local latest_version download_url
+    latest_version=$(echo "$response" | jq -r '.version // empty')
+    download_url=$(echo "$response" | jq -r '.files.download // empty')
     
-    if [ -z "$LATEST_VERSION" ] || [ -z "$DOWNLOAD_URL" ]; then
-        echo "Error: Unable to get extension information from OpenVSX"
+    if [ -z "$latest_version" ] || [ -z "$download_url" ]; then
+        log_error "Unable to get extension information from OpenVSX"
         exit 1
     fi
     
-else
-    # Microsoft marketplace query
+    echo "$latest_version" "$download_url"
+}
+
+# Query extension information from Microsoft marketplace
+query_ms_marketplace_extension() {
+    local extension_id="$1"
+    
     # Query extension information JSON payload
-    QUERY_JSON=$(cat <<EOF
+    local query_json
+    query_json=$(cat <<EOF
 {
     "filters": [
         {
             "criteria": [
                 {
                     "filterType": 7,
-                    "value": "$EXTENSION_ID"
+                    "value": "$extension_id"
                 }
             ],
             "pageNumber": 1,
@@ -208,82 +279,164 @@ EOF
 )
 
     # Query extension information
-    RESPONSE=$(curl -s -X POST \
+    local response
+    if ! response=$(curl -s --max-time 30 -X POST \
         -H "Content-Type: application/json" \
         -H "Accept: application/json;api-version=3.0-preview.1" \
-        -d "$QUERY_JSON" \
-        "$MARKETPLACE_URL")
+        -d "$query_json" \
+        "$MS_MARKETPLACE_API"); then
+        log_error "Failed to query Microsoft marketplace"
+        exit 1
+    fi
 
     # Check if extension was found
-    EXTENSION_COUNT=$(echo "$RESPONSE" | jq -r '.results[0].extensions | length')
-    if [ "$EXTENSION_COUNT" -eq 0 ]; then
-        echo "Error: Extension $EXTENSION_ID not found"
+    local extension_count
+    extension_count=$(echo "$response" | jq -r '.results[0].extensions | length')
+    if [ "$extension_count" -eq 0 ]; then
+        log_error "Extension $extension_id not found"
         exit 1
     fi
 
     # Get latest version information
-    LATEST_VERSION=$(echo "$RESPONSE" | jq -r '.results[0].extensions[0].versions[0].version')
-    DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.results[0].extensions[0].versions[0].files[] | select(.assetType == "Microsoft.VisualStudio.Services.VSIXPackage") | .source')
-fi
-
-if [ "$DOWNLOAD_URL" = "null" ] || [ -z "$DOWNLOAD_URL" ]; then
-    echo "Error: Unable to get download link"
-    exit 1
-fi
-
-echo "Found version: $LATEST_VERSION"
-echo "Download URL: $DOWNLOAD_URL"
-
-# Create filename
-VSIX_FILENAME="${PUBLISHER}.${EXTENSION_NAME}-${LATEST_VERSION}.vsix"
-VSIX_PATH="$TMP_DIR/$VSIX_FILENAME"
-
-echo "Downloading to: $VSIX_PATH"
+    local latest_version download_url
+    latest_version=$(echo "$response" | jq -r '.results[0].extensions[0].versions[0].version')
+    download_url=$(echo "$response" | jq -r '.results[0].extensions[0].versions[0].files[] | select(.assetType == "Microsoft.VisualStudio.Services.VSIXPackage") | .source')
+    
+    echo "$latest_version" "$download_url"
+}
 
 # Download extension file
-if ! curl -L -o "$VSIX_PATH" "$DOWNLOAD_URL"; then
-    echo "Error: Download failed"
-    exit 1
-fi
-
-echo "Download completed!"
-
-# Check if file exists and is not empty
-if [ ! -f "$VSIX_PATH" ] || [ ! -s "$VSIX_PATH" ]; then
-    echo "Error: Downloaded file is invalid"
-    exit 1
-fi
-
-echo "File size: $(du -h "$VSIX_PATH" | cut -f1)"
-
-# If download-only mode, exit here
-if [ "$DOWNLOAD_ONLY" = true ]; then
-    MARKETPLACE_NAME=$(if [ "$USE_OPENVSX" = true ]; then echo "OpenVSX"; else echo "Microsoft marketplace"; fi)
-    echo "✅ Extension $EXTENSION_ID (version $LATEST_VERSION) downloaded successfully from $MARKETPLACE_NAME!"
-    echo "📁 File location: $VSIX_PATH"
-    echo "💡 To install this extension, run: code-server --force --install-extension '$VSIX_PATH'"
-    exit 0
-fi
-
-echo "Installing extension..."
-
-# Install extension
-if code-server --force --install-extension "$VSIX_PATH"; then
-    MARKETPLACE_NAME=$(if [ "$USE_OPENVSX" = true ]; then echo "OpenVSX"; else echo "Microsoft marketplace"; fi)
-    echo "✅ Extension $EXTENSION_ID (version $LATEST_VERSION) installed successfully from $MARKETPLACE_NAME!"
+download_extension() {
+    local latest_version="$1"
+    local download_url="$2"
+    local publisher="$3"
+    local extension_name="$4"
     
-    # Optional: delete downloaded file to save space
-    read -p "Delete the downloaded vsix file? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        rm "$VSIX_PATH"
-        echo "✅ Temporary file deleted"
-    else
-        echo "📁 vsix file kept at: $VSIX_PATH"
+    if [ "$download_url" = "null" ] || [ -z "$download_url" ]; then
+        log_error "Unable to get download link"
+        exit 1
     fi
-else
-    echo "❌ Extension installation failed"
-    exit 1
-fi
 
-echo "🎉 Done!"
+    log_info "Found version: $latest_version"
+    log_info "Download URL: $download_url"
+
+    # Create filename
+    local vsix_filename="${publisher}.${extension_name}-${latest_version}.vsix"
+    local vsix_path="$TMP_DIR/$vsix_filename"
+
+    log_info "Downloading to: $vsix_path"
+
+    # Create temp directory if it doesn't exist
+    mkdir -p "$TMP_DIR"
+
+    # Download extension file
+    if ! curl -L --progress-bar --max-time 300 -o "$vsix_path" "$download_url"; then
+        log_error "Download failed"
+        exit 1
+    fi
+
+    log_success "Download completed!"
+
+    # Check if file exists and is not empty
+    if [ ! -f "$vsix_path" ] || [ ! -s "$vsix_path" ]; then
+        log_error "Downloaded file is invalid"
+        exit 1
+    fi
+
+    log_info "File size: $(du -h "$vsix_path" | cut -f1)"
+    echo "$vsix_path"
+}
+
+# Install extension from vsix file
+install_extension() {
+    local vsix_path="$1"
+    local marketplace_name="$2"
+    local extension_id="$3"
+    local latest_version="$4"
+    
+    log_info "Installing extension..."
+
+    # Install extension
+    if code-server --force --install-extension "$vsix_path"; then
+        log_success "Extension $extension_id (version $latest_version) installed successfully from $marketplace_name!"
+        
+        # Optional: delete downloaded file to save space
+        echo
+        read -p "Delete the downloaded vsix file? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            rm "$vsix_path"
+            log_success "Temporary file deleted"
+        else
+            log_info "vsix file kept at: $vsix_path"
+        fi
+    else
+        log_error "Extension installation failed"
+        exit 1
+    fi
+}
+
+# Process online extension download and installation
+process_online_extension() {
+    local extension_id="$1"
+    
+    # Validate extension ID format
+    local parts
+    read -r publisher extension_name <<< "$(validate_extension_id "$extension_id")"
+    
+    log_info "Processing extension: $extension_id"
+    log_info "Publisher: $publisher"
+    log_info "Extension name: $extension_name"
+
+    log_info "Querying extension information..."
+
+    local latest_version download_url marketplace_name
+    
+    if [ "$USE_OPENVSX" = true ]; then
+        log_info "Using OpenVSX marketplace"
+        read -r latest_version download_url <<< "$(query_openvsx_extension "$publisher" "$extension_name")"
+        marketplace_name="OpenVSX"
+    else
+        log_info "Using Microsoft VS Code marketplace"
+        read -r latest_version download_url <<< "$(query_ms_marketplace_extension "$extension_id")"
+        marketplace_name="Microsoft marketplace"
+    fi
+
+    # Download extension
+    local vsix_path
+    vsix_path=$(download_extension "$latest_version" "$download_url" "$publisher" "$extension_name")
+
+    # If download-only mode, exit here
+    if [ "$DOWNLOAD_ONLY" = true ]; then
+        log_success "Extension $extension_id (version $latest_version) downloaded successfully from $marketplace_name!"
+        log_info "File location: $vsix_path"
+        log_info "To install this extension, run: code-server --force --install-extension '$vsix_path'"
+        return 0
+    fi
+
+    # Install extension
+    install_extension "$vsix_path" "$marketplace_name" "$extension_id" "$latest_version"
+}
+
+# Main execution function
+main() {
+    # Validate and parse arguments
+    validate_arguments "$@"
+    parse_arguments "$@"
+
+    # Check dependencies
+    check_dependencies
+
+    # Handle local vsix file installation
+    if [ "$USE_LOCAL" = true ]; then
+        install_local_extension "$EXTENSION_ID_OR_PATH"
+    else
+        # Online extension processing
+        process_online_extension "$EXTENSION_ID_OR_PATH"
+    fi
+
+    log_celebrate "Done!"
+}
+
+# Run main function with all arguments
+main "$@"
