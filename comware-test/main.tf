@@ -139,12 +139,13 @@ resource "coder_script" "start_code_server" {
 
     echo -e "\033[36m- ⏳ Installing extensions\033[0m"
     install-extension --local /opt/extensions/iceworks-team.iceworks-time-master-1.0.4.vsix
+    install-extension --local /opt/extensions/MS-CEINTL.vscode-language-pack-zh-hans-1.104.0.vsix
     install-extension --open alefragnani.bookmarks
     install-extension --open bierner.markdown-mermaid
     install-extension --open dbaeumer.vscode-eslint
     install-extension --open esbenp.prettier-vscode
-    install-extension --open ms-ceintl.vscode-language-pack-zh-hans
     install-extension --open ms-python.python
+    install-extension --open ms-python.black-formatter
     install-extension --open ms-python.debugpy
     install-extension --open timonwong.shellcheck
     install-extension --open rangav.vscode-thunder-client
