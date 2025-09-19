@@ -8,19 +8,12 @@ else
     exit 0
 fi
 
-# Build PROJECT_UID logic
-if [ -n "$PROJECT_ID" ] && [ -n "$SESSION_ID" ]; then
-    # Check if PROJECT_ID starts with NV and has 14 characters
-    if [[ "$PROJECT_ID" =~ ^NV.{12}$ ]]; then
-        PROJECT_UID="$PROJECT_ID"
-    else
-        PROJECT_UID="${PROJECT_ID}_${SESSION_ID}"
-    fi
-    
-    echo -e "\033[36m- 📋 Copying Time Master statistics (PROJECT_UID: ${PROJECT_UID})\033[0m"
-    mkdir -p /opt/coder/statistics/build/${USER}/${PROJECT_UID}/TimeMaster
+# Build PROJECT_ID logic
+if [ -n "$PROJECT_ID" ]; then
+    echo -e "\033[36m- 📋 Copying Time Master statistics (PROJECT_ID: ${PROJECT_ID})\033[0m"
+    mkdir -p /opt/coder/statistics/build/${USER}/${PROJECT_ID}/TimeMaster
     cp -r /home/${USER}/.appworks/TimeMaster/days \
-    /opt/coder/statistics/build/${USER}/${PROJECT_UID}/TimeMaster/
+    /opt/coder/statistics/build/${USER}/${PROJECT_ID}/TimeMaster/
 else
     echo "Error: PROJECT_ID or SESSION_ID not found in configuration file"
     exit 1
