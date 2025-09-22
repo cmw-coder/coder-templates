@@ -1,0 +1,115 @@
+.. _topics-脚本执行:
+
+
+脚本执行
+==========
+
+
+脚本执行顺序
+----------------
+
+脚本执行顺序支持优化执行、随机序执行和用户自定义顺序。
+
+1、优化执行
+    
+    以拓扑为单位，脚本按字母序依次执行。使用同一拓扑的所有脚本，只进行一次拓扑映射和设备初始化，优化执行为默认执行顺序。
+
+2、随机序执行
+
+- 以拓扑为单位，脚本按随机序依次执行。使用同一拓扑的所有脚本，只进行一次拓扑映射和设备初始化。
+- 以脚本为单位，对所有脚本进行随机排序。如相邻脚本使用同一拓扑，则这些脚本只进行一次拓扑映射。
+
+
+.. image:: ./images/脚本执行-随机执行.jpg
+
+
+3、用户自定义顺序
+
+- 以拓扑为单位，根据脚本中模块参数 ``running_order`` 的值进行排序，值越小越优先；值相同时，按字母序执行；指定该参数比不指定该参数的优先； **设置该参数后，随机序设置不生效**
+
+
+.. code-block:: python
+    :linenos:
+
+    # test_demo.py
+    
+    # 如下库必须导入，可根据需要导入其它库
+    from pytest_atf import *
+    from pytest_atf.atf_globalvar import globalVar as gl
+
+    running_order = 1
+
+    class TestClass:
+        '''
+        测试目的：测试 XXX 功能
+        作者：zhangsan/08363
+        开发时间：2024-06-19
+        修改记录：
+        '''
+
+
+NG脚本重复执行
+------------------------
+
+NG脚本重复执行支持立即重复执行、拓扑所有脚本执行完再重复执行，以及测试集执行完再重复执行，支持设置重复执行最大次数。
+
+1、立即重复执行
+
+    脚本执行完，立即重复执行，此方式不会再次进行拓扑映射、不执行topo级的setup。
+
+2、拓扑所有脚本执行完再执行
+    
+    脚本执行完，等待拓扑其它脚本执行完后再重复执行，此方式不会再次进行拓扑映射、不执行topo级的setup。
+
+3、测试集执行完再重复执行
+
+    脚本执行完，等待拓扑其它脚本执行完后再重复执行，此方式会重新进行进行拓扑映射、并重新执行topo级的setup和teardwon。
+
+.. image:: ./images/脚本执行-NG脚本重复执行.jpg
+
+
+中止脚本执行
+-------------
+有时当出现NG项时，后续步骤不需要继续执行，这种场景可以选择中止脚本执行（如果最后一个步骤NG，则不会中止脚本执行）。
+
+对于主网络产品测试，中止脚本执行后，要对comware设备进行清理动作，自动化采用的策略是进行配置回滚，使用的配置为topo级setup执行后保存的配置文件。
+
+
+跳过脚本步骤
+-------------
+有时部分步骤在当前环境不支持，可以使用 ``atf_skip`` 跳过该步骤，该步骤的结果记为PASS。代码示例见下：
+
+.. code-block:: python
+    :linenos:
+
+    # test_demo.py
+    
+    def test_step_1(self):
+        '''
+        测试xxxx
+        '''
+
+        # 该步骤后面的代码将不再执行
+        if True:
+            atf_skip('不是xx设备')
+
+        atf_assert_check('简单检查自定义...', 10, 20)
+        
+        gl.DUT1.CheckCommand('检查display counters rate inbound interface信息，预期带宽和pps正确',
+           cmd=f'display counters rate inbound interface {gl.DUT1.PORT1.intf}',
+           expect=['_table(Interface, Usage (%), Total (pps), Broadcast (pps), Multicast (pps), GE2/1/1, 10, _range(0,10), --, --)'],
+          stop_max_attempt=3, wait_fixed=2) 
+
+
+耗时统计说明
+-------------
+
+1、脚本日志的耗时说明：
+
+.. image:: ./images/脚本日志耗时说明1.png
+
+
+2、便于用户尽可能的了解脚本执行的耗时情况，框架还从多个维度进行了耗时统计：
+
+.. image:: ./images/多维度耗时统计.png
+

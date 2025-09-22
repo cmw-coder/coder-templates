@@ -1,0 +1,86 @@
+.. _topics-脚本日志:
+
+
+脚本日志
+===========
+
+框架生成的脚本日志是以 ``.pytestlog.json`` 为后缀文件，每一个脚本生成一个日志文件，借助VTP-CLOUD平台的日志查看器查看。
+
+框架记录脚本日志是以 **步骤** 为基本单元，只要执行完的步骤，就会记录到脚本日志中，不论脚本是否执行完。
+
+日志查看
+------------
+
+使用VTP-CLOUD打开日志：
+
+.. image:: ./images/日志查看器.jpg
+
+
+脚本日志展示：
+
+.. image:: ./images/脚本日志1.jpg
+
+
+日志装饰器
+-------------
+
+框架之所以能够记录脚本的每一个执行操作，是因为框架提供的每个操作方法都加装了 **日志装饰器** 。如果要记录用户自定义的方法，需要为其添加日志装饰器 ``decorator_for_user_log`` 
+
+``decorator_for_user_log`` 可用于装饰类或方法。装饰类时，不能用于装饰私有方法和以下划线开头的方法，不自动装饰类方法和静态方法，使用示例见下。
+
+代码示例：
+
+.. code-block:: python
+    :linenos:
+    :emphasize-lines: 5, 7, 12, 24
+
+    # test.py
+
+    from pytest_atf import *
+    from pytest_atf.atf_globalvar import globalVar as gl
+    from atf_log.logger import decorator_for_user_log
+
+    @decorator_for_user_log()
+    def custom_func(a,b):
+        '''测试装饰器decorator_for_user_log'''
+        return a + b
+
+    @decorator_for_user_log()
+    class A:
+        def __init__(self):
+            '''私有方法，不装饰'''
+            pass
+        
+        @staticmethod
+        def staticfunc(a):
+            '''静态方法，未添加装饰器，脚本日志无法记录'''
+            return a + 100
+        
+        @classmethod
+        @decorator_for_user_log()
+        def classfunc(cls,a):
+            '''类方法，需额外添加装饰器，脚本日志正常记录'''
+            return a + '100'
+
+        def normalfunc(self,a):
+            '''实例方法，使用类装饰器，脚本日志正常记录'''
+            return a + '100'
+
+
+    class TestClass:
+        '''
+        测试目的：测试二三层流量的Load per streamblock功能
+        作者：zhangsan/12345
+        开发时间：2022.10.10
+        修改记录：
+        '''
+
+        def test_step_1(self):
+            '''
+            启动流量，查看gl.RT设备的ip packet debug信息包含指定字段(第一种写法)
+            '''
+            
+            t = A()
+            t.normalfunc('实例方法，使用类装饰器，脚本日志正常记录')
+            A.classfunc('类方法，需额外添加装饰器，脚本日志正常记录')
+            t.staticfunc('静态方法，未添加装饰器，脚本日志无法记录')

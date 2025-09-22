@@ -1,0 +1,94 @@
+.. _topics-并发操作:
+
+
+并发操作
+===========
+在一些测试场景中，某些操作是互不影响的，可以并发执行。为了提升脚本执行效率，框架提供了并发模板函数 ``run_multithread`` 和 ``run_multiprocess``， 分别对应多线程和多进程。
+
+-----------------
+run_multithread
+-----------------
+多线程模板函数封装了python的多线程函数，简化了多线程调试代码，并发执行的函数可以调用框架提供的任意方法，包括Comware、测试仪对象的所有方法。大多数情况，使用该模板函数即可。
+
+用法参考如下示例：
+
+.. image:: ./images/并发操作_多线程.jpg
+
+
+参数说明：
+
+``run_multithread`` 参数为不定个元组，每个元素包含3个元素，说明如下：
+    - ``func`` ：方法对象，必选参数，类型为 function 或 method
+    - ``args`` ：方法的位置参数，可选参数
+    - ``kwargs`` ：方法的关键字参数，可选参数
+
+其返回值类型为列表，按调用方法的书写序，其元素为方法func的返回值。
+
+代码示例：
+
+.. code-block:: python
+    :linenos:
+
+    # 检查DUT1 DUT2的路由信息，以及TM.PORT1的流量
+    res = run_multithread(
+        (
+            gl.DUT1.CheckCommand, 
+            (f'预期设备包含包含{gl.TM.PORT1.ip}的路由', 'display ip routing-table'), 
+            {'expect':[(f'{gl.TM.PORT1.ip}', f'{gl.DUT1.PORT1.ip}')], 'stop_max_attempt':3, 'wait_fixed':5}
+        ),
+        (
+            gl.DUT2.CheckCommand, 
+            (f'预期设备包含包含{gl.TM.PORT2.ip}的路由', 'display ip routing-table'), 
+            {'expect':[(f'{gl.TM.PORT3.ip}', f'{gl.DUT3.PORT1.ip}')], 'stop_max_attempt':3, 'wait_fixed':5}
+        ),
+        (
+            gl.TM.PORT1.CheckStreamStats, 
+            (f'预期TM收到stream1的流量', ), 
+            {'stream': 'stream1', 'rcv_rate': 100, 'stop_max_attempt':3, 'wait_fixed':5}
+        ),
+    )
+
+    # 返回值res为列表，按代码的书写序，依次为 gl.DUT1.CheckCommand、gl.DUT2.CheckCommand、gl.TM.PORT1.CheckStreamStats的返回值，如[True, False, True]
+    print(res)
+
+
+------------------
+run_multiprocess
+------------------
+当进行CPU密集型操作时，多线程并不能提升执行效率，此时需要用到多进程执行，其用法与多线程类似，参数个数与传参方法与 ``run_multithread`` 相同，但 **不支持调用框架提供的任何方法** 。
+
+代码示例：
+
+.. code-block:: python
+    :linenos:
+
+
+    from atf_log.logger import decorator_for_user_log
+
+    @decorator_for_user_log()
+    def fun1(var1):
+        pass
+
+    @decorator_for_user_log()
+    def fun2(var1=None):
+        pass
+
+    # 并发操作
+    res = run_multiprocess(
+        (
+            fun1, 
+            ('param1', )
+        ),
+        (
+            fun1, 
+            ('param2', )
+        ),
+        (
+            fun2, 
+            (), 
+            {'var1': 'param1'}
+        ),
+    )
+
+    # 返回值res为列表，按代码的书写序，依次为 fun1、fun1、fun2的返回值，如[True, False, True]
+    print(res)
