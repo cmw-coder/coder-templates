@@ -172,8 +172,7 @@ resource "coder_script" "create_project_folders" {
     cd /home/${local.username}/project
     python -m venv .venv
     source .venv/bin/activate
-    pip install --upgrade pip
-    # pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
+    pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
   EOF
 }
 
