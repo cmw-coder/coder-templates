@@ -1,7 +1,8 @@
 FROM node:trixie
 
-# Set `DEVCONTAINER` environment variable to help with orientation
+# Set environment variables
 ENV DEVCONTAINER=true
+ENV TZ=Asia/Shanghai
 
 COPY --chmod=755 bin /usr/local/bin
 COPY debian.sources /etc/apt/sources.list.d/
@@ -27,9 +28,6 @@ ENV VISUAL=nvim
 # Add the H3C CA certificate to the system trust store
 COPY ca-certs /usr/local/share/ca-certificates/
 RUN update-ca-certificates
-
-# Set the timezone to Asia/Shanghai
-RUN timedatectl set-timezone Asia/Shanghai
 
 # Install Claude Code
 RUN if [ -n "$PROXY_URL" ]; then \

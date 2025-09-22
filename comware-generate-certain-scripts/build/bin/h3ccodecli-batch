@@ -1,0 +1,665 @@
+#!/bin/bash
+# ============================================
+# H3C Code CLI 自动化工具 v3.6 (Linux版本)
+# ============================================
+
+# 设置脚本严格模式，兼容不同的shell版本
+# 使用更可靠的方法检测当前shell类型
+H3CCODERVERSION=V3.6
+if [ -n "$BASH_VERSION" ]; then
+    # 在bash中运行
+    set -euo pipefail
+else
+    # 在非bash shell中运行（如dash）
+    set -eu
+fi
+IFS=$'\n\t'
+
+# ============================================
+# 初始化用户信息和时间戳
+# ============================================
+echo ""
+echo "[系统] 初始化环境信息..."
+
+# 获取当前时间
+TIME_STAMP="$(date +"%Y%m%d_%H%M%S")"
+USERNAME_LINUX="$(whoami)"
+
+
+
+# 格式化当前日期时间（用于显示）
+CURRENT_DATETIME="$(date +"%Y-%m-%d %H:%M:%S")"
+
+# 提取年月日时分秒
+YYYY="$(date +"%Y")"
+MM="$(date +"%m")"
+DD="$(date +"%d")"
+hh="$(date +"%H")"
+nn="$(date +"%M")"
+ss="$(date +"%S")"
+
+echo "[用户] 当前用户: ${USERNAME_LINUX}"
+echo "[时间] 执行时间: ${YYYY}-${MM}-${DD} ${hh}:${nn}:${ss}"
+echo "[标识] 时间戳: ${TIME_STAMP}"
+
+SESSION_FILE=".h3c_session"
+# ============================================
+# 从本地文件加载 SESSION_ID 和 PROJECT_ID
+# ============================================
+if [ -f "$SESSION_FILE" ]; then
+    # 读取文件中的两个值
+    source "$SESSION_FILE"
+    echo "[系统] 检测到本地保存的会话信息..."
+    echo "[项目] 项目标识: ${PROJECT_ID}"
+    echo "[会话] SessionID: ${SESSION_ID}"
+else
+    # ============================================
+    # 项目ID输入模块
+    # ============================================
+    echo ""
+    echo "[项目ID] 请输入项目标识符..."
+    echo "[提示] 项目类型请输入格式: NV202509090001 (NV+年月日+4位序号)"
+    echo "[提示] 临时项目请输入格式: V9 (B75 B64 B70)"
+    echo "[提示] 按回车键可取消输入"
+    echo ""
+
+    # 读取用户输入
+    read -p "请输入项目ID: " PROJECT_ID
+
+    # 检查是否取消输入
+    if [ -z "${PROJECT_ID}" ]; then
+        echo "[系统] 用户取消输入，程序退出"
+        read -p "按回车键继续..." dummy
+        exit 0
+    fi
+
+    # 验证项目ID格式
+    ID_VALID=0
+    ID_TYPE="unknown"
+    
+
+    # 检查是否为项目格式 (NV+12位数字)
+    PROJECT_ID_CHECK="${PROJECT_ID}"
+    if [ "${PROJECT_ID_CHECK:0:2}" = "NV" ]; then
+        if [ ${#PROJECT_ID_CHECK} -eq 14 ]; then
+            if [[ "${PROJECT_ID_CHECK:2}" =~ ^[0-9]+$ ]]; then
+                ID_VALID=1
+                ID_TYPE="project"
+                echo "[验证] 项目ID格式正确: ${PROJECT_ID}"
+            fi
+        fi
+    fi
+    USERNAME_NUM="$(echo "$USERNAME_LINUX" | grep -o '[0-9]\+')"
+    SESSION_ID="AI${USERNAME_NUM}$(date +"%Y%m%d%H%M%S")"
+    # 检查是否为临时项目格式 (temp_+8位数字)
+    if [ "${ID_VALID}" -eq 0 ]; then
+        ID_VALID=1
+        ID_TYPE="temporary"
+        echo "[验证] 临时项目ID格式正确: ${PROJECT_ID}"
+        PROJECT_ID=${PROJECT_ID}_${SESSION_ID}
+    fi
+    
+    echo "[项目] 项目类型: ${ID_TYPE}"
+    echo "[项目] 项目标识: ${PROJECT_ID}"
+    echo ""
+    echo "本次任务的 SessionID 为："
+    echo "    ${SESSION_ID}"
+    echo ""
+    echo "目录下已经创建的 SessionID 标识文件，后续commit时请使用此标识"
+    echo ""
+    echo "请确认 SessionID 是否正确，然后按下 [回车] 继续..."
+
+    # 等待用户回车确认
+    read -s
+
+    # 保存到文件
+    echo "PROJECT_ID='${PROJECT_ID}'" > "$SESSION_FILE"
+    echo "SESSION_ID='${SESSION_ID}'" >> "$SESSION_FILE"
+    echo "[系统] 已保存会话信息到 ${SESSION_FILE}"
+    # ============================================
+    # 创建 SessionID 标识文件（如不存在）
+    # ============================================
+    if [ ! -f "${SESSION_ID}.txt" ]; then
+        touch "${SESSION_ID}.txt"
+        echo "已在当前目录创建标识文件: \"${SESSION_ID}.txt\""
+    else
+        echo "[系统] 标识文件 \"${SESSION_ID}.txt\" 已存在"
+    fi
+fi
+# ============================================
+# 配置备份路径（Linux不使用网络驱动器映射）
+# ============================================
+echo ""
+echo "[网络] 配置备份路径..."
+
+# 在Linux系统中，我们直接使用路径而不是映射驱动器
+# 假设/opt/build/AIGC是共享目录的挂载点
+DEST_BASE="/opt/coder/statistics/build"
+DEST_BEFORE="${DEST_BASE}/${USERNAME_LINUX}/${PROJECT_ID}/${TIME_STAMP}/before"
+DEST_AFTER="${DEST_BASE}/${USERNAME_LINUX}/${PROJECT_ID}/${TIME_STAMP}/after"
+
+# 确保备份目录存在
+mkdir -p "${DEST_BEFORE}" "${DEST_AFTER}" 2>/dev/null || {
+    echo "[错误] 无法创建备份目录，请确保对${DEST_BASE}有写权限"
+    read -p "按回车键继续..." dummy
+    exit 1
+}
+
+echo "[路径] 备份根目录: ${DEST_BASE}/${USERNAME_LINUX}/${PROJECT_ID}"
+echo "[路径] 执行前备份: ${DEST_BEFORE}"
+echo "[路径] 执行后备份: ${DEST_AFTER}"
+
+# ============================================
+# 项目路径配置
+# ============================================
+echo ""
+echo "[项目] 配置项目路径..."
+
+if [ $# -gt 0 ] && [ -n "$1" ]; then
+    PROJECT_PATH="$1"
+    echo "[项目] 使用指定路径作为项目路径"
+else
+    PROJECT_PATH="$(pwd)"
+    echo "[项目] 使用当前目录作为项目路径"
+fi
+
+echo "[项目] 项目路径: ${PROJECT_PATH}"
+
+# 切换到项目目录
+if cd "${PROJECT_PATH}"; then
+    echo "[项目] 成功切换到项目目录"
+else
+    echo "[错误] 无法访问项目路径: ${PROJECT_PATH}"
+    echo "[错误] 请检查路径是否正确或是否有访问权限"
+    read -p "按回车键继续..." dummy
+    exit 1
+fi
+
+# ============================================
+# Claude Projects 路径配置
+# ============================================
+echo ""
+echo "[Claude] 配置Claude项目备份..."
+
+CLAUDE_PROJECTS_BASE="${HOME}/.claude/projects"
+echo "[Claude] Claude项目目录: ${CLAUDE_PROJECTS_BASE}"
+
+# 规范化当前项目路径用于匹配
+PROJECT_PATH_NORMALIZED="${PROJECT_PATH//:/_}"
+PROJECT_PATH_NORMALIZED="${PROJECT_PATH_NORMALIZED//\//_}"
+PROJECT_PATH_NORMALIZED="${PROJECT_PATH_NORMALIZED// /_}"
+echo "[Claude] 标准化路径: ${PROJECT_PATH_NORMALIZED}"
+
+# 查找匹配的项目目录
+MATCHED_PROJECT_DIR=""
+CLAUDE_BACKUP_ENABLED=0
+
+if [ -d "${CLAUDE_PROJECTS_BASE}" ]; then
+    echo "[Claude] 扫描现有Claude项目目录..."
+    
+    for dir in "${CLAUDE_PROJECTS_BASE}"/*; do
+        if [ -d "${dir}" ]; then
+            DIR_NAME="$(basename "${dir}")"
+            # 移除目录名中的--和-进行标准化
+            NORMALIZED_DIR="${DIR_NAME//--/}"
+            NORMALIZED_DIR="${NORMALIZED_DIR//-/}"
+            
+            NORMALIZED_PATH_CHECK="${PROJECT_PATH_NORMALIZED//--/}"
+            NORMALIZED_PATH_CHECK="${NORMALIZED_PATH_CHECK//-/}"
+            NORMALIZED_PATH_CHECK="${NORMALIZED_PATH_CHECK//_/}"
+            
+            # 只进行完全匹配检查
+            if [ "${NORMALIZED_DIR,,}" = "${NORMALIZED_PATH_CHECK,,}" ]; then
+                MATCHED_PROJECT_DIR="${dir}"
+                CLAUDE_BACKUP_ENABLED=1
+                echo "[Claude] 精确匹配: ${dir}"
+                break
+            fi
+        fi
+    done
+    
+    if [ "${CLAUDE_BACKUP_ENABLED}" -eq 0 ]; then
+        echo "[Claude] 暂未找到精确匹配的项目目录"
+        MATCHED_PROJECT_DIR=""
+    fi
+else
+    echo "[Claude] Claude项目目录不存在"
+    CLAUDE_BACKUP_ENABLED=0
+    MATCHED_PROJECT_DIR=""
+fi
+
+# 设置Claude备份目标目录
+CLAUDE_BACKUP_DIR="${DEST_BASE}/${USERNAME_LINUX}/${PROJECT_ID}/${TIME_STAMP}/projects"
+echo "[Claude] Claude备份目录: ${CLAUDE_BACKUP_DIR}"
+
+if [ "${CLAUDE_BACKUP_ENABLED}" -eq 1 ]; then
+    echo "[Claude] 模式：精确匹配监控 - ${MATCHED_PROJECT_DIR}"
+else
+    echo "[Claude] 模式：未找到匹配项目，将启动监控等待创建"
+    CLAUDE_BACKUP_ENABLED=1
+fi
+
+# ============================================
+# 代码备份模块 (执行前)
+# ============================================
+echo ""
+echo "[备份] 开始备份执行前的Python代码..."
+echo "[备份] 目标目录: ${DEST_BEFORE}"
+
+# 确保备份目录存在
+if [ ! -d "${DEST_BEFORE}" ]; then
+    mkdir -p "${DEST_BEFORE}" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo "[备份] 备份目录创建成功"
+    else
+        echo "[错误] 无法创建备份目录"
+        read -p "按回车键继续..." dummy
+        exit 1
+    fi
+fi
+
+PY_COUNT=0
+# 备份所有.py文件，排除conftest.py
+find .  -type d \( -name ".venv" -o -name "test_example" \) -prune -o -type f -name "*.py" ! -name "conftest.py" ! -name "__init__.py" -print | while read -r py_file; do
+    filename=$(basename "${py_file}")
+        cp "${py_file}" "${DEST_BEFORE}" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            PY_COUNT=$((PY_COUNT+1))
+            if [ $PY_COUNT -lt 10 ]; then
+                echo "[Python] 实时备份: ${py_file}"
+            elif [ $PY_COUNT -eq 10 ]; then
+                echo "...（更多文件备份中，确认工程路径是否正确）"
+            fi
+        fi
+done
+
+
+# ============================================
+# AI模型配置和启动
+# ============================================
+echo ""
+echo "[AI模型] 配置AI模型参数..."
+
+# 设置模型API配置
+export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
+export ANTHROPIC_AUTH_TOKEN="sk-45bdb25aa4934166862a359a4df4443a"
+export ANTHROPIC_MODEL="deepseek-chat"
+export ANTHROPIC_SMALL_FAST_MODEL="deepseek-chat"
+export DISABLE_AUTOUPDATER=1 
+export CLAUDE_CODE_MAX_OUTPUT_TOKENS=50000
+echo "[AI模型] 模型类型: ${ANTHROPIC_MODEL}"
+echo "[AI模型] API地址: ${ANTHROPIC_BASE_URL}"
+
+# 启用遥测功能
+export CLAUDE_CODE_ENABLE_TELEMETRY="1"
+export OTEL_METRICS_EXPORTER="otlp,prometheus"
+export OTEL_LOGS_EXPORTER="otlp"
+export OTEL_EXPORTER_OTLP_PROTOCOL="grpc"
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://10.112.112.154:4317"
+echo "[遥测] 遥测服务已启用"
+
+# 调试配置：减少导出间隔
+export OTEL_METRIC_EXPORT_INTERVAL="100000"
+export OTEL_LOGS_EXPORT_INTERVAL="50000"
+
+echo ""
+echo "==========================================="
+echo "[启动] 正在启动H3C CODE CLI工具 版本: ${H3CCODERVERSION} "
+echo "[提示] 请在CLI中输入您的需求"
+echo "==========================================="
+echo ""
+
+# ============================================
+# 启动Claude项目实时监控备份
+# ============================================
+# 创建监控脚本
+MONITOR_PID=""
+MONITOR_SCRIPT="/tmp/claude_monitor_${TIME_STAMP}.sh"
+
+if [ "${CLAUDE_BACKUP_ENABLED}" -eq 1 ]; then
+    echo "[Claude] 启动Claude项目实时备份..."
+    
+    # 创建Claude备份目录
+    if [ ! -d "${CLAUDE_BACKUP_DIR}" ]; then
+        mkdir -p "${CLAUDE_BACKUP_DIR}" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            echo "[Claude] Claude备份目录创建成功: ${CLAUDE_BACKUP_DIR}"
+        else
+            echo "[警告] 无法创建Claude备份目录"
+            CLAUDE_BACKUP_ENABLED=0
+        fi
+    fi
+    
+    if [ "${CLAUDE_BACKUP_ENABLED}" -eq 1 ]; then
+        # 创建增强型实时监控脚本
+        cat > "${MONITOR_SCRIPT}" << 'EOF'
+#!/bin/bash
+set -euo pipefail
+
+CLAUDE_BASE_DIR="${1}"
+BUP_DIR="${2}"
+AFTER_DIR="${3}"
+PROJECT_PATH="${4}"
+TIME_STAMP="${5}"
+PROJECT_ID="${6}"
+BACKUP_MODE="${7}"
+MATCHED_DIR="${8}"
+DEST_BEFORE="${9}"
+
+monitor_dir="${8}"
+echo "[Claude] 监控器启动"
+if [ -z "${monitor_dir}" ]; then
+    echo "[Claude] 等待模式：监控整个Claude目录等待项目创建"
+else
+    echo "[Claude] 精确模式：监控目录 ${monitor_dir}"
+fi
+
+while true; do
+    # 检查Claude项目目录中的jsonl文件
+    if [ -z "${monitor_dir}" ]; then
+        # 等待模式：扫描整个Claude目录寻找匹配项目
+        if [ -d "${CLAUDE_BASE_DIR}" ]; then
+            for dir in "${CLAUDE_BASE_DIR}"/*; do
+                if [ -d "${dir}" ]; then
+                    DIR_NAME="$(basename "${dir}")"
+                    # 移除目录名中的--和-进行标准化
+                    NORMALIZED_DIR="${DIR_NAME//--/}"
+                    NORMALIZED_DIR="${NORMALIZED_DIR//-/}"
+                    
+                    # 标准化项目路径进行比较
+                    PROJECT_PATH_NORM="${PROJECT_PATH//:/_}"
+                    PROJECT_PATH_NORM="${PROJECT_PATH_NORM//\//_}"
+                    PROJECT_PATH_NORM="${PROJECT_PATH_NORM// /_}"
+                    PROJECT_PATH_NORM="${PROJECT_PATH_NORM//--/}"
+                    PROJECT_PATH_NORM="${PROJECT_PATH_NORM//-/}"
+                    
+                    # 只进行完全匹配检查
+                    if [ "${NORMALIZED_DIR,,}" = "${PROJECT_PATH_NORM,,}" ]; then
+                        echo "[Claude] 发现新创建的匹配项目: ${dir}"
+                        monitor_dir="${dir}"
+                        break
+                    fi
+                fi
+            done
+        fi
+    else
+        # 精确模式：直接检查已知目录
+        if [ -d "${monitor_dir}" ]; then
+            for file in "${monitor_dir}"/*.jsonl; do
+                if [ -f "${file}" ]; then
+                    # 获取文件完整路径
+                    file_path="${file}"
+                    
+                    # 计算与当前时间差（秒）
+                    file_time="$(stat -c %Y "${file_path}")"
+                    current_time="$(date +%s)"
+                    sec_diff=$((current_time - file_time))
+                    
+                    # 取绝对值
+                    if [ ${sec_diff} -lt 0 ]; then
+                        sec_diff=$((sec_diff * -1))
+                    fi
+                    
+                    # 判断是否在10秒以内
+                    if [ ${sec_diff} -le 10 ]; then
+                        cp "${file}" "${BUP_DIR}" 2>/dev/null
+                        if [ $? -eq 0 ]; then
+                            echo "[Claude] 备份成功: $(basename "${file}")"
+                        else
+                            echo "[Claude] 备份失败: $(basename "${file}")"
+                        fi
+                    else
+                        echo "[Claude] 跳过备份: $(basename "${file}")"
+                    fi
+                fi
+            done
+        fi
+    fi
+    
+    # 如果找到了匹配目录，备份其中的jsonl文件
+    if [ -n "${monitor_dir}" ] && [ -d "${monitor_dir}" ]; then
+        for file in "${monitor_dir}"/*.jsonl; do
+            if [ -f "${file}" ]; then
+                file_name="$(basename "${file}")"
+                if [ ! -f "${BUP_DIR}/${file_name}" ]; then
+                    echo "[Claude] 发现新会话文件: ${file_name}"
+                    
+                    # 计算与当前时间差（秒）
+                    file_time="$(stat -c %Y "${file}")"
+                    current_time="$(date +%s)"
+                    sec_diff=$((current_time - file_time))
+                    
+                    # 取绝对值
+                    if [ ${sec_diff} -lt 0 ]; then
+                        sec_diff=$((sec_diff * -1))
+                    fi
+                    
+                    # 判断是否在10秒以内
+                    if [ ${sec_diff} -le 300 ]; then
+                        cp "${file}" "${BUP_DIR}" 2>/dev/null
+                        if [ $? -eq 0 ]; then
+                            echo "[Claude] 备份成功: ${file_name}"
+                        else
+                            echo "[Claude] 备份失败: ${file_name}"
+                        fi
+                    else
+                        echo "[Claude] 跳过备份: ${file_name}"
+                    fi
+                fi
+            fi
+        done
+    fi
+    
+    # 同时备份after目录中的Python文件
+    if [ -d "${PROJECT_PATH}" ]; then
+        cd "${PROJECT_PATH}" || exit 1
+        mkdir -p "${AFTER_DIR}" 2>/dev/null
+        if [ -d "${AFTER_DIR}" ]; then
+            find .  -type d \( -name ".venv" -o -name "test_example" \) -prune -o -type f -name "*.py" ! -name "conftest.py" ! -name "__init__.py" -print | while read -r py_file; do
+                filename=$(basename "${py_file}")
+                before_file="${DEST_BEFORE}/${filename}"
+                after_file="${AFTER_DIR}/${filename}"
+               
+                if [ -f "${before_file}" ]; then
+                    # 计算 before 和 after 文件的 MD5
+                    md5_before=$(md5sum "${before_file}" | awk '{print $1}')
+                    md5_after=$(md5sum "${py_file}" | awk '{print $1}')
+                    echo ${before_file}  ${py_file}  ${md5_before} ${md5_after}
+                    if [ "${md5_before}" = "${md5_after}" ]; then
+                        continue
+                    fi
+
+                fi
+
+                if [ -f "${after_file}" ]; then
+                    md5_after_back=$(md5sum "${after_file}" | awk '{print $1}')
+                    md5_after=$(md5sum "${py_file}" | awk '{print $1}')
+                    if [ "${md5_after_back}" = "${md5_after}" ]; then
+                        continue
+                    fi
+                fi
+                cp "${py_file}" "${AFTER_DIR}" 2>/dev/null
+                if [ $? -eq 0 ]; then
+                    echo "[Python] 实时备份: ${py_file}"
+                fi
+            done
+        fi
+    fi
+    # 等待10秒后继续监控
+    sleep 5
+done
+EOF
+        
+        # 设置监控脚本为可执行
+        chmod +x "${MONITOR_SCRIPT}"
+        
+        echo "[Claude] 增强型后台监控脚本已创建: ${MONITOR_SCRIPT}"
+        
+        # 启动后台监控任务
+        bash "${MONITOR_SCRIPT}" "${CLAUDE_PROJECTS_BASE}" "${CLAUDE_BACKUP_DIR}" "${DEST_AFTER}" "${PROJECT_PATH}" "${TIME_STAMP}" "${PROJECT_ID}" "${CLAUDE_BACKUP_ENABLED}" "${MATCHED_PROJECT_DIR}" "${DEST_BEFORE}" > /dev/null 2>&1 &
+        MONITOR_PID=$!
+        
+        echo "[Claude] 增强型后台监控任务已启动（PID: ${MONITOR_PID}）"
+        
+        if [ -z "${MATCHED_PROJECT_DIR}" ]; then
+            echo "[Claude] 监控模式：等待模式 - 动态检测项目创建"
+        else
+            echo "[Claude] 监控模式：精确匹配 - ${MATCHED_PROJECT_DIR}"
+        fi
+    fi
+else
+    echo "[Claude] 跳过Claude项目监控（初始化失败）"
+fi
+
+# 启动Claude CLI (阻塞执行)
+# claude --allowedTools "Bash,Read" --permission-mode acceptEdits --dangerously-skip-permissions
+python3 main.py
+
+# ============================================
+# 代码备份模块 (执行后)
+# ============================================
+echo ""
+echo "[备份] 开始备份执行后的Python代码..."
+echo "[备份] 目标目录: ${DEST_AFTER}"
+
+if [ ! -d "${DEST_AFTER}" ]; then
+    mkdir -p "${DEST_AFTER}" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo "[备份] 备份目录创建成功"
+    else
+        echo "[错误] 无法创建备份目录"
+        read -p "按回车键继续..." dummy
+        exit 1
+    fi
+fi
+
+PY_COUNT_AFTER=0
+# 复制时排除 conftest.py
+find .  -type d \( -name ".venv" -o -name "test_example" \) -prune -o -type f -name "*.py" ! -name "conftest.py" ! -name "__init__.py" -print | while read -r py_file; do
+    filename=$(basename "${py_file}")
+    before_file="${DEST_BEFORE}/${filename}"
+    after_file="${DEST_AFTER}/${filename}"
+    if [ -f "${before_file}" ]; then
+        # 计算 before 和 after 文件的 MD5
+        md5_before=$(md5sum "${before_file}" | awk '{print $1}')
+        md5_after=$(md5sum "${py_file}" | awk '{print $1}')
+
+        if [ "${md5_before}" = "${md5_after}" ]; then
+            #echo "[跳过] ${filename} 与 before 相同, 删除 before 文件"
+            rm -f "${before_file}"
+            rm -f "${after_file}"
+            continue
+        fi
+    fi
+    if [ -f "${after_file}" ]; then
+         md5_after_back=$(md5sum "${after_file}" | awk '{print $1}')
+         md5_after=$(md5sum "${py_file}" | awk '{print $1}')
+          if [ "${md5_after_back}" = "${md5_after}" ]; then
+           continue
+          fi
+    fi
+
+    cp "${py_file}" "${DEST_AFTER}" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        PY_COUNT_AFTER=$((PY_COUNT_AFTER+1))
+        echo "[Python] 实时备份: ${py_file}"
+    fi
+done
+
+
+# ============================================
+# 清理和退出
+# ============================================
+echo ""
+echo "[清理] 正在清理资源..."
+
+# 停止Claude监控任务
+if [ "${CLAUDE_BACKUP_ENABLED}" -eq 1 ] && [ -n "${MONITOR_PID}" ]; then
+    echo "[Claude] 停止Claude监控任务..."
+    # 优雅停止监控脚本
+    kill -TERM "${MONITOR_PID}" || {
+        # 如果优雅停止失败，强制杀死
+        kill -KILL "${MONITOR_PID}"
+    }
+    
+    # 等待进程结束
+    wait "${MONITOR_PID}" 2>/dev/null || true
+    
+    # 删除临时监控脚本
+    if [ -f "${MONITOR_SCRIPT}" ]; then
+        rm "${MONITOR_SCRIPT}" 2>/dev/null
+        echo "[Claude] 临时监控脚本已清理"
+    fi
+    
+    # 最后一次备份检查 - 支持动态发现项目
+    echo "[Claude] 执行最后一次备份检查..."
+    
+    # 如果最初没有匹配项目，尝试重新查找
+    if [ -z "${MATCHED_PROJECT_DIR}" ]; then
+        echo "[Claude] 重新扫描Claude项目目录寻找新创建的项目..."
+        
+        if [ -d "${CLAUDE_PROJECTS_BASE}" ]; then
+            for dir in "${CLAUDE_PROJECTS_BASE}"/*; do
+                if [ -d "${dir}" ]; then
+                    DIR_NAME="$(basename "${dir}")"
+                    NORMALIZED_DIR="${DIR_NAME//--/}"
+                    NORMALIZED_DIR="${NORMALIZED_DIR//-/}"
+                    NORMALIZED_PATH_CHECK="${PROJECT_PATH_NORMALIZED//--/}"
+                    NORMALIZED_PATH_CHECK="${NORMALIZED_PATH_CHECK//-/}"
+                    
+                    if [ "${NORMALIZED_DIR,,}" = "${NORMALIZED_PATH_CHECK,,}" ]; then
+                        echo "[Claude] 发现新创建的匹配项目: ${dir}"
+                        MATCHED_PROJECT_DIR="${dir}"
+                        break
+                    fi
+                fi
+            done
+        fi
+    fi
+    
+    if [ -n "${MATCHED_PROJECT_DIR}" ] && [ -d "${MATCHED_PROJECT_DIR}" ]; then
+        echo "[Claude] 检查项目目录: ${MATCHED_PROJECT_DIR}"
+        echo "[Claude] 检查备份目录中的jsonl文件..."
+        
+        # 遍历备份目录中的jsonl文件，只备份本地存在的同名文件
+        for backup_file in "${CLAUDE_BACKUP_DIR}"/*.jsonl; do
+            if [ -f "${backup_file}" ]; then
+                backup_file_name="$(basename "${backup_file}")"
+                local_file_path="${MATCHED_PROJECT_DIR}/${backup_file_name}"
+                
+                # 检查本地是否存在同名文件
+                if [ -f "${local_file_path}" ]; then
+                    # 直接备份本地文件
+                    cp "${local_file_path}" "${CLAUDE_BACKUP_DIR}" 2>/dev/null
+                    if [ $? -eq 0 ]; then
+                        echo "[Claude] 最终备份: ${backup_file_name}"
+                    else
+                        echo "[Claude] 最终备份失败: ${backup_file_name}"
+                    fi
+                else
+                    echo "[Claude] 本地不存在文件: ${backup_file_name}"
+                fi
+            fi
+        done
+    else
+        echo "[Claude] 未发现匹配的Claude项目目录"
+    fi
+    
+    echo "[Claude] 当前项目Claude备份完成"
+fi
+
+# 恢复原始工作目录
+echo "[清理] 恢复原始工作目录"
+
+# ============================================
+# 完成信息
+# ============================================
+echo ""
+echo "==========================================="
+echo "[完成] H3C Code CLI ${H3CCODERVERSION} 执行完毕"
+echo "[时间] 结束时间: $(date +"%Y-%m-%d %H:%M:%S")"
+echo "==========================================="
+echo ""
+
+# 退出脚本
+exit 0
