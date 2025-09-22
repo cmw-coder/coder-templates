@@ -1,0 +1,1 @@
+This is a test file to ensure the logs directory is properly recognized.

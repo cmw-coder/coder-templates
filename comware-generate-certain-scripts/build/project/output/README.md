@@ -1,0 +1,1 @@
+This is a test file to ensure the output directory is properly recognized.
