@@ -23,6 +23,7 @@ data "coder_workspace_owner" "me" {
 }
 
 locals {
+  coder_tutorials_url = "https://tutorials.coder-open.h3c.com"
   proxy_url = "http://proxy02.h3c.com:8080"
   username = data.coder_workspace_owner.me.name
   workspace = data.coder_workspace.me.name
@@ -99,6 +100,15 @@ resource "coder_app" "code_server" {
     threshold = 6
   }
 }
+resource "coder_app" "coder_tutorials" {
+  agent_id     = coder_agent.main.id
+  slug         = "coder-tutorials"
+  display_name = "Coder Tutorials"
+  icon         = "/emojis/1f4d6.png"
+  url          = local.coder_tutorials_url
+  external     = true
+}
+
 
 resource "coder_env" "http_proxy" {
   agent_id = coder_agent.main.id
