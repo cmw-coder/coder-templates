@@ -104,9 +104,6 @@ locals {
   coder_tutorials_url = "https://tutorials.coder.h3c.com"
   marketplace_url = "https://code-marketplace.cmwcoder.h3c.com"
   project_path = "/home/${data.coder_workspace_owner.me.name}/project"
-  yunxiao = {
-    organization_id = "864f6de3-3d59-46f2-9729-645fc20006b7"
-  }
 }
 
 resource "coder_agent" "main" {
@@ -218,16 +215,6 @@ resource "coder_env" "extensions_gallery" {
   name     = "EXTENSIONS_GALLERY"
   value    = "{\"serviceUrl\":\"${local.marketplace_url}/api\", \"itemUrl\":\"${local.marketplace_url}/item\", \"resourceUrlTemplate\": \"${local.marketplace_url}/files/{publisher}/{name}/{version}/{path}\"}"
 }
-resource "coder_env" "lingma_organization_id" {
-  agent_id = coder_agent.main.id
-  name     = "LINGMA_ORGANIZATION_ID"
-  value    = "${local.yunxiao.organization_id}"
-}
-resource "coder_env" "lingma_username" {
-  agent_id = coder_agent.main.id
-  name     = "LINGMA_USERNAME"
-  value    = "${data.coder_workspace_owner.me.name}"
-}
 resource "coder_env" "node_extra_ca_certs" {
   agent_id = coder_agent.main.id
   name     = "NODE_EXTRA_CA_CERTS"
@@ -288,10 +275,10 @@ resource "coder_script" "start_code_server" {
 
     echo -e "\033[36m- ⏳ Installing extensions\033[0m"
     ${local.code_server_dir}/bin/code-server --install-extension "alefragnani.bookmarks" --force
-    ${local.code_server_dir}/bin/code-server --install-extension "Alibaba-Cloud.tongyi-lingma-onpremise" --force
     ${local.code_server_dir}/bin/code-server --install-extension "anjali.clipboard-history" --force
     ${local.code_server_dir}/bin/code-server --install-extension "beaugust.blamer-vs" --force
     ${local.code_server_dir}/bin/code-server --install-extension "bierner.markdown-mermaid" --force
+    ${local.code_server_dir}/bin/code-server --install-extension "comware.comware-vscode" --force
     ${local.code_server_dir}/bin/code-server --install-extension "dbaeumer.vscode-eslint@prerelease" --force
     ${local.code_server_dir}/bin/code-server --install-extension "esbenp.prettier-vscode" --force
     ${local.code_server_dir}/bin/code-server --install-extension "h3c-rd.h3c-vscode-all-in-one" --force
