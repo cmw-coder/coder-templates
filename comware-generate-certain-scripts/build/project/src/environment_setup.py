@@ -128,8 +128,8 @@ class EnvironmentBuilder:
                     shutil.copy(temp_fromfile, output_folderpath)
 
             # 将同事excel测试点,写入工作文件夹中
-            # debug
-            onegroup = onegroup[:3]
+            # # debug
+            # onegroup = onegroup[:3]
             temp_dict_list = [dict(zip(self.headers, item)) for item in onegroup]
             with open(os.path.join(output_folderpath, "testpoints.json"), 'w', encoding='utf-8') as wp:
                 json.dump(temp_dict_list, wp, ensure_ascii=False, indent=4)
