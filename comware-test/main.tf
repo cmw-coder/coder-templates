@@ -145,7 +145,7 @@ resource "coder_script" "start_code_server" {
   script = <<EOF
     #!/bin/bash
     echo -e "\033[36m- 📦 Installing code-server\033[0m"
-    curl -fsSL https://code-server.dev/install.sh | sh
+    curl -fsSL https://raw.githubusercontent.com/coder/code-server/refs/tags/v4.104.1/install.sh | sh
 
     echo -e "\033[36m- ⏳ Installing extensions\033[0m"
     install-extension --local /opt/coder/assets/extensions/iceworks-team.iceworks-time-master-1.0.4.vsix

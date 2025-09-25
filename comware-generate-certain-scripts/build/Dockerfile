@@ -55,7 +55,7 @@ USER ${USER}
 WORKDIR /home/${USER}
 
 # Copy user specific configuration files
-COPY --chown=${USER}:${USER} .claude /home/${USER}/.claude/
+COPY --chown=${USER}:${USER} agent /home/${USER}/.claude/agent/
 COPY --chown=${USER}:${USER} code-server /home/${USER}/.local/share/code-server/
 COPY --chown=${USER}:${USER} project /home/${USER}/project/
 
