@@ -150,15 +150,15 @@ resource "coder_script" "start_code_server" {
     echo -e "\033[36m- ⏳ Installing extensions\033[0m"
     install-extension --local /opt/coder/assets/extensions/iceworks-team.iceworks-time-master-1.0.4.vsix
     install-extension --local /opt/coder/assets/extensions/MS-CEINTL.vscode-language-pack-zh-hans-1.104.0.vsix
-    install-extension --open alefragnani.bookmarks
-    install-extension --open bierner.markdown-mermaid
-    install-extension --open dbaeumer.vscode-eslint
-    install-extension --open esbenp.prettier-vscode
-    install-extension --open ms-python.python
-    install-extension --open ms-python.black-formatter
-    install-extension --open ms-python.debugpy
-    install-extension --open timonwong.shellcheck
-    install-extension --open redhat.vscode-xml
+    install-extension --local /opt/coder/assets/extensions/alefragnani.bookmarks-13.5.0.vsix
+    install-extension --local /opt/coder/assets/extensions/bierner.markdown-mermaid-1.29.0.vsix
+    install-extension --local /opt/coder/assets/extensions/dbaeumer.vscode-eslint-3.0.16.vsix
+    install-extension --local /opt/coder/assets/extensions/esbenp.prettier-vscode-11.0.0.vsix
+    install-extension --local /opt/coder/assets/extensions/ms-python.python-2025.16.0.vsix
+    install-extension --local /opt/coder/assets/extensions/ms-python.black-formatter-2025.2.0.vsix
+    install-extension --local /opt/coder/assets/extensions/ms-python.debugpy-2025.14.0.vsix
+    install-extension --local /opt/coder/assets/extensions/timonwong.shellcheck-0.38.3.vsix
+    install-extension --local /opt/coder/assets/extensions/redhat.vscode-xml-0.29.2025081108.vsix
 
     code-server \
     --auth none \

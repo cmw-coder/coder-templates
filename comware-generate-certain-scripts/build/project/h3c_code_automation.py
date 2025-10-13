@@ -631,8 +631,8 @@ class H3CCodeAutomation:
             # self.start_claude_monitor()
 
             # 运行Claude CLI
-            # self.run_claude_cli()
-            time.sleep(120)
+            self.run_claude_cli()
+            # time.sleep(120)
 
             # 备份执行后的文件
             # self.backup_python_files(self.DEST_AFTER, "后")
