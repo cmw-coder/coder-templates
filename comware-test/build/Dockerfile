@@ -56,8 +56,7 @@ WORKDIR /home/${USER}
 
 # Copy user specific configuration files
 COPY --chown=${USER}:${USER} code-server /home/${USER}/.local/share/code-server/
-COPY --chown=${USER}:${USER} CLAUDE.md /home/${USER}/project/
-COPY --chown=${USER}:${USER} requirements.txt /home/${USER}/project/
+COPY --chown=${USER}:${USER} project /home/${USER}/project/
 
 # Add languagepacks.json
 ARG EXTENSION_VERSION=1.99.2025040909
