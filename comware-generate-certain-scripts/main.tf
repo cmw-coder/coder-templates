@@ -24,7 +24,7 @@ data "coder_workspace_owner" "me" {
 
 locals {
   coder_tutorials_url = "https://tutorials.coder-open.h3c.com"
-  proxy_url = "http://proxy02.h3c.com:8080"
+  proxy_url = "http://172.22.0.29:8080"
   username = data.coder_workspace_owner.me.name
   workspace = data.coder_workspace.me.name
 }

@@ -24,7 +24,7 @@ data "coder_workspace_owner" "me" {
 
 locals {
   coder_tutorials_url = "https://tutorials.coder-open.h3c.com"
-  proxy_url = "http://proxy02.h3c.com:8080"
+  proxy_url = "http://172.22.0.29:8080"
   username = data.coder_workspace_owner.me.name
   workspace = data.coder_workspace.me.name
 }
@@ -125,6 +125,11 @@ resource "coder_env" "ftp_proxy" {
   name     = "FTP_PROXY"
   value    = "${local.proxy_url}"
 }
+resource "coder_env" "disable_autoupdater" {
+  agent_id = coder_agent.main.id
+  name     = "DISABLE_AUTOUPDATER"
+  value    = "1"
+}
 resource "coder_env" "no_proxy" {
   agent_id = coder_agent.main.id
   name     = "NO_PROXY"
@@ -188,7 +193,7 @@ resource "coder_script" "create_project_folders" {
     mkdir -p ./test_scripts
     python -m venv .venv
     source .venv/bin/activate
-    pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
+    # pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
     tar -zxf /opt/coder/assets/site-packages.tgz -C .venv/lib/python3.13/site-packages/
   EOF
 }
