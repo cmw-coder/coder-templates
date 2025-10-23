@@ -1,0 +1,453 @@
+.. _topics-测试仪操作:
+
+
+测试仪操作
+================
+测试仪用于辅助测试数通产品，支持模拟各种报文，支持控制报文发送速率、模式等，在自动化脚本中经常使用。
+
+我司使用的测试仪主要有Spirent公司的Smartbits和TestCenter，Keysight公司的Ixia Explore和Ixia Network，以及我司自研的TestMaster，
+其中Smartbits和Ixia Explore产品较早，存量较少，目前我司使用的主流测试仪有：TestMaster、TestCenter和Ixia Network。
+
+为了兼容不同厂商的测试仪，自动化框架对L23报文构造和操作厂商提供的接口的基础上进行二次封装，封装后的接口支持我司使用的主流测试仪。
+
+由于协议仿真功能更复杂，各厂商的测试仪实现技术不同，统一封装的代价过大，没有提供统一封装，而是由各产品自行决定使用哪款测试仪，直接使用厂商提供的接口。
+TestMaster是我司自研测试仪，单独提供了一套与TestCenter协议仿真相同的接口，这套接口可以同时支持TestMaster和TestCenter。
+
+
+---------
+构造报文
+---------
+构造报文大致可分使用模板构造报文和自定义构造报文，前者根据不同的报文内容，有对应的接口，后者需要用户自行构造16进制数据，然后调用相关接口转换成可发送的码流。
+
+
+使用模板构造报文
+-----------------
+构造报文的接口分为set类（接口名称以Set开头）和create类（接口名称以Create开头），前者是基于端口，后者是基于流。
+
+set类接口构造完报文后，会覆盖该端口的已有报文，也就是说set类只能构造一条报文，另外设置发送模式、发送速率、创建内容变化的报文时，需要借助其它接口完成，受限比较大。
+
+create类接口构造报文后，会累加到已有报文后，也就是说可以创建多条流量，接口本身提供了设置发送模式、发送速率、创建内容变化的功能，使用方便，**强烈建议优先使用create类接口**。
+
+常用的构造报文的接口如下，完整的测试仪接口文档请参考： `测试仪接口帮助 <http://rdtest.h3c.com/client/releases/auto_test/document/%E6%B5%8B%E8%AF%95%E4%BB%AA%E6%8E%A5%E5%8F%A3%E5%B8%AE%E5%8A%A9>`_
+
+.. list-table:: 常用的构造报文接口
+   :widths: 30 40 30
+   :header-rows: 1
+
+   * - 接口名称
+     - 含义
+     - 备注
+   * - CreateIPStream
+     - 创建IP流
+     - 上层协议为UDP
+   * - CreateUDPStream
+     - 创建UDP流
+     - /
+   * - CreateTCPStream
+     - 创建TCP流
+     - /
+   * - CreateICMPStream
+     - 创建ICMP流
+     - /
+   * - CreateIPv6Stream
+     - 创建IPv6流
+     - 上层协议为UDP
+   * - CreateIPv6UDPStream
+     - 创建IPv6 UDP流
+     - /
+   * - CreateIPv6TCPStream
+     - 创建IPv6 TCP流
+     - /
+   * - CreateCustomStream
+     - 转换自定义报文
+     - /
+   * - SetArpPkt
+     - 创建arp模式
+     - /
+   * - SetEthIIPkt
+     - 创建二层以太报文
+     - 上层协议为IP
+
+
+.. note:: 使用create类接口创建报文时，建议设置Name或Group参数，以便后续使用基于流的检查方式
+
+自定义构造报文
+-----------------
+当上述模板无法满足测试需求时，就需要用户构造出报文的16进制数据，调用 ``CreateCustomStream`` 将其转换成可发送的码流。
+
+使用scapy库可以轻松的构造任意报文，它提供了各类报头，用户通过叠加各类报文头创建想要的报文，各报文头之间使用 ``/`` 符号分隔，如： ``Ether()/IP()/TCP()``
+
+.. code-block:: python
+    :linenos:
+
+    from scapy.all import Ether, IP, bytes_hex
+
+    # 构造IP报文
+    pkt = Ether(dst='a0:8c:fd:e2:8d:f7')/IP(src='100.1.1.1', dst='120.1.1.1')
+
+    # 解码成16进制字符串
+    pkt = bytes_hex(pkt).decode()
+
+    # 调用 CreateCustomStream 将pkt转换成可发送的码流
+    gl.TM.PORT1.CreateCustomStream(FrameRate=10, ProHeader=pkt)
+
+scapy提供了丰富的报文头方法，使用方便，用户不需要记住大量的报文头名称，可以使用如下方法随用随查：
+
+打开python交互解释器，输入 ``from scapy.all import *``，再输入 ``ls()``，可以查看其支持的报文头名称，这里面包含了常用的报文头，
+调用报文头的 ``show()`` 方法可以查询报文头支持的参数，调用报文的 ``show()`` 方法可以查看创建好的报文内容，参考如下示例：
+
+::
+  
+    # 引入待使用的报文头
+    from scapy import Ether, IP, Dot1Q
+
+    # 查看报文头Dot1Q支持的参数
+    Dot1Q().show()
+      ###[ 802.1Q ]### 
+        prio      = 0
+        id        = 0
+        vlan      = 1
+        type      = 0x0
+
+    # 构造双层VLAN报文
+    data = Ether()/Dot1Q(vlan=3)/Dot1Q(vlan=100)/IP(dst='100.1.1.1')
+
+    # 查看报文内容
+    data.show()
+      ###[ Ethernet ]### 
+        dst       = 30:c6:d7:db:8a:00
+        src       = a0:8c:fd:e2:8d:f7
+        type      = VLAN
+      ###[ 802.1Q ]### 
+          prio      = 0
+          id        = 0
+          vlan      = 3
+          type      = VLAN
+      ###[ 802.1Q ]### 
+              prio      = 0
+              id        = 0
+              vlan      = 100
+              type      = IPv4
+      ###[ IP ]### 
+                version   = 4
+                ihl       = None
+                tos       = 0x0
+                len       = None
+                id        = 1
+                flags     = 
+                frag      = 0
+                ttl       = 64
+                proto     = ip
+                chksum    = None
+                src       = 10.153.224.26
+                dst       = 100.1.1.1
+                \options   \
+
+如果 ``scapy.all`` 中没有想要的报文（如IGMPv3组播组通告报文），可以在 ``scapy.contrib`` 查找，参考 `scapy API 手册 <https://scapy.readthedocs.io/en/latest/api/scapy.html>`_
+
+::
+
+  from scapy.contrib.igmpv3 import IGMPv3gr
+
+  IGMPv3gr().show()
+    ###[ IGMPv3gr ]### 
+      rtype     = Mode Is Include
+      auxdlen   = 0
+      numsrc    = None
+      maddr     = 0.0.0.0
+      srcaddrs  = []
+
+
+.. note:: 私有协议的报文构造由自动化组维护，如果需要，可以提需求给自动化组
+
+
+--------------
+发送/停止报文
+--------------
+发送/停止报文使用 ``Run`` 和 ``Stop`` 方法，可以通过流名称指定要发送/停止的流，不指定时发送/停止端口上的所有流。
+
+当发送的报文模式为 ``burst`` 时，可以通过 ``WaitFor_TxStop`` 和 ``WaitFor_RxStop`` 方法等待流发送完毕或接收完毕，
+否则，要求调用 ``Stop`` 方法停止流量发送。
+
+
+---------
+捕获报文
+---------
+脚本通过获取测试仪端口的统计信息，进行某些功能点的检查。捕获报文有如下3种方式， **建议优先使用基于流统计**。
+
+
+基于流统计
+-----------
+测试仪则支持基于流统计，创建流时指定流名称，不需要配置过滤条件，即可获取流的收发统计。
+
+``CheckStreamStats`` 方法支持基于流的统计检查，在检查失败时会自动记录stream1的发送速率、发送报文数量和接收速率、接收报文数量，使用更加方便。
+
+.. code-block:: python
+    :linenos:
+    
+    # 创建一条源ip变化的TCP流，变化次数1000次，流名称为stream1
+    gl.TM.PORT1.CreateTCPStream(Name='stream1', FrameLen=120, FrameRate=100, DesMac='2-2-2', SrcMac='1-1-1', 
+                                  DesIP='2.2.2.2', SrcIP='120.1.1.1', IPMode="IP_INC_SRC_IP", IPCount1=1000)
+
+    # 发送stream1
+    gl.TM.PORT1.Run()
+
+    # 预期TM.PORT2收到stream1流量，并且速率为100
+    gl.TM.PORT2.CheckStreamStats('预期收到stream1流量，并且速率为100', stream='stream1', rcv_rate=100,
+                             stop_max_attempt=3, wait_fixed=5)
+
+    # # 预期TM.PORT2收到stream1流量丢包数小于20
+    # gl.TM.PORT2.CheckStreamStats('预期收到stream1流量，并且速率为100', stream='stream1', drop_pkt=20,
+    #                          stop_max_attempt=3, wait_fixed=5)
+
+    #停止stream1
+    gl.TM.PORT1.Stop()
+
+
+``CheckStreamStats`` 方法支持的参数如下：
+  - ``desc``: 检查项的描述信息，位置参数，字符串类型，必选
+  - ``stream``：流名称，位置参数，字符串类型，必选
+  - ``rcv_rate`` ``rx_rate``：期望的接收速度(pps)，可选参数，整型。两个参数名称含义相同
+  - ``rcv_bps`` ``rx_bps``：期望的接收速度(bps)，可选参数，整型。两个参数名称含义相同
+  - ``rcv_pkt`` ``rx_pkt``：期望的接收数量，可选参数，整型。两个参数名称含义相同
+  - ``tx_error`` ``rx_error``：期望的错误报文数量，可选参数，整型，分别代表发送和接收的错误报文数量
+  - ``drop_pkt`` :  期望的丢包数量，可选参数，整型。
+  - ``drop_rate`` : 期望的丢包率，可选参数，百分比写法，字符串类型，如5%。
+  - ``rcv_uti`` ``rx_uti`` :  期望的流量带宽，可选参数，必须为百分比写法，字符串类型，默认10%。两个参数名称含义相同
+  - ``errors``：允许的偏差值，可选参数，整型或字符串，默认值为0，字符串类型代表百分比，格式为10%
+  - ``stop_max_attempt``：最大检查次数，如果检查结果正确则提前跳出，默认为1
+  - ``wait_fixed``：检查两次检查的间隔时间，单位为秒， 默认为0
+
+
+基于端口统计
+------------
+流统计无法使用的场景，可以使用基于端口统计。
+
+``CheckPortStats`` 方法可以获取仪器端口的所有统计信息，配合 ``SetTrig`` 方法，获取符合过滤条件的报文统计，可以使用脚本更加稳定。
+``SetTrig`` 方法最多支持设置2个过滤条件，支持与、或关系，每个过滤条件长度 **不大于** 6个字节.
+
+
+.. code-block:: python
+    :linenos:
+
+    # 创建一条源ip变化的TCP流，变化次数1000次
+    gl.TM.PORT1.CreateTCPStream(FrameLen=120, FrameRate=100, DesMac='2-2-2', SrcMac='1-1-1', 
+                                  DesIP='2.2.2.2', SrcIP='120.1.1.1', IPMode="IP_INC_SRC_IP", IPCount1=1000)
+
+    # 发送
+    gl.TM.PORT1.Run()
+
+    # 设置过滤条件
+    gl.TM.PORT2.SetTrig(26,"0x78 0x01 0x01 0x01","&&",30,"0x02 0x02 0x02 0x02")
+
+    # 预期TM.PORT2收到流量的速率为100
+    gl.TM.PORT2.CheckPortStats('预期收到流量的速率为100', rcv_trig_rate=100, 
+                             stop_max_attempt=3, wait_fixed=5)
+
+    #停止
+    gl.TM.PORT1.Stop()
+
+``CheckPortStats`` 方法支持的参数如下：
+  - ``desc``: 检查项的描述信息，位置参数，字符串类型，必选
+  - ``rcv_rate`` ``rx_rate``：期望的接收速度(pps)，可选参数，整型。两个参数名称含义相同
+  - ``rcv_bps`` ``rx_bps``：期望的接收速度(bps)，可选参数，整型。两个参数名称含义相同
+  - ``rcv_pkt`` ``rx_pkt``：期望的接收数量，可选参数，整型。两个参数名称含义相同
+  - ``rcv_trig_rate`` ``rx_trig_rate``：期望的符合过滤条件的接收速度，可选参数，整型。两个参数名称含义相同
+  - ``rcv_trig_pkt`` ``rx_trig_pkt``：期望的过滤条件的接收数量，可选参数，整型。两个参数名称含义相同
+  - ``tx_error`` ``rx_error``：期望的错误报文数量，可选参数，整型，分别代表发送和接收的错误报文数量
+  - ``errors``：允许的偏差值，可选参数，整型或字符串，默认值为0，字符串类型代表百分比，格式为10%，默认值为0
+  - ``stop_max_attempt``：最大检查次数，如果检查结果正确则提前跳出，默认为1
+  - ``wait_fixed``：检查两次检查的间隔时间，单位为秒， 默认为0
+
+
+报文个数统计
+------------
+有些检查报文个数的场景，为了脚本稳定性，重试时需要再次发送报文，此时可以使用 ``GetPortInfo`` 或 ``GetStreamInfo`` 获取报文统计，再进行检查，参考如下示例。
+
+此处要注意： 
+  - 使用 ``GetPortInfo`` 时在报文接收端口进行 ``Clear`` 动作，用于清空端口统计
+  - 使用 ``GetStreamInfo`` 时在报文发送端口进行 ``Clear`` 动作，用于清空流统计
+
+.. code-block:: python
+    :linenos:
+
+    # 创建一条TCP流，发送个数为100个
+    gl.TM.PORT1.CreateTCPStream(FrameLen=120, TxMode='bursts', DesMac='2-2-2', SrcMac='1-1-1', BurstCount=100,
+                                  DesIP='2.2.2.2', SrcIP='120.1.1.1')
+    
+    # 设置过滤条件
+    gl.TM.PORT2.SetTrig(26,"0x78 0x01 0x01 0x01","&&",30,"0x02 0x02 0x02 0x02")
+
+    with atf_assert('检查PORT2端口能够收到正确的报文数量') as ars:
+      for i in range(5):
+        gl.TM.PORT2.Clear()
+        gl.TM.PORT1.Run()
+        gl.TM.PORT1.WaitFor_TxStop()
+
+        pkt = gl.TM.PORT2.GetPortInfo('RcvTrig')
+        if pkt[0] == 100:
+          ars.append(True)
+          break
+        atf_wait('重试等待5s', 5)
+      else:
+        atf_log(f'PORT2端口实际收到{pkt[0]}个报文，预期为100个', 'error')
+
+
+.. code-block:: python
+    :linenos:
+
+    # 创建一条TCP流，流名称为stream1，发送个数为100个
+    gl.TM.PORT1.CreateTCPStream(Name='stream1', FrameLen=120, TxMode='bursts', DesMac='2-2-2', SrcMac='1-1-1', 
+                          BurstCount=100, DesIP='2.2.2.2', SrcIP='120.1.1.1')
+
+    with atf_assert('检查PORT2端口能够收到流stream1的报文数量') as ars:
+      for i in range(5):
+        gl.TM.PORT1.Clear()
+        gl.TM.PORT1.Run()
+        gl.TM.PORT1.WaitFor_TxStop()
+
+        pkt = gl.TM.PORT2.GetStreamInfo('stream1', 'rx_pkt')
+        if pkt == 100:
+          ars.append(True)
+          break
+        atf_wait('重试等待5s', 5)
+      else:
+        atf_log(f'PORT2端口实际收到{pkt}个报文，预期为100个', 'error')
+
+
+
+检查完整报文内容
+----------------
+如果两个过滤条件无法完成检查，可以捕获完整个报文内容再检查，此时需要用到 ``gl.TM.PORT1.StartCapture`` ``gl.TM.PORT1.StopCapture`` ``gl.TM.PORT1.ReturnCapturePkt`` 3个方法。
+从方法名称可以看出，分别对应启动捕获、停止捕获和返回捕获的报文内容，这3个方法要求顺序执行，必须先停止报文捕获再获取报文内容。
+
+.. code-block:: python
+    :linenos:
+
+    # 端口 gl.TM.PORT1 启动抓包
+    gl.TM.PORT1.StartCapture()
+
+    # 端口 gl.TM.PORT2 发送报文
+    gl.TM.PORT2.Run()
+
+    # 等待 gl.TM.PORT2 发送完成
+    gl.TM.PORT2.WaitFor_TxStop()
+
+    # 端口 gl.TM.PORT1 停止抓包
+    gl.TM.PORT1.StopCapture()
+
+    # 打印捕获的每一个报文的内容（为16进制字符串）
+    for i in range(gl.TM.PORT1.ReturnCaptureCount()):
+        print(gl.TM.PORT1.ReturnCapturePkt(i))
+    
+-----------------------
+基于配置文件操作测试仪
+-----------------------
+
+
+由于测试仪配置丰富导致自动化接口众多，为减少用户开发自动化脚本的复杂度，提供一种由用户手动在前端页面进行相应配置，将配置文件保存至自动化脚本的resource文件中，
+在脚本里通过配置上传接口将配置文件加载到测试仪中即可完成相应配置，而后对流量和协议的操作使用对应的接口操作即可。
+
+配置生成
+------------------
+测试仪配置文件保存主要有以下两种方式
+
+
+1、手动下载
+
+用户在前端界面进行配置后，还需要修改端口别名再进行配置保存，修改端口别名的方法如下：
+
+.. image:: ./images/测试仪配置保存步骤1.png
+
+.. image:: ./images/测试仪配置保存步骤2.png
+
+保存配置的方法如下：
+
+.. image:: ./images/保存配置按钮.png
+
+.. image:: ./images/保存文件名.png
+
+.. image:: ./images/文件保存位置.png
+
+.. note:: 配置文件下载前必须要按照要求修改端口别名，别名为拓扑文件中对应端口的逻辑名称
+
+
+2、调用SaveConfig自动下载
+
+用于自动化脚本中保存当前测试仪的配置
+
+.. code-block:: python
+    :linenos:
+
+    # 默认TestMaster保存文件类型为json，TestCenter保存文件类型为xml
+    # TestMaster使用示例如下，如果当前脚本在TestCenter上执行，接口会自动对文件类型进行修改，默认会保存为d:/tm_ok/test1.xml文件，当前暂未提供TC接口
+    gl.TM.SaveConfig("d:/tm_ok/test1.json")
+
+    #如果希望存放在与脚本同级
+    import os
+    file_path = os.path.dirname(os.path.abspath(__file__))
+    gl.TM.SaveConfig(f"{file_path}/test1.json")
+
+``SaveConfig`` 支持的参数如下，TestMaster文件类型为json，TestCenter文件类型为xml：
+  - ``save_file``: 保存文件的绝对路径
+
+
+配置上传
+------------------
+``UploadConfig`` 接口用于将配置文件中的配置下发到测试仪器，配置文件建议放在文件夹resource中随脚本一起归档，接口入参为配置文件绝对路径， **接口自动根据使用的仪器处理配置文件后缀**
+
+代码示例
+
+.. code-block:: python
+    :linenos:
+
+    # 注意归档时配置文件的相对路径需要按照脚本中定义的路径归档
+    import os
+    file_path = os.path.dirname(os.path.abspath(__file__))
+    
+    # 假设配置文件放在resource文件夹中，resource文件夹与脚本同级，测试仪为TestMaster，当前脚本在TestCenter上执行，接口会自动对文件类型进行修改
+    gl.TM.UploadConfig(f"{file_path}/resource/test1.json")
+
+    # 假设配置文件放在resource文件夹中，resource文件夹与脚本所在的文件夹同级，测试仪为TestMaster
+    gl.TM.UploadConfig(f"{file_path}/../resource/test1.json")
+
+
+    #假设配置文件中PORT1端口上存在名为device1的ospf协议，PORT2端口上存在名为stream1的流量
+    #启动/停止指定协议参考如下：
+    gl.TM.PORT1.StartRouter("device1")
+    gl.TM.PORT1.StopRouter("device1")
+
+    #启动/停止所有协议
+    gl.TM.PORT1.StartRouter()
+    gl.TM.PORT1.StopRouter()
+
+    #启动/停止PORT2上指定流量参考如下：
+    gl.TM.PORT2.StartTraffic("stream1", FlagArp=True)
+    gl.TM.PORT2.StopTraffic("stream1")
+
+    #启动/停止PORT2上所有流量
+    gl.TM.PORT2.StartTraffic(FlagArp=True)
+    gl.TM.PORT2.StopTraffic()
+
+    ...
+
+
+``UploadConfig`` 支持的参数如下，TestMaster文件类型为json，TestCenter文件类型为xml。
+  - ``ori_file``: 配置文件的绝对路径
+
+
+.. note:: 配置文件上传后，对流量和device的操作例如StartRouter/StopRouter等，请使用对应的测试仪对象调用接口，完整的测试仪接口文档请参考： `测试仪接口帮助 <http://rdtest.h3c.com/client/releases/auto_test/document/%E6%B5%8B%E8%AF%95%E4%BB%AA%E6%8E%A5%E5%8F%A3%E5%B8%AE%E5%8A%A9>`_
+
+
+
+配置修改
+------------
+如果脚本中涉及到对配置的修改，可使用如下两种方法：
+  - 方法一: 请使用对应测试仪接口完成，完整的测试仪接口文档请参考： `测试仪接口帮助 <http://rdtest.h3c.com/client/releases/auto_test/document/%E6%B5%8B%E8%AF%95%E4%BB%AA%E6%8E%A5%E5%8F%A3%E5%B8%AE%E5%8A%A9>`_
+  - 方法二: 每一个修改步骤保存一份配置文件，在脚本中直接导入配置文件，**此方法不能用于需要在流量启动或者device启动过程中对配置进行修改**
+
+
+当前配置文件中仅对测试仪的用户名、机框IP以及端口名称进行了修改，其余配置（例如流量目的IP等）修改有两种方法：
+  - 方法一: 需要用户手工在脚本中使用对应测试仪接口完成，完整的测试仪接口文档请参考： `测试仪接口帮助 <http://rdtest.h3c.com/client/releases/auto_test/document/%E6%B5%8B%E8%AF%95%E4%BB%AA%E6%8E%A5%E5%8F%A3%E5%B8%AE%E5%8A%A9>`_
+  - 方法二: 修改拓扑文件，设置各端口的ip地址，与配置文件中的地址对应 **推荐使用该方法**
+

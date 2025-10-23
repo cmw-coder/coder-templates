@@ -187,7 +187,6 @@ resource "coder_script" "create_project_folders" {
     cd /home/${local.username}/project
     mkdir -p ./KE
     mkdir -p ./press
-    mkdir -p ./pypilot
     mkdir -p ./test_cases
     mkdir -p ./test_example
     mkdir -p ./test_scripts
