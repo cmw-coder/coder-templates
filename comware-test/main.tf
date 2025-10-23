@@ -15,6 +15,14 @@ provider "docker" {
 provider "coder" {
 }
 
+locals {
+  coder_tutorials_url = "https://tutorials.coder-open.h3c.com"
+  ke_file_map = jsondecode(file("${path.module}/ke_file_map.json"))
+  proxy_url = "http://172.22.0.29:8080"
+  username = data.coder_workspace_owner.me.name
+  workspace = data.coder_workspace.me.name
+}
+
 data "coder_provisioner" "me" {
 }
 data "coder_workspace" "me" {
@@ -22,11 +30,70 @@ data "coder_workspace" "me" {
 data "coder_workspace_owner" "me" {
 }
 
-locals {
-  coder_tutorials_url = "https://tutorials.coder-open.h3c.com"
-  proxy_url = "http://172.22.0.29:8080"
-  username = data.coder_workspace_owner.me.name
-  workspace = data.coder_workspace.me.name
+data "coder_parameter" "business_component" {
+  name = "business_component"
+  display_name = "Business Component"
+  description = "Select the business component"
+  default = ""
+  form_type = "dropdown"
+  order = 0
+  mutable = false
+
+  option {
+    name = "All"
+    value = ""
+  }
+
+  dynamic "option" {
+    for_each = keys(local.ke_file_map)
+    content {
+      name  = option.value
+      value = option.value
+    }
+  }
+}
+
+data "coder_parameter" "business_module" {
+  name = "business_module"
+  display_name = "Business Module"
+  description = "Select the module for the chosen component"
+  default = ""
+  form_type = "dropdown"
+  order = 1
+  mutable = false
+
+  option {
+    name = "All"
+    value = ""
+  }
+
+  dynamic "option" {
+    for_each = data.coder_parameter.business_component.value != "" ? keys(local.ke_file_map[data.coder_parameter.business_component.value]) : []
+    content {
+      name = option.value
+      value = option.value
+    }
+  }
+}
+
+data "coder_parameter" "module_tag_file_list" {
+  count = data.coder_parameter.business_component.value != "" && data.coder_parameter.business_module.value != "" ? 1 : 0
+  name = "module_tag_file_list"
+  display_name = "Module Tag File List"
+  description = "Select the KE files to be pulled"
+  form_type = "multi-select"
+  type = "list(string)"
+  default = jsonencode([])
+  order = 2
+  mutable = false
+
+  dynamic "option" {
+    for_each = local.ke_file_map[data.coder_parameter.business_component.value][data.coder_parameter.business_module.value]
+    content {
+      name = option.value
+      value = option.value
+    }
+  }
 }
 
 resource "coder_agent" "main" {
@@ -186,6 +253,36 @@ resource "coder_script" "create_project_folders" {
     #!/bin/bash
     cd /home/${local.username}/project
     mkdir -p ./KE
+
+    business_component="${data.coder_parameter.business_component.value}"
+    business_module="${data.coder_parameter.business_module.value}"
+    module_tag_file_list=$(echo "${try(data.coder_parameter.module_tag_file_list[0].value, jsonencode([]))}" | tr -d '[]"')
+    echo "Selected Business Component: $${business_component}"
+    echo "Selected Business Module: $${business_module}"
+    echo "Selected KE Files: $${module_tag_file_list}"
+
+    if [ -n "$${business_component}" ]; then
+      if [ -n "$${business_module}" ]; then
+        if [ -n "$${module_tag_file_list}" ]; then
+          IFS=',' read -ra files <<< "$${module_tag_file_list}"
+          for file in "$${files[@]}"; do
+            trimmed_file=$(echo "$file" | xargs)
+            echo "Copying KE file: $${trimmed_file}"
+            cp /opt/coder/assets/ke/"$${business_component}"/"$${business_module}"/"$${trimmed_file}" ./KE/"$${trimmed_file}"
+          done
+        else
+          echo "Copying whole module KE files."
+          cp /opt/coder/assets/ke/"$${business_component}"/"$${business_module}"/ ./KE/ -r
+        fi
+      else
+        echo "Copying whole component KE files."
+        cp /opt/coder/assets/ke/"$${business_component}"/ ./KE/ -r
+      fi
+    else
+      echo "Copying all KE files."
+      cp /opt/coder/assets/ke/ ./KE/ -r
+    fi
+
     mkdir -p ./press
     mkdir -p ./test_cases
     mkdir -p ./test_example
@@ -247,32 +344,34 @@ resource "docker_container" "workspace" {
     value = data.coder_workspace.me.name
   }
   mounts {
-    target    = "/usr/local/bin/h3ccodecli"
-    type      = "bind"
-
     read_only = true
     source    = "/opt/coder/assets/bin/h3ccodecli"
+    target    = "/usr/local/bin/h3ccodecli"
+    type      = "bind"
   }
   mounts {
-    target    = "/opt/coder/assets/site-packages.tgz"
-    type      = "bind"
-
-    read_only = true
-    source    = "/opt/coder/assets/site-packages.tgz"
-  }
-  mounts {
-    target    = "/opt/coder/assets/extensions"
-    type      = "bind"
-
     read_only = true
     source    = "/opt/coder/assets/extensions"
+    target    = "/opt/coder/assets/extensions"
+    type      = "bind"
   }
   mounts {
-    target    = "/opt/coder/statistics/build"
+    read_only = true
+    source    = "/opt/coder/assets/ke"
+    target    = "/opt/coder/assets/ke"
     type      = "bind"
-
+  }
+  mounts {
+    read_only = true
+    source    = "/opt/coder/assets/site-packages.tgz"
+    target    = "/opt/coder/assets/site-packages.tgz"
+    type      = "bind"
+  }
+  mounts {
     read_only = false
     source    = "/opt/coder/statistics/build"
+    target    = "/opt/coder/statistics/build"
+    type      = "bind"
   }
 }
 
