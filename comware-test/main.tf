@@ -220,17 +220,19 @@ resource "coder_script" "start_code_server" {
     curl -fsSL https://raw.githubusercontent.com/coder/code-server/refs/tags/v4.104.1/install.sh | sh
 
     echo -e "\033[36m- ⏳ Installing extensions\033[0m"
-    install-extension --local /opt/coder/assets/extensions/iceworks-team.iceworks-time-master-1.0.4.vsix
-    install-extension --local /opt/coder/assets/extensions/MS-CEINTL.vscode-language-pack-zh-hans-1.104.0.vsix
     install-extension --local /opt/coder/assets/extensions/alefragnani.bookmarks-13.5.0.vsix
     install-extension --local /opt/coder/assets/extensions/bierner.markdown-mermaid-1.29.0.vsix
     install-extension --local /opt/coder/assets/extensions/dbaeumer.vscode-eslint-3.0.16.vsix
+    install-extension --local /opt/coder/assets/extensions/chrisjsewell.myst-tml-syntax-0.1.3.vsix
     install-extension --local /opt/coder/assets/extensions/esbenp.prettier-vscode-11.0.0.vsix
-    install-extension --local /opt/coder/assets/extensions/ms-python.python-2025.16.0.vsix
+    install-extension --local /opt/coder/assets/extensions/iceworks-team.iceworks-time-master-1.0.4.vsix
+    install-extension --local /opt/coder/assets/extensions/MS-CEINTL.vscode-language-pack-zh-hans-1.104.0.vsix
     install-extension --local /opt/coder/assets/extensions/ms-python.black-formatter-2025.2.0.vsix
     install-extension --local /opt/coder/assets/extensions/ms-python.debugpy-2025.14.0.vsix
-    install-extension --local /opt/coder/assets/extensions/timonwong.shellcheck-0.38.3.vsix
+    install-extension --local /opt/coder/assets/extensions/ms-python.python-2025.16.0.vsix
     install-extension --local /opt/coder/assets/extensions/redhat.vscode-xml-0.29.2025081108.vsix
+    install-extension --local /opt/coder/assets/extensions/swyddfa.esbonio-0.96.6.vsix
+    install-extension --local /opt/coder/assets/extensions/timonwong.shellcheck-0.38.3.vsix
 
     code-server \
     --auth none \
@@ -272,15 +274,15 @@ resource "coder_script" "create_project_folders" {
           done
         else
           echo "Copying whole module KE files."
-          cp /opt/coder/assets/ke/"$${business_component}"/"$${business_module}"/ ./KE/ -r
+          cp /opt/coder/assets/ke/"$${business_component}"/"$${business_module}"/* ./KE/
         fi
       else
         echo "Copying whole component KE files."
-        cp /opt/coder/assets/ke/"$${business_component}"/ ./KE/ -r
+        find /opt/coder/assets/ke/"$${business_component}" -name "*.md" -type f -exec cp {} ./KE/ \;
       fi
     else
       echo "Copying all KE files."
-      cp /opt/coder/assets/ke/ ./KE/ -r
+      find /opt/coder/assets/ke -name "*.md" -type f -exec cp {} ./KE/ \;
     fi
 
     mkdir -p ./press
