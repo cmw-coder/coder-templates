@@ -217,7 +217,7 @@ resource "coder_script" "start_code_server" {
   start_blocks_login = true
   script = <<EOF
     #!/bin/bash
-    echo -e "\033[36m- 📦 Installing code-server\033[0m"
+    echo -e "\033[36m- 📦 Installing code-server v${local.local_code_server_version}\033[0m"
     sudo dpkg -i /opt/coder/assets/code-server.deb
 
     echo -e "\033[36m- ⏳ Installing extensions\033[0m"
