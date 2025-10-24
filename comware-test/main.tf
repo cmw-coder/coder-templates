@@ -218,7 +218,7 @@ resource "coder_script" "start_code_server" {
   script = <<EOF
     #!/bin/bash
     echo -e "\033[36m- 📦 Installing code-server\033[0m"
-    dpkg -i /opt/coder/assets/code-server.deb
+    sudo dpkg -i /opt/coder/assets/code-server.deb
 
     echo -e "\033[36m- ⏳ Installing extensions\033[0m"
     install-extension --local /opt/coder/assets/extensions/alefragnani.bookmarks-13.5.0.vsix
