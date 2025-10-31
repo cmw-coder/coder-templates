@@ -148,10 +148,10 @@ class ClaudeCodeExecutor:
 
     async def execute(self):
         # 设置环境变量
-        os.environ['ANTHROPIC_BASE_URL'] = 'https://api.deepseek.com/anthropic'  # 绿区用
-        os.environ['ANTHROPIC_AUTH_TOKEN'] = 'sk-73d7aa62e90247f0bd6b2fda1ed0aef9'
-        os.environ['ANTHROPIC_MODEL'] = 'deepseek-chat'
-        os.environ['ANTHROPIC_SMALL_FAST_MODEL'] = 'deepseek-chat'  # 'deepseek-chat'
+        # os.environ['ANTHROPIC_BASE_URL'] = 'https://api.deepseek.com/anthropic'  # 绿区用
+        # os.environ['ANTHROPIC_AUTH_TOKEN'] = 'sk-73d7aa62e90247f0bd6b2fda1ed0aef9'
+        # os.environ['ANTHROPIC_MODEL'] = 'deepseek-chat'
+        # os.environ['ANTHROPIC_SMALL_FAST_MODEL'] = 'deepseek-chat'  # 'deepseek-chat'
 
         # 过滤掉异常文件夹
         valid_folders = [folder for folder in self.effective_output_dir if os.path.exists(folder)]

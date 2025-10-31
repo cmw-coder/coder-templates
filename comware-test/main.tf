@@ -15,6 +15,15 @@ provider "docker" {
 provider "coder" {
 }
 
+locals {
+  coder_tutorials_url = "https://tutorials.coder-open.h3c.com"
+  ke_file_map = jsondecode(file("${path.module}/ke_file_map.json"))
+  local_code_server_version = "4.105.1"
+  proxy_url = "http://172.22.0.29:8080"
+  username = data.coder_workspace_owner.me.name
+  workspace = data.coder_workspace.me.name
+}
+
 data "coder_provisioner" "me" {
 }
 data "coder_workspace" "me" {
@@ -22,11 +31,70 @@ data "coder_workspace" "me" {
 data "coder_workspace_owner" "me" {
 }
 
-locals {
-  coder_tutorials_url = "https://tutorials.coder-open.h3c.com"
-  proxy_url = "http://proxy02.h3c.com:8080"
-  username = data.coder_workspace_owner.me.name
-  workspace = data.coder_workspace.me.name
+data "coder_parameter" "business_component" {
+  name = "business_component"
+  display_name = "Business Component"
+  description = "Select the business component"
+  default = ""
+  form_type = "dropdown"
+  order = 0
+  mutable = false
+
+  option {
+    name = "All"
+    value = ""
+  }
+
+  dynamic "option" {
+    for_each = keys(local.ke_file_map)
+    content {
+      name  = option.value
+      value = option.value
+    }
+  }
+}
+
+data "coder_parameter" "business_module" {
+  name = "business_module"
+  display_name = "Business Module"
+  description = "Select the module for the chosen component"
+  default = ""
+  form_type = "dropdown"
+  order = 1
+  mutable = false
+
+  option {
+    name = "All"
+    value = ""
+  }
+
+  dynamic "option" {
+    for_each = data.coder_parameter.business_component.value != "" ? keys(local.ke_file_map[data.coder_parameter.business_component.value]) : []
+    content {
+      name = option.value
+      value = option.value
+    }
+  }
+}
+
+data "coder_parameter" "module_tag_file_list" {
+  count = data.coder_parameter.business_component.value != "" && data.coder_parameter.business_module.value != "" ? 1 : 0
+  name = "module_tag_file_list"
+  display_name = "Module Tag File List"
+  description = "Select the KE files to be pulled"
+  form_type = "multi-select"
+  type = "list(string)"
+  default = jsonencode([])
+  order = 2
+  mutable = false
+
+  dynamic "option" {
+    for_each = local.ke_file_map[data.coder_parameter.business_component.value][data.coder_parameter.business_module.value]
+    content {
+      name = option.value
+      value = option.value
+    }
+  }
 }
 
 resource "coder_agent" "main" {
@@ -125,6 +193,11 @@ resource "coder_env" "ftp_proxy" {
   name     = "FTP_PROXY"
   value    = "${local.proxy_url}"
 }
+resource "coder_env" "disable_autoupdater" {
+  agent_id = coder_agent.main.id
+  name     = "DISABLE_AUTOUPDATER"
+  value    = "1"
+}
 resource "coder_env" "no_proxy" {
   agent_id = coder_agent.main.id
   name     = "NO_PROXY"
@@ -144,21 +217,23 @@ resource "coder_script" "start_code_server" {
   start_blocks_login = true
   script = <<EOF
     #!/bin/bash
-    echo -e "\033[36m- 📦 Installing code-server\033[0m"
-    curl -fsSL https://code-server.dev/install.sh | sh
+    echo -e "\033[36m- 📦 Installing code-server v${local.local_code_server_version}\033[0m"
+    sudo dpkg -i /opt/coder/assets/code-server.deb
 
     echo -e "\033[36m- ⏳ Installing extensions\033[0m"
+    install-extension --local /opt/coder/assets/extensions/alefragnani.bookmarks-13.5.0.vsix
+    install-extension --local /opt/coder/assets/extensions/bierner.markdown-mermaid-1.29.0.vsix
+    install-extension --local /opt/coder/assets/extensions/dbaeumer.vscode-eslint-3.0.16.vsix
+    install-extension --local /opt/coder/assets/extensions/chrisjsewell.myst-tml-syntax-0.1.3.vsix
+    install-extension --local /opt/coder/assets/extensions/esbenp.prettier-vscode-11.0.0.vsix
     install-extension --local /opt/coder/assets/extensions/iceworks-team.iceworks-time-master-1.0.4.vsix
     install-extension --local /opt/coder/assets/extensions/MS-CEINTL.vscode-language-pack-zh-hans-1.104.0.vsix
-    install-extension --open alefragnani.bookmarks
-    install-extension --open bierner.markdown-mermaid
-    install-extension --open dbaeumer.vscode-eslint
-    install-extension --open esbenp.prettier-vscode
-    install-extension --open ms-python.python
-    install-extension --open ms-python.black-formatter
-    install-extension --open ms-python.debugpy
-    install-extension --open timonwong.shellcheck
-    install-extension --open redhat.vscode-xml
+    install-extension --local /opt/coder/assets/extensions/ms-python.black-formatter-2025.2.0.vsix
+    install-extension --local /opt/coder/assets/extensions/ms-python.debugpy-2025.14.0.vsix
+    install-extension --local /opt/coder/assets/extensions/ms-python.python-2025.16.0.vsix
+    install-extension --local /opt/coder/assets/extensions/redhat.vscode-xml-0.29.2025081108.vsix
+    install-extension --local /opt/coder/assets/extensions/swyddfa.esbonio-0.96.6.vsix
+    install-extension --local /opt/coder/assets/extensions/timonwong.shellcheck-0.38.3.vsix
 
     code-server \
     --auth none \
@@ -181,14 +256,43 @@ resource "coder_script" "create_project_folders" {
     #!/bin/bash
     cd /home/${local.username}/project
     mkdir -p ./KE
+
+    business_component="${data.coder_parameter.business_component.value}"
+    business_module="${data.coder_parameter.business_module.value}"
+    module_tag_file_list=$(echo "${try(data.coder_parameter.module_tag_file_list[0].value, jsonencode([]))}" | tr -d '[]"')
+    echo "Selected Business Component: $${business_component}"
+    echo "Selected Business Module: $${business_module}"
+    echo "Selected KE Files: $${module_tag_file_list}"
+
+    if [ -n "$${business_component}" ]; then
+      if [ -n "$${business_module}" ]; then
+        if [ -n "$${module_tag_file_list}" ]; then
+          IFS=',' read -ra files <<< "$${module_tag_file_list}"
+          for file in "$${files[@]}"; do
+            trimmed_file=$(echo "$file" | xargs)
+            echo "Copying KE file: $${trimmed_file}"
+            cp /opt/coder/assets/ke/"$${business_component}"/"$${business_module}"/"$${trimmed_file}" ./KE/"$${trimmed_file}"
+          done
+        else
+          echo "Copying whole module KE files."
+          cp /opt/coder/assets/ke/"$${business_component}"/"$${business_module}"/* ./KE/
+        fi
+      else
+        echo "Copying whole component KE files."
+        find /opt/coder/assets/ke/"$${business_component}" -name "*.md" -type f -exec cp {} ./KE/ \;
+      fi
+    else
+      echo "Copying all KE files."
+      find /opt/coder/assets/ke -name "*.md" -type f -exec cp {} ./KE/ \;
+    fi
+
     mkdir -p ./press
-    mkdir -p ./pypilot
     mkdir -p ./test_cases
     mkdir -p ./test_example
     mkdir -p ./test_scripts
     python -m venv .venv
     source .venv/bin/activate
-    pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
+    # pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
     tar -zxf /opt/coder/assets/site-packages.tgz -C .venv/lib/python3.13/site-packages/
   EOF
 }
@@ -243,32 +347,40 @@ resource "docker_container" "workspace" {
     value = data.coder_workspace.me.name
   }
   mounts {
-    target    = "/usr/local/bin/h3ccodecli"
-    type      = "bind"
-
     read_only = true
     source    = "/opt/coder/assets/bin/h3ccodecli"
+    target    = "/usr/local/bin/h3ccodecli"
+    type      = "bind"
   }
   mounts {
-    target    = "/opt/coder/assets/site-packages.tgz"
-    type      = "bind"
-
     read_only = true
-    source    = "/opt/coder/assets/site-packages.tgz"
+    source    = "/opt/coder/assets/code-server_${local.local_code_server_version}_amd64.deb"
+    target    = "/opt/coder/assets/code-server.deb"
+    type      = "bind"
   }
   mounts {
-    target    = "/opt/coder/assets/extensions"
-    type      = "bind"
-
     read_only = true
     source    = "/opt/coder/assets/extensions"
+    target    = "/opt/coder/assets/extensions"
+    type      = "bind"
   }
   mounts {
-    target    = "/opt/coder/statistics/build"
+    read_only = true
+    source    = "/opt/coder/assets/ke"
+    target    = "/opt/coder/assets/ke"
     type      = "bind"
-
+  }
+  mounts {
+    read_only = true
+    source    = "/opt/coder/assets/site-packages.tgz"
+    target    = "/opt/coder/assets/site-packages.tgz"
+    type      = "bind"
+  }
+  mounts {
     read_only = false
     source    = "/opt/coder/statistics/build"
+    target    = "/opt/coder/statistics/build"
+    type      = "bind"
   }
 }
 

@@ -10,11 +10,11 @@ from pathlib import Path
 BASE_DIR = Path(__file__).parent
 
 # Excel配置
-EXCEL_FILE_PATH = os.path.join(BASE_DIR, 'input', '确定性测试点举例.xlsx')
-DEFAULT_SHEET = '张敏'
+EXCEL_FILE_PATH = os.path.join(BASE_DIR, 'input', '确定性测试点.xlsx')
+DEFAULT_SHEET = '测试点'
 
 # 路径配置
-BACKGROUND_DOCS_DIR = os.path.join(BASE_DIR, 'input', '测试点的conftest和拓扑举例')
+BACKGROUND_DOCS_DIR = os.path.join(BASE_DIR, 'input')  # , '1000测试点的conftest和拓扑'
 OUTPUT_DIR = os.path.join(BASE_DIR, 'output')
 LOG_DIR = os.path.join(BASE_DIR, 'logs')
 
