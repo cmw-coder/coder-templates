@@ -1,0 +1,336 @@
+#!/bin/bash
+
+# Get configuration from environment variables, use defaults as fallback
+PROJECT_PLATFORM_FOLDER_LIST=${PROJECT_PLATFORM_FOLDER_LIST:-""} # This should be set automatically
+PROJECT_PLATFORM_PATH=${PROJECT_PLATFORM_PATH:-""}               # This should be set automatically
+PROJECT_PUBLIC_PATH=${PROJECT_PUBLIC_PATH:-""}                   # This should be set automatically
+SVN_USERNAME=${SVN_USERNAME:-$(whoami)}                          # This should be set automatically
+
+# shellcheck source=/dev/null
+source "log-utils"
+# shellcheck source=/dev/null
+source "jenkins-utils"
+
+# Error handling function
+handle_error() {
+    log_error "$1"
+    # Also return error info in JSON format, ensuring meaningful output even when stderr is redirected
+    echo "{\"result\":-2,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[{\"FILE\":\"\",\"LINENUMBER\":0,\"ALARM\":\"$1\"}]}"
+}
+
+# Extract version path from build console output
+get_version_path() {
+    local task_name="$1"
+    local console_output="$2"
+
+    # Find Build.html path
+    local version_path_prefix
+    version_path_prefix=$(echo "$console_output" | grep -E '^\s*.*Build\.html' | head -1 |
+        sed -E 's/^\s*(.*Build\.html).*/\1/' |
+        sed 's/\\Build.html$//' |
+        sed 's/\\/\//g')
+
+    if [ -z "$version_path_prefix" ]; then
+        log_debug "No Build.html path found in console output"
+        echo ""
+        return 0
+    fi
+
+    local last_path_name
+    last_path_name=$(echo "$version_path_prefix" | awk -F/ '{print $NF}')
+    local version_file_path=""
+
+    # Find appropriate file path based on task type
+    if [ "$task_name" = "V9ABUILD" ]; then
+        version_file_path=$(echo "$console_output" | grep -E "${last_path_name}.*TARGET.*\.tar\.gz" | head -1 |
+            sed -E "s/.*($last_path_name\/TARGET\/.*)/\1/")
+    else
+        version_file_path=$(echo "$console_output" | grep -E "${last_path_name}.*TARGET.*\.ipe" | head -1 |
+            sed -E "s/.*($last_path_name\/TARGET\/.*\.ipe\/)/\1/")
+    fi
+
+    # Return complete version path
+    if [ -n "$version_file_path" ]; then
+        echo "file:${version_path_prefix}/${version_file_path}"
+    else
+        log_debug "No version file path found in console output"
+        echo ""
+    fi
+}
+
+# Get build information
+get_build_result() {
+    local build_number="$1"
+    local task_name="$2"
+
+    # Get build info and console output
+    local build_info
+    if ! build_info=$(curl -s --fail --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json"); then
+        log_error "Failed to get build info for job ${task_name} #${build_number}"
+        echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
+        return 1
+    fi
+    if [ -z "$build_info" ]; then
+        log_error "Empty build info received for job ${task_name} #${build_number}"
+        echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
+        return 1
+    fi
+
+    # Get build URL
+    local build_url
+    build_url=$(echo "$build_info" | jq -r '.url')
+    if [ -z "$build_url" ] || [ "$build_url" = "null" ]; then
+        log_error "Invalid build URL retrieved for job ${task_name} #${build_number}"
+        echo "{\"result\":-1,\"version_path\":\"\",\"build_info_output\":\"\",\"error_info\":[]}"
+        return 1
+    fi
+
+    # Get console output
+    local console_output
+    console_output=$(curl -s --fail --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${build_url}consoleText")
+
+    # Initialize result variables
+    local ret=0
+    local version_path=
+    local error_info="[]"
+
+    # Get build result
+    local build_result
+    build_result=$(echo "$build_info" | jq -r '.result')
+    if [ "$build_result" = "SUCCESS" ]; then
+        version_path=$(get_version_path "$task_name" "$console_output")
+    else
+        ret=-1
+        # Extract error information
+        local error_list
+        error_list=$(echo "$console_output" | grep -E '^(.*):([0-9]+):\s*(error:|undefined reference|fatal error:)(.*)$')
+
+        if [ -n "$error_list" ]; then
+            # Count unique error files
+            local unique_files=()
+            while IFS= read -r line; do
+                local file
+                file=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\1/')
+                [[ "$file" == *":"* ]] && file=${file%:*}
+                unique_files+=("$file")
+            done <<<"$error_list"
+
+            mapfile -t unique_files < <(printf "%s\n" "${unique_files[@]}" | sort -u)
+
+            # If error files don't exceed 5, format error info
+            if [ ${#unique_files[@]} -le 5 ]; then
+                error_info="["
+                local first=true
+
+                while IFS= read -r line; do
+                    local file
+                    local line_num
+                    file=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\1/')
+                    line_num=$(echo "$line" | sed -E 's/^([^:]+):([0-9]+):.*/\2/')
+
+                    [[ "$file" == *":"* ]] && {
+                        line_num=${file##*:}
+                        file=${file%:*}
+                    }
+
+                    $first || error_info="${error_info},"
+                    first=false
+                    error_info="${error_info}{\"FILE\":\"${file}\",\"LINENUMBER\":${line_num},\"ALARM\":\"${line}\"}"
+                done <<<"$error_list"
+
+                error_info="${error_info}]"
+            fi
+        fi
+    fi
+
+    # Build JSON result
+    echo "{\"result\":${ret},\"version_path\":\"${version_path}\",\"build_info_output\":\"${build_url}console\",\"error_info\":${error_info}}"
+}
+
+get_task_name() {
+    local svn_url="$1"
+    local task_type="$2"
+    case "$task_type" in
+    abuild)
+        if [[ "$svn_url" == *"/V9R1"* ]]; then
+            echo "V9ABUILD"
+        else
+            echo "ABUILD"
+        fi
+        ;;
+    fullbuild)
+        if [[ "$svn_url" == *"/V9R1"* ]]; then
+            echo "V9BUILD_FULL"
+        else
+            echo "BUILD_FULL"
+        fi
+        ;;
+    *)
+        log_error "Unknown build type: $task_type"
+        return 1
+        ;;
+    esac
+}
+
+# Execute build job
+run_build_job() {
+    local build_type="$1"
+    local module_list="$2"
+    local extra_params="$3"
+
+    # Creating shadow branch
+    log_info "Creating shadow branch for project platform folder: ${PROJECT_PLATFORM_PATH}"
+    local shadow_branch_url
+    shadow_branch_url=$(shadow-branch -f -k "$PROJECT_PLATFORM_PATH")
+    # TODO: Support other platforms, currently only cmwcode-open is supported
+    if [[ "$shadow_branch_url" != *"cmwcode-open"* ]]; then
+        handle_error "Invalid shadow branch url, this may be caused by an incorrect PROJECT_PLATFORM_PATH."
+        return 1
+    fi
+
+    # Determine task name
+    local task_name
+    if ! task_name=$(get_task_name "$shadow_branch_url" "$build_type"); then
+        handle_error "Failed to determine task name for build type: $build_type"
+        return 1
+    fi
+
+    log_info "Creating shadow branch for project public folder: ${PROJECT_PUBLIC_PATH}"
+    shadow-branch -f -k "$PROJECT_PUBLIC_PATH"
+
+    local svn_path=${shadow_branch_url#*cmwcode-open}
+    log_debug "Found cmwcode-open in SVN path, extracted path: $svn_path"
+
+    # Construct build command
+    local build_cmd="-s ${svn_path}"
+    [ -n "$module_list" ] && build_cmd="${build_cmd}:${module_list}"
+    [ -n "$extra_params" ] && build_cmd="${build_cmd} ${extra_params}"
+
+    log_info "Starting ${task_name}:\n- Repo: ${svn_path}\n- User: ${SVN_USERNAME}\n- Params: ${build_cmd}"
+
+    # Trigger Jenkins build
+    if ! jenkins_build_with_parameters "$task_name" "BUILD_CMD_PARAM=${build_cmd}" "FAKE_USER=${SVN_USERNAME}" ; then
+        handle_error "Failed to trigger Jenkins build with parameters"
+        return 1
+    fi
+
+    # Get build number
+    local abuild_number
+    abuild_number=$(jenkins_get_job_number "$task_name" "$build_cmd")
+    if [ -z "$abuild_number" ] || [ "$abuild_number" = "-1" ]; then
+        handle_error "Build was cancelled or failed to get build number"
+        return 1
+    fi
+
+    # Monitor build results
+    if ! jenkins_monitor_job_progress "$task_name" "$abuild_number"; then
+        handle_error "Build monitoring failed"
+        return $?
+    fi
+
+    # Get build result
+    get_build_result "$abuild_number" "$task_name"
+}
+
+# Display help information
+show_help() {
+    echo "Usage: build-job <--type> <build_type> [extra_params]"
+    echo ""
+    echo "Options:"
+    echo "  --help                          Display this help information"
+    echo "  --modules <modules>             Specify the module list to build, e.g., L2VPN,LSM"
+    echo "  --type <build_type>             Specify the type of build, can be 'abuild' or 'fullbuild' (required)"
+    echo ""
+    echo "Examples:"
+    echo "  build-job --type abuild -e 64sim9cen"
+    echo "  build-job --type fullbuild -e 64sim9cen,64sim9dis -r"
+    echo "  build-job --type abuild -e 64sim9cen,64sim9dis -i /path/to/lib"
+    echo ""
+    echo "Configurable Environment Variables:"
+    echo "  Current script:"
+    echo "    PROJECT_PLATFORM_FOLDER_LIST      Project platform folder list (JSON array), this should be set automatically"
+    echo "    PROJECT_PLATFORM_PATH             Project platform folder path, this should be set automatically"
+    echo "    PROJECT_PUBLIC_PATH               Project public folder path, this should be set automatically"
+    echo "    SVN_USERNAME                      SVN username to start ABuild, this should be set automatically"
+    echo ""
+    echo "  Inherited from jenkins-utils:"
+    echo "    JENKINS_API_TOKEN             Jenkins API token, default is 117b0fdde578a988ec1be741dd777c1a1c"
+    echo "    JENKINS_SERVER_URL            Jenkins server URL, default is http://10.153.3.174:8080"
+    echo "    JENKINS_TIMEOUT               Jenkins waiting timeout in seconds, default is 600"
+    echo "    JENKINS_USERNAME              Jenkins API username, default is h25380"
+    echo ""
+    echo "  Inherited from log-utils:"
+    echo "    LOG_LEVEL                     Log level, 0=error, 1=info, 2=debug, default is 1"
+}
+
+interrupt_handler() {
+    log_warn "${COLOR_YELLOW}Interrupted, cleanup shadow branches${COLOR_RESET}"
+
+    # Delete shadow branch
+    shadow-branch -r "$PROJECT_PLATFORM_PATH"
+    shadow-branch -r "$PROJECT_PUBLIC_PATH"
+
+    return 1
+}
+
+main() {
+    trap interrupt_handler SIGINT SIGTERM
+
+    local build_type
+    local module_list
+    local extra_params
+    while [ $# -gt 0 ]; do
+        case $1 in
+        --help)
+            show_help
+            return 0
+            ;;
+        --modules)
+            module_list="$2"
+            shift 2
+            ;;
+        --type)
+            if [ -z "$2" ]; then
+                log_error "Build type is required after --type"
+                show_help
+                return 1
+            fi
+            build_type="$2"
+            shift 2
+            ;;
+        "")
+            shift
+            ;;
+        *)
+            if [ -z "$extra_params" ]; then
+                extra_params="$1"
+            else
+                extra_params="${extra_params} $1"
+            fi
+            shift
+            ;;
+        esac
+    done
+
+    if [ -z "$PROJECT_PLATFORM_PATH" ]; then
+        log_error "PROJECT_PLATFORM_PATH is not set, please set it before running this script."
+        return 1
+    fi
+
+    if [ -z "$PROJECT_PUBLIC_PATH" ]; then
+        log_error "PROJECT_PUBLIC_PATH is not set, please set it before running this script."
+        return 1
+    fi
+
+    run_build_job "$build_type" "$module_list" "$extra_params"
+    local build_result=$?
+
+    # Delete shadow branch
+    shadow-branch -r "$PROJECT_PLATFORM_PATH"
+    shadow-branch -r "$PROJECT_PUBLIC_PATH"
+
+    return $build_result
+}
+
+# Execute main function
+main "$@"

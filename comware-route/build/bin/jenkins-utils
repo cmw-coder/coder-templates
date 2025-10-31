@@ -1,0 +1,159 @@
+#!/bin/bash
+
+# Get configuration from environment variables, use defaults as fallback
+JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"11c7798a2446cc8acb1f871ad486a4b8ff"}
+JENKINS_JOB_SEARCH_LIMIT=${JENKINS_JOB_SEARCH_LIMIT:-10} # Limit for job search, default is 10
+JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.174:8080"}
+JENKINS_TIMEOUT=${JENKINS_TIMEOUT:-600}
+JENKINS_USERNAME=${JENKINS_USERNAME:-"g29624"}
+
+# shellcheck source=/dev/null
+source "format-utils"
+# shellcheck source=/dev/null
+source "log-utils"
+
+jenkins_build_with_parameters() {
+    local task_name="$1"
+    shift # Remove task_name from parameters array
+
+    # Get Jenkins Crumb to prevent CSRF protection
+    local jenkins_crumb
+    jenkins_crumb=$(jenkins_get_crumb)
+    [[ -z "$jenkins_crumb" ]] && {
+        handle_error "Failed to get Jenkins crumb"
+        return 1
+    }
+
+    # Build data parameters array
+    local data_params=()
+    for param in "$@"; do
+        data_params+=("--data-urlencode" "$param")
+    done
+
+    # Trigger Jenkins build
+    curl -s -X POST --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" \
+        -H "Jenkins-Crumb: ${jenkins_crumb}" \
+        "${JENKINS_SERVER_URL}/job/${task_name}/buildWithParameters" \
+        "${data_params[@]}" >/dev/null || {
+        handle_error "Failed to trigger Jenkins build with parameters"
+        return 1
+    }
+}
+
+# Get Jenkins Crumb to prevent CSRF protection
+jenkins_get_crumb() {
+    curl -s --fail --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/crumbIssuer/api/json" | jq -r '.crumb'
+}
+
+# Get job number, with timeout control
+jenkins_get_job_number() {
+    local task_name=$1
+    local build_cmd=$2
+
+    log_info "Looking for job number for task: ${task_name}"
+    log_debug "Build command: ${build_cmd}"
+
+    # Wait for the queued task to start running
+    log_info_n "Waiting for task to start "
+    local start_seconds
+    start_seconds=$(date +%s)
+    local is_timeout=false
+    while [ "$is_timeout" = "false" ]; do
+        (( $(date +%s) - start_seconds >= JENKINS_TIMEOUT )) && is_timeout=true
+
+        # Check tasks in the queue
+        local queue_info
+        queue_info=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/queue/api/json")
+        local queue_build_cmd
+        queue_build_cmd=$(echo "$queue_info" | jq -e '.items[] | select(.task.name == "'"$task_name"'") | .actions[] | select(.parameters != null) | .parameters[] | select(.value == "'"$build_cmd"'")')
+        local queue_cause_user_id
+        queue_cause_user_id=$(echo "$queue_info" | jq -e '.items[] | select(.task.name == "'"$task_name"'") | .actions[] | select(.causes != null) | .causes[] | select(.userId == "'"$JENKINS_USERNAME"'")')
+        if [ -z "$queue_build_cmd" ] && [ -z "$queue_cause_user_id" ]; then
+            log_info ""
+            break
+        fi
+        log_info_n "."
+        sleep 3
+    done
+
+    # Timeout check
+    if [ "$is_timeout" = "true" ]; then
+        log_error "Timeout waiting for job to start: Exceeded ${JENKINS_TIMEOUT} seconds"
+        echo "-1"
+        return 1
+    fi
+
+    # Get the latest job number
+    local last_build_number
+    last_build_number=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/api/json" | jq '.nextBuildNumber - 1')
+    log_debug "Latest job number for ${task_name}: ${last_build_number}"
+
+    # Find matching job
+    local counter=0
+    log_debug "Checking recent builds for matching command and user..."
+    while [ "$last_build_number" -gt 0 ] && [ "$counter" -lt "$JENKINS_JOB_SEARCH_LIMIT" ]; do
+        log_debug "Checking job #${last_build_number}"
+        local job_info
+        job_info=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/${last_build_number}/api/json")
+
+        # Check if job has the correct build command and user
+        local job_build_cmd
+        job_build_cmd=$(echo "$job_info" | jq -e '.actions[] | select(._class == "hudson.model.ParametersAction") | .parameters[] | select(.value == "'"${build_cmd}"'") | .value')
+        local job_cause_user_id
+        job_cause_user_id=$(echo "$job_info" | jq -e '.actions[] | select(._class == "hudson.model.CauseAction") | .causes[] | select(.userId == "'"${JENKINS_USERNAME}"'") | .userId')
+        if [ -n "$job_build_cmd" ] && [ -n "$job_cause_user_id" ]; then
+            log_debug "Found matching job: #${last_build_number}"
+            echo "$last_build_number"
+            return 0
+        fi
+
+        last_build_number=$((last_build_number - 1))
+        counter=$((counter + 1))
+    done
+
+    log_error "Failed to find matching job after checking ${counter} builds"
+    echo "-1"
+    return 1
+}
+
+# Monitor job results
+jenkins_monitor_job_progress() {
+    local task_name="$1"
+    local build_number="$2"
+
+    if [ "$build_number" = "-1" ]; then
+        log_error "Job canceled or not found"
+        return 1
+    fi
+
+    local build_url
+    build_url=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${JENKINS_SERVER_URL}/job/${task_name}/${build_number}/api/json" | jq -r '.url')
+
+    log_info "Task console URL: ${build_url}console"
+
+    # Wait for job completion, with timeout check
+    log_info_n "Waiting for job to complete "
+    local start_seconds
+    start_seconds=$(date +%s)
+    local is_timeout=false
+    local job_status
+    while [ "$is_timeout" = "false" ]; do
+        (( $(date +%s) - start_seconds >= JENKINS_TIMEOUT )) && is_timeout=true
+        job_status=$(curl -s --user "${JENKINS_USERNAME}:${JENKINS_API_TOKEN}" "${build_url}/api/json" | jq -r '.result')
+        if [ "$job_status" != "null" ]; then
+            log_info ""
+            break
+        fi
+        log_info_n "."
+        sleep 3
+    done
+
+    if [ "$is_timeout" = "true" ]; then
+        log_error "Timeout waiting job result: Exceeded ${JENKINS_TIMEOUT} seconds"
+        return 2
+    fi
+
+    log_info "Job completed: ${job_status}. Time: $(format_elapsed_seconds "$start_seconds")"
+
+    return 0
+}

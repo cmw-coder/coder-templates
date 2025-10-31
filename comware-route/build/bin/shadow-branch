@@ -1,0 +1,296 @@
+#!/bin/bash
+
+# Get configuration from environment variables, use defaults as fallback
+CODER_WORKSPACE_ID=${CODER_WORKSPACE_ID:-""}  # This should be set automatically
+
+# shellcheck source=/dev/null
+source "log-utils"
+# shellcheck source=/dev/null
+source "svn-utils"
+
+create_shadow_branch() {
+    local current_branch_url="$1"
+    local shadow_branch_url="$2"
+
+    log_info "Creating shadow branch: $shadow_branch_url"
+    if ! svn_s copy --parents "$current_branch_url" "$shadow_branch_url" -m "Creating shadow branch for $current_branch_url"; then
+        log_error "Failed to create shadow branch."
+        exit 1
+    fi
+    log_info "Shadow branch created"
+    return 0
+}
+
+apply_changes_to_shadow_branch() {
+    local current_branch_path="$1"
+    local current_branch_status="$2"
+    local shadow_branch_url="$3"
+
+    # Extract added/deleted/modified files
+    local added_files
+    local deleted_files
+    local modified_files
+    added_files=$(echo "$current_branch_status" | grep "^A" | awk '{print $2}')
+    deleted_files=$(echo "$current_branch_status" | grep "^D" | awk '{print $2}')
+    modified_files=$(echo "$current_branch_status" | grep -E "^M|^MM" | awk '{print $2}')
+
+    # Create temporary directory for shadow branch
+    local temp_dir
+    temp_dir="/tmp/shadow-branch-$(date +%s)"
+    mkdir -p "$temp_dir"
+
+    # Initialize empty checkout
+    if ! svn_s checkout --depth=empty "$shadow_branch_url" "$temp_dir" >/dev/null; then
+        log_error "Failed to initialize empty checkout"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+
+    local changed=false
+
+    process_file() {
+        local action="$1"
+        local target_path="$temp_dir/$2"
+
+        svn_s update --parents --set-depth empty "$target_path" >/dev/null 2>&1
+
+        case "$action" in
+        add)
+            cp -f "$current_branch_path/$relative_path" "$target_path"
+            svn_s add --force "$target_path" >/dev/null 2>&1
+
+            # Check status to see if we have conflicts
+            if svn_s status "$target_path" | grep -q "^C"; then
+                log_info "Resolving conflict with local version"
+                svn_s resolve --accept working "$target_path" >/dev/null 2>&1
+            fi
+            ;;
+        delete)
+            [ -e "$target_path" ] && svn_s delete "$target_path" >/dev/null 2>&1
+            ;;
+        modify)
+            cp -f "$current_branch_path/$relative_path" "$target_path"
+
+            # Check status to see if we have conflicts
+            if svn_s status "$target_path" | grep -q "^C"; then
+                log_info "Resolving conflict with local version"
+                svn_s resolve --accept working "$target_path" >/dev/null 2>&1
+            fi
+            ;;
+        esac
+        log_info "$action success: $target_path"
+        changed=true
+    }
+
+    # Process each file type
+    log_info "Processing added files..."
+    for file_path in $added_files; do
+        local relative_path="${file_path#"$current_branch_path"/}"
+        [ -f "$current_branch_path/$relative_path" ] && process_file add "$relative_path"
+    done
+    log_info "Processing deleted files..."
+    for file_path in $deleted_files; do
+        local relative_path="${file_path#"$current_branch_path"/}"
+        process_file delete "$relative_path"
+    done
+    log_info "Processing modified files..."
+    for file_path in $modified_files; do
+        local relative_path="${file_path#"$current_branch_path"/}"
+        [ -f "$current_branch_path/$relative_path" ] && process_file modify "$relative_path"
+    done
+
+    # Commit all changes
+    if [ "$changed" = true ]; then
+        if ! svn_s commit -m "[Shadow Branch] Commit for code sync - $(date '+%Y-%m-%d %H:%M:%S')" "$temp_dir"; then
+            log_error "Commit failed"
+            rm -rf "$temp_dir"
+            return 1
+        fi
+        log_info "Committed all changes"
+    else
+        log_info "No changes to commit"
+    fi
+
+    rm -rf "$temp_dir"
+    return 0
+}
+
+get_current_branch_url() {
+    local current_branch_path="$1"
+
+    if [ ! -d "${current_branch_path}/.svn" ]; then
+        log_error "'${current_branch_path}' is not an SVN working copy."
+        exit 1
+    fi
+
+    # Extract url from SVN info
+    svn_s info "$current_branch_path" | grep "^URL:" | awk '{print $2}'
+}
+
+get_shadow_branch_url() {
+    local current_branch_url="$1"
+
+    if [[ "$current_branch_url" == *"/trunk"* ]]; then
+        local latest_version_tag
+        current_branch_url="${current_branch_url%%/trunk*}/trunk"
+        latest_version_tag=$(svn_s cat "http://10.153.120.104/cmwcode-public/${current_branch_url#*/cmwcode-*/}/PUBLIC/init/all/platver.def" | grep -oP 'V\d+R\d+B\d+D\d+')
+        echo "${current_branch_url%/trunk}/branches_bugfix/COMWARE${latest_version_tag}/coder_workspace_${CODER_WORKSPACE_ID}"
+    else
+        echo "${current_branch_url%/*}/coder_workspace_${CODER_WORKSPACE_ID}"
+    fi
+}
+
+sync_to_shadow_branch() {
+    local is_force="$1"
+    local keep_existing="$2"
+    local current_branch_path="$3"
+
+    if [ ! -d "${current_branch_path}/.svn" ]; then
+        log_error "'${current_branch_path}' is not an SVN working copy."
+        exit 1
+    fi
+
+    # Get current branch URL
+    local current_branch_url
+    current_branch_url=$(get_current_branch_url "$current_branch_path")
+    log_info "Current branch URL: $current_branch_url"
+
+    # Check for uncommitted changes
+    local current_branch_status
+    current_branch_status=$(svn_s status "$current_branch_path")
+    if [ "$is_force" = true ]; then
+        log_info "Force mode enabled, proceeding to commit to shadow branch."
+    elif [ -z "$current_branch_status" ]; then
+        log_info "No uncommitted changes found, skipping shadow branch creation."
+        echo "$current_branch_url"
+        exit 0
+    else
+        log_info "Uncommitted changes found, proceeding to commit to shadow branch."
+    fi
+
+    # Get shadow branch URL
+    local shadow_branch_url
+    shadow_branch_url="$(get_shadow_branch_url "$current_branch_url")"
+    log_info "Shadow branch URL: $shadow_branch_url"
+
+    # Check if shadow branch already exists and if we should keep it
+    if [ "$keep_existing" = true ] && svn_s info "$shadow_branch_url" >/dev/null 2>&1; then
+        log_info "Shadow branch already exists and --keep-existing specified, returning existing branch."
+        echo "$shadow_branch_url"
+        exit 0
+    fi
+
+    # Check if shadow branch is a public branch
+    if [[ "$shadow_branch_url" == *"cmwcode-public"* ]]; then
+        # Use a hardcoded SVN credentials if current branch is a public branch
+        # TODO: Find a better way to replace this stupid method
+        SVN_PASSWORD="Zpr758258#"
+        SVN_USERNAME="z11187"
+        SVN_USERNAME="z11187"
+    fi
+
+    # Recreate shadow branch
+    svn_remove_branch "$shadow_branch_url"
+    create_shadow_branch "$current_branch_url" "$shadow_branch_url"
+
+    # Apply all changes to temporary directory
+    log_info "Applying changes to shadow branch..."
+    if ! apply_changes_to_shadow_branch "$current_branch_path" "$current_branch_status" "$shadow_branch_url"; then
+        log_error "Error applying changes to shadow branch."
+        exit 1
+    fi
+
+    # Final summary
+    log_info "Changes applied to shadow branch: $shadow_branch_url, revision: $(svn_s info "$shadow_branch_url" | grep "^Last Changed Rev:" | awk '{print $4}')"
+    echo "$shadow_branch_url"
+}
+
+show_help() {
+    echo "Usage: shadow-branch [options] <project_path>"
+    echo ""
+    echo "Options:"
+    echo "  -f, --force         Force creation of shadow branch even if no changes are found"
+    echo "  -h, --help          Display help information"
+    echo "  -k, --keep-existing Keep existing shadow branch instead of recreating it"
+    echo "  -r, --remove        Remove the shadow branch instead of creating it"
+    echo ""
+    echo "Arguments:"
+    echo "  <project_path>      Path to the SVN working copy (required)"
+    echo ""
+    echo "Configurable Environment Variables:"
+    echo "  Current script:"
+    echo "    CODER_WORKSPACE_ID            Coder workspace UUID, this should be set automatically"
+    echo ""
+    echo "  Inherited from log-utils:"
+    echo "    LOG_LEVEL                     Log level, 0=error, 1=info, 2=debug, default is 1"
+    echo ""
+    echo "  Inherited from svn-utils:"
+    echo "    SVN_PASSWORD                  SVN password, this should be set automatically"
+    echo "    SVN_USERNAME                  SVN username, this should be set automatically"
+}
+
+# Main function
+main() {
+    local is_force=false
+    local is_remove=false
+    local keep_existing=false
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+        -f | --force)
+            is_force=true
+            shift
+            ;;
+        -h | --help)
+            show_help
+            exit 0
+            ;;
+        -k | --keep-existing)
+            keep_existing=true
+            shift
+            ;;
+        -r | --remove)
+            is_remove=true
+            shift
+            ;;
+        *)
+            # Non-option parameter, stop parsing
+            break
+            ;;
+        esac
+    done
+
+    if [ $# -lt 1 ]; then
+        show_help
+        return 1
+    fi
+
+    # if is remove, delete the shadow branch
+    if [ "$is_remove" = true ]; then
+        # Get current branch URL
+        local current_branch_url
+        current_branch_url=$(get_current_branch_url "$@")
+        log_info "Current branch URL: $current_branch_url"
+
+        # Get shadow branch URL
+        local shadow_branch_url
+        shadow_branch_url="$(get_shadow_branch_url "$current_branch_url")"
+        log_info "Shadow branch URL: $shadow_branch_url"
+
+        # Check if shadow branch is a public branch
+        if [[ "$shadow_branch_url" == *"cmwcode-public"* ]]; then
+            # TODO: Find a better way to replace this stupid method
+            SVN_PASSWORD="Zpr758258#"
+            SVN_USERNAME="z11187"
+        fi
+
+        # Remove shadow branch
+        svn_remove_branch "$shadow_branch_url"
+        return $?
+    else
+        sync_to_shadow_branch "$is_force" "$keep_existing" "$@"
+        return $?
+    fi
+}
+
+# Execute main function
+main "$@"
