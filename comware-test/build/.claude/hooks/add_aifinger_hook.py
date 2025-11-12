@@ -20,6 +20,7 @@ def validate_uuid(uuid):
     """
     验证UUID是否合法
     合法的UUID格式应为：YYYYMMDD-8位随机字符（大小写字母和数字的组合）
+    同时不允许存在3个及以上连续的字母或数字
     """
     # 检查UUID格式
     if not isinstance(uuid, str):
@@ -41,6 +42,30 @@ def validate_uuid(uuid):
         datetime.datetime.strptime(date_part, '%Y%m%d')
     except ValueError:
         return False
+    
+    # 检查是否存在3个及以上连续的字母或数字
+    # 提取随机字符部分（不包含日期部分）
+    random_part = uuid[9:]  # 跳过日期和连字符
+    
+    # 检查连续字母（不区分大小写）
+    for i in range(len(random_part) - 2):
+        # 确保这三个字符都是字母
+        if random_part[i].isalpha() and random_part[i+1].isalpha() and random_part[i+2].isalpha():
+            # 转换为小写进行比较
+            a, b, c = random_part[i].lower(), random_part[i+1].lower(), random_part[i+2].lower()
+            # 检查ASCII码是否连续递增
+            if ord(b) == ord(a) + 1 and ord(c) == ord(b) + 1:
+                return False
+    
+    # 检查连续数字
+    for i in range(len(random_part) - 2):
+        # 确保这三个字符都是数字
+        if random_part[i].isdigit() and random_part[i+1].isdigit() and random_part[i+2].isdigit():
+            # 转换为整数进行比较
+            a, b, c = int(random_part[i]), int(random_part[i+1]), int(random_part[i+2])
+            # 检查数字是否连续递增
+            if b == a + 1 and c == b + 1:
+                return False
     
     return True
 
@@ -221,7 +246,7 @@ def add_fingerprint_to_file(file_path, uuid, is_update=False):
                     first_comment_end = content.find(comment_marker, first_comment_start + 3)
                     if first_comment_end != -1:
                         # 在注释块内插入AI指纹
-                        fingerprint_line = f'\n AI_FingerPrint_UUID: {uuid}\n'
+                        fingerprint_line = f'\nAI_FingerPrint_UUID: {uuid}\n'
                         new_content = (
                             content[:first_comment_end] +
                             fingerprint_line +
