@@ -184,8 +184,7 @@ sync_to_shadow_branch() {
     if [[ "$shadow_branch_url" == *"cmwcode-public"* ]]; then
         # Use a hardcoded SVN credentials if current branch is a public branch
         # TODO: Find a better way to replace this stupid method
-        SVN_PASSWORD="Zpr758258#"
-        SVN_USERNAME="z11187"
+        SVN_PASSWORD="Zpr758258%"
         SVN_USERNAME="z11187"
     fi
 
@@ -279,7 +278,7 @@ main() {
         # Check if shadow branch is a public branch
         if [[ "$shadow_branch_url" == *"cmwcode-public"* ]]; then
             # TODO: Find a better way to replace this stupid method
-            SVN_PASSWORD="Zpr758258#"
+            SVN_PASSWORD="Zpr758258%"
             SVN_USERNAME="z11187"
         fi
 
