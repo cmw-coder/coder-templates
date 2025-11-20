@@ -17,7 +17,8 @@ provider "coder" {
 
 locals {
   coder_tutorials_url = "https://tutorials.coder-open.h3c.com"
-  ke_file_map = jsondecode(file("${path.module}/ke_file_map.json"))
+  ke_map = jsondecode(file("${path.module}/ke_map.json"))
+  ke_svn_url = "http://10.153.3.214/comware-test-script/50.多环境移植/1/AIGC/KE/"
   local_code_server_version = "4.105.1"
   proxy_url = "http://172.22.0.29:8080"
   username = data.coder_workspace_owner.me.name
@@ -46,7 +47,7 @@ data "coder_parameter" "business_component" {
   }
 
   dynamic "option" {
-    for_each = keys(local.ke_file_map)
+    for_each = keys(local.ke_map)
     content {
       name  = option.value
       value = option.value
@@ -69,7 +70,7 @@ data "coder_parameter" "business_module" {
   }
 
   dynamic "option" {
-    for_each = data.coder_parameter.business_component.value != "" ? keys(local.ke_file_map[data.coder_parameter.business_component.value]) : []
+    for_each = data.coder_parameter.business_component.value != "" ? keys(local.ke_map[data.coder_parameter.business_component.value]) : []
     content {
       name = option.value
       value = option.value
@@ -77,11 +78,11 @@ data "coder_parameter" "business_module" {
   }
 }
 
-data "coder_parameter" "module_tag_file_list" {
+data "coder_parameter" "module_tag_list" {
   count = data.coder_parameter.business_component.value != "" && data.coder_parameter.business_module.value != "" ? 1 : 0
-  name = "module_tag_file_list"
-  display_name = "Module Tag File List"
-  description = "Select the KE files to be pulled"
+  name = "module_tag_list"
+  display_name = "Module Tag List"
+  description = "Select the KE tags to be pulled"
   form_type = "multi-select"
   type = "list(string)"
   default = jsonencode([])
@@ -89,7 +90,7 @@ data "coder_parameter" "module_tag_file_list" {
   mutable = false
 
   dynamic "option" {
-    for_each = local.ke_file_map[data.coder_parameter.business_component.value][data.coder_parameter.business_module.value]
+    for_each = local.ke_map[data.coder_parameter.business_component.value][data.coder_parameter.business_module.value]
     content {
       name = option.value
       value = option.value
@@ -110,7 +111,7 @@ resource "coder_agent" "main" {
     HTTPS_PROXY        = "${local.proxy_url}"
     FTP_PROXY          = "${local.proxy_url}"
     NO_PROXY           = "localhost"
-    PROJECT_BASE_DIR    = "/home/${local.username}/project"
+    KE_SVN_URL         = "${local.ke_svn_url}"
   }
 
   display_apps {
@@ -193,11 +194,6 @@ resource "coder_env" "ftp_proxy" {
   name     = "FTP_PROXY"
   value    = "${local.proxy_url}"
 }
-resource "coder_env" "disable_autoupdater" {
-  agent_id = coder_agent.main.id
-  name     = "DISABLE_AUTOUPDATER"
-  value    = "1"
-}
 resource "coder_env" "no_proxy" {
   agent_id = coder_agent.main.id
   name     = "NO_PROXY"
@@ -207,6 +203,16 @@ resource "coder_env" "node_extra_ca_certs" {
   agent_id = coder_agent.main.id
   name     = "NODE_EXTRA_CA_CERTS"
   value    = "/etc/ssl/certs/ca-certificates.crt"
+}
+resource "coder_env" "ke_svn_url" {
+  agent_id = coder_agent.main.id
+  name     = "KE_SVN_URL"
+  value    = "${local.ke_svn_url}"
+}
+resource "coder_env" "project_base_dir" {
+  agent_id = coder_agent.main.id
+  name     = "PROJECT_BASE_DIR"
+  value    = "/home/${local.username}/project"
 }
 
 resource "coder_script" "start_code_server" {
@@ -254,42 +260,22 @@ resource "coder_script" "create_project_folders" {
   start_blocks_login = true
   script = <<EOF
     #!/bin/bash
+
     cd /home/${local.username}/project
     mkdir -p ./KE
-
-    business_component="${data.coder_parameter.business_component.value}"
-    business_module="${data.coder_parameter.business_module.value}"
-    module_tag_file_list=$(echo "${try(data.coder_parameter.module_tag_file_list[0].value, jsonencode([]))}" | tr -d '[]"')
-    echo "Selected Business Component: $${business_component}"
-    echo "Selected Business Module: $${business_module}"
-    echo "Selected KE Files: $${module_tag_file_list}"
-
-    if [ -n "$${business_component}" ]; then
-      if [ -n "$${business_module}" ]; then
-        if [ -n "$${module_tag_file_list}" ]; then
-          IFS=',' read -ra files <<< "$${module_tag_file_list}"
-          for file in "$${files[@]}"; do
-            trimmed_file=$(echo "$file" | xargs)
-            echo "Copying KE file: $${trimmed_file}"
-            cp /opt/coder/assets/ke/"$${business_component}"/"$${business_module}"/"$${trimmed_file}" ./KE/"$${trimmed_file}"
-          done
-        else
-          echo "Copying whole module KE files."
-          cp /opt/coder/assets/ke/"$${business_component}"/"$${business_module}"/* ./KE/
-        fi
-      else
-        echo "Copying whole component KE files."
-        find /opt/coder/assets/ke/"$${business_component}" -name "*.md" -type f -exec cp {} ./KE/ \;
-      fi
-    else
-      echo "Copying all KE files."
-      find /opt/coder/assets/ke -name "*.md" -type f -exec cp {} ./KE/ \;
-    fi
-
     mkdir -p ./press
     mkdir -p ./test_cases
     mkdir -p ./test_example
     mkdir -p ./test_scripts
+
+    business_component="${data.coder_parameter.business_component.value}"
+    business_module="${data.coder_parameter.business_module.value}"
+    module_tag_list=$(echo "${try(data.coder_parameter.module_tag_list[0].value, jsonencode([]))}" | tr -d '[]"')
+    echo "Selected Business Component: $${business_component}"
+    echo "Selected Business Module: $${business_module}"
+    echo "Selected KE tags: $${module_tag_list}"
+    get-ke-files --component "$${business_component}" --module "$${business_module}" --tags "$${module_tag_list}"
+
     python -m venv .venv
     source .venv/bin/activate
     # pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
