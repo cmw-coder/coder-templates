@@ -1,0 +1,158 @@
+#!/bin/bash
+
+# Get configuration from environment variables, use defaults as fallback
+KE_SVN_URL=${KE_SVN_URL:-"http://10.153.3.214/comware-test-script/50.多环境移植/1/AIGC/KE/"}    # This should be set automatically
+PROJECT_BASE_DIR=${PROJECT_BASE_DIR:-"/home/$USER/project"} # This should be set automatically
+
+# shellcheck source=/dev/null
+source "log-utils"
+# shellcheck source=/dev/null
+source "svn-utils"
+
+# Use a hardcoded SVN credentials
+# TODO: Find a better way to replace this stupid method
+SVN_PASSWORD="Zpr758258%"
+SVN_USERNAME="z11187"
+
+get_svn_folder_contents() {
+    local url=$1
+
+    contents=$(svn_with_auth ls "${url}" | tr '\n' ',')
+    if [ $? -ne 0 ]; then
+        echo "Error: Unable to fetch contents from ${url}" >&2
+        exit 1
+    fi
+    echo "${contents}"
+}
+
+export_by_tag_list() {
+    local url_prefix="$1"
+    local tag_list="$2"
+    local dest_dir="$3"
+    local separator="$4"
+
+    # Split by separator and export each tag individually
+    IFS="$separator" read -ra tags <<< "$tag_list"
+    for item in "${tags[@]}"; do
+        [ -z "$item" ] && continue
+        item_clean=$(echo "$item" | xargs)
+        svn_s export --force "${url_prefix}/${item_clean}/" "${dest_dir}/${item_clean}"
+    done
+}
+
+export_by_module() {
+    local url="$1"
+    local dest_dir="$2"
+
+    export_by_tag_list "${url}" "$(get_svn_folder_contents "${url}")" "${dest_dir}" ","
+}
+
+export_by_component() {
+    local url="$1"
+    local dest_dir="$2"
+
+    local module_list
+    module_list=$(get_svn_folder_contents "${url}")
+    while IFS="," read -r module; do
+        [ -z "$module" ] && continue
+        export_by_module "${url}/${module}" "${dest_dir}"
+    done <<< "$module_list"
+}
+
+export_by_category(){
+    local category="$1"
+    local component="$2"
+    local module="$3"
+    local tag_list="$4"
+
+    local folder_name=""
+    local temp_dir=""
+    local target_dir=""
+    case "$category" in
+        basic_config)
+            folder_name="基础配置KE"
+            temp_dir="/tmp/basic_config"
+            target_dir="${PROJECT_BASE_DIR}/KE"
+            ;;
+        test_design)
+            folder_name="测试设计KE"
+            temp_dir="/tmp/test_design"
+            target_dir="${PROJECT_BASE_DIR}/KE"
+            ;;
+        background_scripts)
+            folder_name="背景脚本KE"
+            temp_dir="/tmp/background_scripts"
+            target_dir="${PROJECT_BASE_DIR}/KE"
+            ;;
+        script_examples)
+            folder_name="脚本样例KE"
+            temp_dir="/tmp/script_examples"
+            target_dir="${PROJECT_BASE_DIR}/test_example"
+            ;;
+        *)
+            log_error "Unsupported category: $category"
+            exit 1
+            ;;
+    esac
+
+    if [ -z "${component}" ]; then
+        log_info "[${category}] Copying all components."
+        local components_list=$(get_svn_folder_contents "${KE_SVN_URL}${folder_name}")
+        while IFS="," read -r component; do
+            [ -z "$component" ] && continue
+            export_by_component "${KE_SVN_URL}${folder_name}/${component}" "${temp_dir}"
+        done <<< "$components_list"
+    elif [ -z "${module}" ]; then
+        log_info "[${category}] Copying all modules under component '${component}'."
+        export_by_component "${KE_SVN_URL}${folder_name}/${component}" "${temp_dir}"
+    elif [ -z "${tag_list}" ]; then
+        log_info "[${category}] Copying all tags under module '${module}' of component '${component}'."
+        export_by_module "${KE_SVN_URL}${folder_name}/${component}/${module}" "${temp_dir}"
+    else
+        log_info "[${category}] Copying specified tags under module '${module}' of component '${component}'."
+        export_by_tag_list "${KE_SVN_URL}${folder_name}/${component}/${module}" "${tag_list}" "${temp_dir}" ","
+    fi
+
+    mkdir -p "${target_dir}/"
+    if [ -d "${temp_dir}" ] && [ "$(ls -A "${temp_dir}" 2>/dev/null)" ]; then
+        cp -r "${temp_dir}/"* "${target_dir}/"
+    else
+        log_warn "[${category}] No files exported to ${temp_dir}, skipping copy."
+    fi
+}
+
+# Main function
+main() {
+    local business_component=""
+    local business_module=""
+    local business_tag_list=""
+
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --component)
+                business_component="$2"
+                shift 2
+                ;;
+            --module)
+                business_module="$2"
+                shift 2
+                ;;
+            --tags)
+                business_tag_list="$2"
+                shift 2
+                ;;
+            *)
+                log_error "Unknown argument: $1"
+                exit 1
+                ;;
+        esac
+    done
+
+    export_by_category "basic_config" "$business_component" "$business_module" "$business_tag_list"
+    export_by_category "test_design" "$business_component" "$business_module" "$business_tag_list"
+    export_by_category "background_scripts" "$business_component" "$business_module" "$business_tag_list"
+    export_by_category "script_examples" "$business_component" "$business_module" "$business_tag_list"
+}
+
+# Execute main function
+main "$@"

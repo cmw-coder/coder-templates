@@ -1,0 +1,239 @@
+.. _topics-对象和属性:
+
+
+对象和属性
+================
+拓扑映射后创建的设备类对象作为属性保存在 ``gl`` 全局类，脚本中对设备的操作需要使用 ``gl`` 全局类的属性，如 ``gl.DUT``， 如：
+
+.. code-block:: python
+    :linenos:
+
+    # 向逻辑设备DUT下发命令行
+    gl.DUT.send('interface GigbitEthernet1/0/1\nundo shutdown')
+
+    # 操作逻辑设备TM，创建一条IP流
+    gl.TM.CreateIPStream(FrameLen=128, DesMac='2-2-2', SrcMac='1-1-1', 
+                                      DesIP='2.2.2.2', SrcIP='1.1.1.1')
+
+
+
+另外，为了方便脚本开发，框架提供了各类对象的若干属性，具体用法见下表：
+
+.. list-table:: 
+   :widths: 30 20 30 10
+   :header-rows: 1
+
+   * - 属性
+     - 含义
+     - 类型
+     - 示例
+   * - gl.cmw_devs_tuple
+     - 所有comware设备对象
+     - tuple
+     - (dev_object1, dev_object2)
+   * - gl.dut.name
+     - 设备名称
+     - str
+     - S6520_1
+   * - gl.dut.type
+     - 设备类型
+     - str
+     - CmwV7LanSwitch
+   * - gl.dut.term
+     - 激活的设备终端对象
+     - object
+     - S6520_1
+   * - gl.dut.terms
+     - 设备所有终端对象列表
+     - list
+     - []
+   * - gl.dut.ip
+     - 设备管理口ip地址
+     - str
+     - 100.1.1.2
+   * - gl.dut.master
+     - 设备主控板编号
+     - str
+     - slot 1, chassis 1 slot 0
+   * - gl.dut.standby
+     - 设备备用主控板编号
+     - list
+     - [], ['slot 1'], ['chassis 1 slot 0']
+   * - gl.dut.blade_slot
+     - 安全产品-M9K/TM9K系列设备的blade板编号（不带CPU）
+     - list
+     - [], ['slot 1'], ['chassis 1 slot 0']
+   * - gl.dut.blade_slot_cpu
+     - 安全产品-M9K/TM9K系列设备的blade板编号（带CPU）
+     - list
+     - [], ['slot 1 cpu 1'], ['slot 1 cpu 2'], ['chassis 1 slot 0 cpu 1']
+   * - gl.dut.primary_blade
+     - 安全产品-M9K/TM9K系列设备的blade板主板编号（带CPU）
+     - str
+     - '', slot 1 cpu 1
+   * - gl.dut.m_lpu
+     - SR88-MR系列设备的主用业务板编号
+     - str
+     - '', 10, 1/10
+   * - gl.dut.s_lpu
+     - SR88-MR系列设备的备用业务板编号
+     - str
+     - '', 11, 1/11
+   * - gl.dut.store
+     - 设备存储名
+     - str
+     - flash:
+   * - gl.dut.restarting_info*
+     - 设备重启过程主备板的信息
+     - dict
+     - {'master':'','standby':''}，调用restart、slave_switch方法后可用，存在串口连接的设备才有效
+   * - gl.dut.term.access_name
+     - 终端对象窗口名称
+     - str
+     - S6520_1
+   * - gl.dut.term.access_type
+     - 终端对象连接类型
+     - str
+     - console
+   * - gl.dut.term.access_address
+     - 终端对象访问地址
+     - str
+     - 100.1.1.1:1005
+   * - gl.dut.term.access_protocol
+     - 终端对象访问协议
+     - str
+     - telnet
+   * - gl.dut.ports_tuple
+     - 设备下所有端口对象
+     - tuple
+     - (port_object1, port_object2)，脚本中通过create_interface创建的端口不会存储在该元组
+   * - gl.dut.port1.intf
+     - 端口名称
+     - str
+     - GigbitEthernet1/0/1, Vlan-Interface100
+   * - gl.dut.port1.l2intf
+     - 二层端口名称
+     - str
+     - GigbitEthernet1/0/1
+   * - gl.dut.port1.l3intf
+     - 三层端口名称
+     - str
+     - GigbitEthernet1/0/1, Vlan-Interface100
+   * - gl.dut.port1.abbr_intf
+     - 端口名称简写
+     - str
+     - GE1/0/1，Vlan100
+   * - gl.dut.port1.abbr_l2intf
+     - 二层端口名称简写
+     - str
+     - GE1/0/1
+   * - gl.dut.port1.location
+     - 端口编号
+     - str
+     - 3/2, 10/1/1:1, 1/0/1.1
+   * - gl.dut.port1.slot
+     - 端口所在的槽位
+     - str
+     - slot 2, chassis 1 slot 2
+   * - gl.dut.port1.slot_subslot
+     - 端口所在的槽位和子卡(不存在子卡或为0时，与slot相同)
+     - str
+     - slot 2 subslot 2, chassis 1 slot 2 subslot 1
+   * - gl.dut.port1.slot_cpu
+     - 端口所在的槽位和CPU(不存在CPU时，与slot相同)
+     - str
+     - slot 2 cpu 0, chassis 1 slot 2 cpu 0
+   * - gl.dut.port1.controller
+     - 端口所属controller类型及编号
+     - str
+     - E1 2/1, T1 2/1/2, Cpos2/6/0
+   * - gl.dut.port1.mac
+     - 端口mac地址(大写)，用冒号(:)6分
+     - str
+     - 74:EA:C8:BA:29:3E
+   * - gl.dut.port1.mac2
+     - 端口mac地址(大写)，用短杠(-)3分
+     - str
+     - 74EA-C8BA-293E
+   * - gl.dut.port1.ip
+     - 端口ipv4地址
+     - str
+     - 100.1.1.1
+   * - gl.dut.port1.mask
+     - 端口ipv4地址掩码
+     - str
+     - 255.255.254.0
+   * - gl.dut.port1.hostmask
+     - 端口ipv4地址反掩码
+     - str
+     - 0.0.0.127
+   * - gl.dut.port1.masklen
+     - 端口ipv4地址掩码长度
+     - int
+     - 24
+   * - gl.dut.port1.ipv4_address
+     - 端口地址ipv4
+     - str
+     - 100.1.1.1/24
+   * - gl.dut.port1.net
+     - 端口网络号
+     - str
+     - 100.1.1.0
+   * - gl.dut.port1.network
+     - 端口网络地址
+     - str
+     - 100.1.1.0/24
+   * - gl.dut.port1.ip6
+     - 端口ipv6地址(简写格式)
+     - str
+     - 2003:A::2
+   * - gl.dut.port1.ip6_full
+     - 端口ipv6地址(全写格式)
+     - str
+     - 2003:000A:0000:0000:0000:0000:0000:0002
+   * - gl.dut.port1.mask6
+     - 端口ipv6地址掩码
+     - str
+     - FFFF:FFFF:FFFF:FFFF\:\:
+   * - gl.dut.port1.masklen6
+     - 端口ipv6地址前缀
+     - int
+     - 64
+   * - gl.dut.port1.ipv6_address
+     - 端口地址ipv6
+     - str
+     - 2003:A::2/64
+   * - gl.dut.port1.net6
+     - 端口网络号
+     - str
+     - 200A\:\:
+   * - gl.dut.port1.network6
+     - 端口IPV6网络地址
+     - str
+     - 200A::1/64
+   * - gl.dut.port1.vlan
+     - 端口所属vlan编号
+     - str
+     - 100
+   * - gl.dut.port1.type
+     - 以太端口类型
+     - str
+     - GigabitEthernet(L3) Ten-GigabitEthernet(L2)
+   * - gl.dut.port1.link_mode
+     - 以太端口link-mode类型
+     - str
+     - route/bridge，非以太网类型端口，返回空字符串
+   * - gl.dut.port1.peer
+     - 端口对端对象或对象列表
+     - Port()对象或包含Port()对象的列表
+     - object，[object1, object2]，可以通过.获取其属性，如gl.dut.port1.peer.ip。当对端有多个端口时，返回的是对象列表
+   * - gl.tm.chassis_ip
+     - 机框ip地址
+     - str
+     - 100.1.1.1
+   * - gl.tm.port1.number
+     - 格式化端口编号，用于url(只支持TM)
+     - str
+     - 3%2
+
+.. note:: 这些属性均与测试床绑定（带*除外），在脚本里修改不影响这些属性值。比如脚本中修改的端口的所在vlan，通过 ``gl.dut.port1.vlan`` 获取的值仍为测试床中的vlan编号

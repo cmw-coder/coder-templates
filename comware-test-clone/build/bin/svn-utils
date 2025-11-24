@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Get configuration from environment variables, use defaults as fallback
+SVN_PASSWORD=${SVN_PASSWORD:-""}        # This should be set automatically
+SVN_USERNAME=${SVN_USERNAME:-$(whoami)} # This should be set automatically
+
+# shellcheck source=/dev/null
+source "log-utils"
+
+svn_with_auth() {
+    if [ -n "$SVN_USERNAME" ] && [ -n "$SVN_PASSWORD" ]; then
+        svn "$@" --no-auth-cache --non-interactive --password "$SVN_PASSWORD" --username "$SVN_USERNAME"
+    else
+        svn "$@" --no-auth-cache --non-interactive
+    fi
+}
+
+svn_s() {
+    local cmd=$1
+    shift
+
+    # For some commands, we need the output and they don't support -q
+    if [ "$cmd" = "cat" ] || [ "$cmd" = "diff" ] || [ "$cmd" = "info" ] || [ "$cmd" = "update" ]; then
+        svn_with_auth "$cmd" "$@"
+    else
+        # For other commands, use quiet mode
+        svn_with_auth "$cmd" "$@" -q
+    fi
+}
+
+svn_remove_branch() {
+    local target_branch_url="$1"
+
+    if ! svn_s info "$target_branch_url" >/dev/null 2>&1; then
+        log_info "No target branch found, nothing to remove."
+        return 0
+    fi
+
+    log_info "Removing SVN branch: $target_branch_url"
+    if ! svn_s delete -m "Removing SVN branch" "$target_branch_url"; then
+        log_error "Failed to remove SVN branch."
+        exit 1
+    fi
+
+    log_info "SVN branch removed successfully."
+    return 0
+}
