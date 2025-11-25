@@ -60,6 +60,7 @@ WORKDIR /home/${USER}
 COPY --chown=${USER}:${USER} _claude /home/${USER}/.claude/
 COPY --chown=${USER}:${USER} code-server /home/${USER}/.local/share/code-server/
 COPY --chown=${USER}:${USER} project /home/${USER}/project/
+COPY --chown=${USER}:${USER} zshrc /home/${USER}/.zshrc
 
 # Add languagepacks.json
 ARG EXTENSION_VERSION=1.99.2025040909

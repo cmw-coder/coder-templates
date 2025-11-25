@@ -177,7 +177,13 @@ resource "coder_app" "coder_tutorials" {
   url          = local.coder_tutorials_url
   external     = true
 }
-
+resource "coder_app" "get_workspace_id" {
+  agent_id     = coder_agent.main.id
+  slug         = "get-workspace-id"
+  display_name = "Get workspace ID"
+  icon         = "${data.coder_workspace.me.access_url}/icon/widgets.svg"
+  command      = "echo \"Workspace ID:\" && echo ${data.coder_workspace.me.id} && zsh"
+}
 
 resource "coder_env" "http_proxy" {
   agent_id = coder_agent.main.id
