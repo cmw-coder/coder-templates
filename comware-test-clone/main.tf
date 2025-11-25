@@ -92,13 +92,6 @@ resource "coder_agent" "main" {
     interval     = 30
     order        = 2
   }
-  metadata {
-    key          = "workspace_id"
-    display_name = "Workspace ID"
-    script       = "echo ${data.coder_workspace.me.id}"
-    interval     = 30
-    order        = 3
-  }
 }
 
 resource "coder_app" "code_server" {
@@ -124,7 +117,13 @@ resource "coder_app" "coder_tutorials" {
   url          = local.coder_tutorials_url
   external     = true
 }
-
+resource "coder_app" "get_workspace_id" {
+  agent_id     = coder_agent.main.id
+  slug         = "get-workspace-id"
+  display_name = "Get workspace ID"
+  icon         = "${data.coder_workspace.me.access_url}/icon/widgets.svg"
+  command      = "echo \"Workspace ID:\" && echo ${data.coder_workspace.me.id} && zsh"
+}
 
 resource "coder_env" "http_proxy" {
   agent_id = coder_agent.main.id
@@ -203,10 +202,15 @@ resource "coder_script" "create_project_folders" {
   script = <<EOF
     #!/bin/bash
 
-    # python -m venv .venv
-    # source .venv/bin/activate
-    # # pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
-    # tar -zxf /opt/coder/assets/site-packages.tgz -C .venv/lib/python3.13/site-packages/
+    mkdir -p /home/${local.username}/project    
+    cp -r /opt/coder/home-clone/project/* /home/${local.username}/project
+    rm -rf /home/${local.username}/project/.venv
+
+    cd /home/${local.username}/project
+    python -m venv .venv
+    source .venv/bin/activate
+    # pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
+    tar -zxf /opt/coder/assets/site-packages.tgz -C .venv/lib/python3.13/site-packages/
   EOF
 }
 
@@ -297,7 +301,7 @@ resource "docker_container" "workspace" {
   }
   mounts {
     read_only = true
-    source    = data.coder_parameter.coder_workspace_id.value
+    source    = "coder-${data.coder_parameter.coder_workspace_id.value}-home"
     target    = "/opt/coder/home-clone"
     type      = "volume"
   }
