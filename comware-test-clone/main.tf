@@ -209,7 +209,7 @@ resource "coder_script" "create_project_folders" {
     cd /home/${local.username}/project
     python -m venv .venv
     source .venv/bin/activate
-    # pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
+    pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
     tar -zxf /opt/coder/assets/site-packages.tgz -C .venv/lib/python3.13/site-packages/
   EOF
 }
