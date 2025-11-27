@@ -16,7 +16,7 @@ RUN if [ -n "$PROXY_URL" ]; then \
 # Install essential packages and set locale and shell
 RUN apt-get update \
     && apt-get install -y build-essential ca-certificates curl locales man-db sudo \
-        fzf jq nano neovim unzip zsh \
+        default-jdk fzf jq nano neovim unzip zsh \
         git subversion \
         python3 python3-venv pip python-is-python3 black \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
@@ -37,7 +37,7 @@ RUN if [ -n "$PROXY_URL" ]; then \
         && npm config set https-proxy "$PROXY_URL" \
         && npm config set strict-ssl false; \
     fi
-RUN npm install -g @anthropic-ai/claude-code@2.0.14
+RUN npm install -g @anthropic-ai/claude-code@2.0.54
 
 # Create a non-root user with sudo privileges
 ARG USER=coder
