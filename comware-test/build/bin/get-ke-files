@@ -17,7 +17,7 @@ SVN_USERNAME="z11187"
 get_svn_folder_contents() {
     local url=$1
 
-    contents=$(svn_with_auth ls "${url}" | tr '\n' ',')
+    contents=$(svn_with_auth ls "${url}" | tr '\n' ',' | sed 's/,$//')
     if [ $? -ne 0 ]; then
         echo "Error: Unable to fetch contents from ${url}" >&2
         exit 1
@@ -53,10 +53,12 @@ export_by_component() {
 
     local module_list
     module_list=$(get_svn_folder_contents "${url}")
-    while IFS="," read -r module; do
+    IFS=',' read -ra modules <<< "$module_list"
+    for module in "${modules[@]}"; do
         [ -z "$module" ] && continue
+        module=$(echo "$module" | xargs)
         export_by_module "${url}/${module}" "${dest_dir}"
-    done <<< "$module_list"
+    done
 }
 
 export_by_category(){
@@ -98,10 +100,12 @@ export_by_category(){
     if [ -z "${component}" ]; then
         log_info "[${category}] Copying all components."
         local components_list=$(get_svn_folder_contents "${KE_SVN_URL}${folder_name}")
-        while IFS="," read -r component; do
+        IFS=',' read -ra components <<< "$components_list"
+        for component in "${components[@]}"; do
             [ -z "$component" ] && continue
+            component=$(echo "$component" | xargs)
             export_by_component "${KE_SVN_URL}${folder_name}/${component}" "${temp_dir}"
-        done <<< "$components_list"
+        done
     elif [ -z "${module}" ]; then
         log_info "[${category}] Copying all modules under component '${component}'."
         export_by_component "${KE_SVN_URL}${folder_name}/${component}" "${temp_dir}"
