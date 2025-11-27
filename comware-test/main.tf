@@ -282,13 +282,23 @@ resource "coder_script" "create_project_folders" {
     echo "Selected KE tags: $${module_tag_list}"
     get-ke-files --component "$${business_component}" --module "$${business_module}" --tags "$${module_tag_list}"
 
-    python -m venv .venv
+    python -m venv --system-site-packages .venv
     source .venv/bin/activate
     pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
     tar -zxf /opt/coder/assets/site-packages.tgz -C .venv/lib/python3.13/site-packages/
   EOF
 }
-
+resource "coder_script" "install_oh_my_zsh" {
+  agent_id     = coder_agent.main.id
+  display_name = "Install Oh My Zsh"
+  icon         = "/icon/terminal.svg"
+  run_on_start = true
+  start_blocks_login = true
+  script = <<EOF
+    #!/bin/bash
+    bash -c "$(curl -fsSL https://install.ohmyz.sh)" "" --unattended;
+  EOF
+}
 resource "coder_script" "copy_time_master_statistics" {
   agent_id     = coder_agent.main.id
   display_name = "Copy Time Master Statistics"
