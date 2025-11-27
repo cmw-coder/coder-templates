@@ -81,7 +81,7 @@ pysnmp-pysmi==1.1.12
 pysnmplib==5.0.24
 PySocks==1.7.1
 pytest==9.0.1
-pytest-atf==1.0.0
+# pytest-atf==1.0.0
 pytest-check==2.6.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.1
