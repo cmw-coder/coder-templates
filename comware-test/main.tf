@@ -284,7 +284,8 @@ resource "coder_script" "create_project_folders" {
 
     python -m venv --system-site-packages .venv
     source .venv/bin/activate
-    pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
+    # pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
+    cat requirements.txt | sed -e '/^\s*#/d' -e '/^\s*$/d' | xargs -n 1 pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com
     tar -zxf /opt/coder/assets/site-packages.tgz -C .venv/lib/python3.13/site-packages/
   EOF
 }
