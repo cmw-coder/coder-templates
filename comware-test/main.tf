@@ -290,9 +290,6 @@ resource "coder_script" "create_project_folders" {
     business_component="${data.coder_parameter.business_component.value}"
     business_module="${data.coder_parameter.business_module.value}"
     module_tag_list=$(echo "${try(data.coder_parameter.module_tag_list[0].value, jsonencode([]))}" | tr -d '[]"')
-    echo "Selected Business Component: $${business_component}"
-    echo "Selected Business Module: $${business_module}"
-    echo "Selected KE tags: $${module_tag_list}"
     get-ke-files --component "$${business_component}" --module "$${business_module}" --tags "$${module_tag_list}"
 
     python -m venv --system-site-packages .venv
@@ -311,7 +308,7 @@ resource "coder_script" "install_oh_my_zsh" {
   script = <<EOF
     #!/bin/bash
     if [ -d "/home/${local.username}/.oh-my-zsh" ]; then
-      echo "- Oh My Zsh is already installed."
+      echo -e "\033[36m- Oh My Zsh is already installed.\033[0m"
       exit 0
     fi
     bash -c "$(curl -fsSL https://install.ohmyz.sh)" "" --unattended;
@@ -319,7 +316,7 @@ resource "coder_script" "install_oh_my_zsh" {
 }
 resource "coder_script" "write_assets" {
   agent_id     = coder_agent.main.id
-  display_name = "Write External Files to Container"
+  display_name = "Write Assets to Container"
   icon         = "/emojis/1f4c4.png"
   run_on_start = true
   start_blocks_login = false
@@ -347,7 +344,7 @@ resource "coder_script" "write_assets" {
     echo -e "\033[36m- 📄 Writing '~/project/CLAUDE.md'...\033[0m"
     echo "${filebase64("${path.module}/assets/project/CLAUDE.md")}" | base64 -d > ./project/CLAUDE.md
 
-    echo "Assets written successfully!"
+    echo -e "\033[32m- ✔️ Assets written successfully!\033[0m"
   EOF
 }
 resource "coder_script" "copy_time_master_statistics" {
