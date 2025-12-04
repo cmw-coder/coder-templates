@@ -6,6 +6,9 @@ terraform {
     docker = {
       source  = "kreuzwerker/docker"
     }
+    external = {
+      source  = "hashicorp/external"
+    }
   }
 }
 
@@ -15,9 +18,19 @@ provider "docker" {
 provider "coder" {
 }
 
+data "external" "ke_map" {
+  program = ["bash", "${path.module}/get-ke-json.sh"]
+  
+  query = {
+    ke_svn_url = "http://10.153.3.214/comware-test-script/50.多环境移植/1/AIGC/KE/"
+    svn_password = "Zpr758258%"
+    svn_username = "z11187"
+  }
+}
+
 locals {
   coder_tutorials_url = "https://tutorials.coder-open.h3c.com"
-  ke_map = jsondecode(file("${path.module}/ke_map.json"))
+  ke_map = jsondecode(data.external.ke_map.result.data)
   ke_svn_url = "http://10.153.3.214/comware-test-script/50.多环境移植/1/AIGC/KE/"
   local_code_server_version = "4.105.1"
   proxy_url = "http://172.22.0.29:8080"
