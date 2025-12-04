@@ -23,6 +23,19 @@ locals {
   proxy_url = "http://172.22.0.29:8080"
   username = data.coder_workspace_owner.me.name
   workspace = data.coder_workspace.me.name
+  
+  # 示例：读取 README 内容
+  # readme_content = file("${path.module}/README.md")
+  
+  # 示例：使用 templatefile 读取模板文件（可以替换变量）
+  # config_from_template = templatefile("${path.module}/config-template.txt", {
+  #   username     = local.username
+  #   workspace    = local.workspace
+  #   email        = data.coder_workspace_owner.me.email
+  #   proxy_url    = local.proxy_url
+  #   ke_svn_url   = local.ke_svn_url
+  #   custom_value = "example_value"
+  # })
 }
 
 data "coder_provisioner" "me" {
@@ -297,7 +310,44 @@ resource "coder_script" "install_oh_my_zsh" {
   start_blocks_login = true
   script = <<EOF
     #!/bin/bash
+    if [ -d "/home/${local.username}/.oh-my-zsh" ]; then
+      echo "- Oh My Zsh is already installed."
+      exit 0
+    fi
     bash -c "$(curl -fsSL https://install.ohmyz.sh)" "" --unattended;
+  EOF
+}
+resource "coder_script" "write_assets" {
+  agent_id     = coder_agent.main.id
+  display_name = "Write External Files to Container"
+  icon         = "/emojis/1f4c4.png"
+  run_on_start = true
+  start_blocks_login = false
+  script = <<EOF
+    #!/bin/bash
+    
+    # 方法 1: 写入 README 副本
+    # cat > /home/${local.username}/project/README-copy.md << 'READMEEOF'
+    # local.readme_content
+    # READMEEOF
+
+    cd /home/${local.username}
+    
+    echo -e "\033[36m- 📄 Writing '~/.claude/hooks/add_aifinger_hook.py'...\033[0m"
+    mkdir -p ./.claude/hooks
+    echo "${filebase64("${path.module}/assets/_claude/hooks/add_aifinger_hook.py")}" | base64 -d > ./.claude/hooks/add_aifinger_hook.py
+
+    echo -e "\033[36m- 📄 Writing '~/project/.aigc_tool/aigc_tool.py'...\033[0m"
+    mkdir -p ./project/.aigc_tool
+    echo "${filebase64("${path.module}/assets/project/_aigc_tool/aigc_tool.py")}" | base64 -d > ./project/.aigc_tool/aigc_tool.py
+
+    echo -e "\033[36m- 📄 Writing '~/project/.pylintrc'...\033[0m"
+    echo "${filebase64("${path.module}/assets/project/_pylintrc")}" | base64 -d > ./project/.pylintrc
+
+    echo -e "\033[36m- 📄 Writing '~/project/CLAUDE.md'...\033[0m"
+    echo "${filebase64("${path.module}/assets/project/CLAUDE.md")}" | base64 -d > ./project/CLAUDE.md
+
+    echo "Assets written successfully!"
   EOF
 }
 resource "coder_script" "copy_time_master_statistics" {
@@ -399,7 +449,12 @@ resource "docker_image" "main" {
   }
   force_remove = true
   triggers = {
-    dir_sha1 = sha1(join("", [for f in fileset(path.module, "build/**") : filesha1(f)]))
+    dir_sha1 = sha1(join("", concat(
+      [for f in fileset(path.module, "build/**") : filesha1("${path.module}/${f}")],
+      [for f in fileset(path.module, "build/_*/**") : filesha1("${path.module}/${f}")],
+      [for f in fileset(path.module, "build/**/.*") : filesha1("${path.module}/${f}")],
+      [for f in fileset(path.module, "build/**/_*") : filesha1("${path.module}/${f}")]
+    )))
   }
 }
 
