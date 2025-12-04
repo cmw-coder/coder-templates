@@ -406,7 +406,12 @@ resource "docker_image" "main" {
   }
   force_remove = true
   triggers = {
-    dir_sha1 = sha1(join("", [for f in fileset(path.module, "build/**") : filesha1(f)]))
+    dir_sha1 = sha1(join("", concat(
+      [for f in fileset(path.module, "build/**") : filesha1("${path.module}/${f}")],
+      [for f in fileset(path.module, "build/_*/**") : filesha1("${path.module}/${f}")],
+      [for f in fileset(path.module, "build/**/.*") : filesha1("${path.module}/${f}")],
+      [for f in fileset(path.module, "build/**/_*") : filesha1("${path.module}/${f}")]
+    )))
   }
 }
 
@@ -423,6 +428,11 @@ resource "docker_registry_image" "main" {
   insecure_skip_verify  = true
   keep_remotely = false
   triggers              = {
-    dir_sha1 = sha1(join("", [for f in fileset(path.module, "build/**") : filesha1(f)]))
+    dir_sha1 = sha1(join("", concat(
+      [for f in fileset(path.module, "build/**") : filesha1("${path.module}/${f}")],
+      [for f in fileset(path.module, "build/_*/**") : filesha1("${path.module}/${f}")],
+      [for f in fileset(path.module, "build/**/.*") : filesha1("${path.module}/${f}")],
+      [for f in fileset(path.module, "build/**/_*") : filesha1("${path.module}/${f}")]
+    )))
   }
 }
