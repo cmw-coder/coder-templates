@@ -429,12 +429,6 @@ resource "docker_container" "workspace" {
   }
   mounts {
     read_only = true
-    source    = "/opt/coder/assets/ke"
-    target    = "/opt/coder/assets/ke"
-    type      = "bind"
-  }
-  mounts {
-    read_only = true
     source    = "/opt/coder/assets/site-packages.tgz"
     target    = "/opt/coder/assets/site-packages.tgz"
     type      = "bind"

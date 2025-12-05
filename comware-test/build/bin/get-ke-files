@@ -117,8 +117,8 @@ process_by_category(){
             target_dir="${PROJECT_BASE_DIR}/KE/${component}/${module}"
             export_dynamically "${KE_SVN_URL}${folder_name}" "${temp_dir}" "${component}" "${module}"
 
-            # Get all folders under the /tmp/background_scripts, 
-            # rename "conftest.py" in these folders to "conftest_{folder_name}.py", 
+            # Get all folders under the /tmp/background_scripts,
+            # rename "conftest.py" in these folders to "conftest_{folder_name}.py",
             # and "*.topox" files to "{folder_name}.topox".
             for dir in "${temp_dir}/"*/; do
                 [ -d "$dir" ] || continue
@@ -144,6 +144,17 @@ process_by_category(){
             temp_dir="/tmp/script_examples"
             target_dir="${PROJECT_BASE_DIR}/test_example/${component}/${module}"
             export_dynamically "${KE_SVN_URL}${folder_name}" "${temp_dir}" "${component}" "${module}" "${tag_list}"
+
+            # Get all folders under the /tmp/background_scripts,
+            # rename "*.py" in these folders to "{folder_name}.py"
+            for dir in "${temp_dir}/"*/; do
+                [ -d "$dir" ] || continue
+                folder_basename=$(basename "$dir")
+                for python_file in "${dir}"*.py; do
+                    [ -f "$python_file" ] || continue
+                    mv -n "$python_file" "${dir}/${folder_basename}.py"
+                done
+            done
             ;;
         *)
             log_error "Unsupported category: $category"
