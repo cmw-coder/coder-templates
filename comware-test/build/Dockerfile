@@ -16,7 +16,7 @@ RUN if [ -n "$PROXY_URL" ]; then \
 # Install essential packages and set locale and shell
 RUN apt-get update \
     && apt-get install -y build-essential ca-certificates curl locales man-db sudo \
-        default-jdk fzf jq nano neovim unzip zsh \
+        default-jdk fzf jq nano neovim shellcheck unzip zsh \
         git subversion \
         python3 python3-venv pip python-is-python3 black \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \

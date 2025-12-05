@@ -17,18 +17,18 @@ SVN_USERNAME="z11187"
 get_svn_folder_contents() {
     local url=$1
 
-    contents=$(svn_with_auth ls "${url}" | tr '\n' ',' | sed 's/,$//')
-    if [ $? -ne 0 ]; then
-        echo "Error: Unable to fetch contents from ${url}" >&2
-        exit 1
+    contents=$(svn_with_auth ls "${url}" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+    result=$?
+    if [ $result -ne 0 ]; then
+        return $result
     fi
     echo "${contents}"
 }
 
 export_by_tag_list() {
-    local url_prefix="$1"
-    local tag_list="$2"
-    local dest_dir="$3"
+    local url="$1"
+    local dest_dir="$2"
+    local tag_list="$3"
     local separator="$4"
 
     # Split by separator and export each tag individually
@@ -36,32 +36,60 @@ export_by_tag_list() {
     for item in "${tags[@]}"; do
         [ -z "$item" ] && continue
         item_clean=$(echo "$item" | xargs)
-        svn_s export --force "${url_prefix}/${item_clean}/" "${dest_dir}/${item_clean}"
+        svn_s export --force "${url}/${item_clean}/" "${dest_dir}/${item_clean}"
     done
 }
 
-export_by_module() {
+export_by_url() {
     local url="$1"
     local dest_dir="$2"
 
-    export_by_tag_list "${url}" "$(get_svn_folder_contents "${url}")" "${dest_dir}" ","
+    if [ -z "$(get_svn_folder_contents "${url}")" ]; then
+        log_warn "No items under SVN URL: '${url}', skipping export."
+        return
+    fi
+    svn_s export --force "${url}/" "${dest_dir}/"
 }
 
-export_by_component() {
+export_dynamically() {
     local url="$1"
     local dest_dir="$2"
+    local component="$3"
+    local module="$4"
+    local tag_list="$5"
 
-    local module_list
-    module_list=$(get_svn_folder_contents "${url}")
-    IFS=',' read -ra modules <<< "$module_list"
-    for module in "${modules[@]}"; do
-        [ -z "$module" ] && continue
-        module=$(echo "$module" | xargs)
-        export_by_module "${url}/${module}" "${dest_dir}"
-    done
+    if [ -z "${url}" ]; then
+        log_error "URL is required."
+        exit 1
+    fi
+
+    if [ -z "${dest_dir}" ]; then
+        log_error "Destination directory is required."
+        exit 1
+    fi
+
+    if [ -z "${component}" ]; then
+        log_info "Copying all items to '${dest_dir}'..."
+        local components_list=$(get_svn_folder_contents "${url}")
+        IFS=',' read -ra components <<< "$components_list"
+        for component in "${components[@]}"; do
+            [ -z "$component" ] && continue
+            component=$(echo "$component" | xargs)
+            export_by_url "${url}/${component}" "${dest_dir}"
+        done
+    elif [ -z "${module}" ]; then
+        log_info "Copying all items under '${component}' to '${dest_dir}'..."
+        export_by_url "${url}/${component}" "${dest_dir}"
+    elif [ -z "${tag_list}" ]; then
+        log_info "Copying all items under '${component}/${module}' to '${dest_dir}'..."
+        export_by_url "${url}/${component}/${module}" "${dest_dir}"
+    else
+        log_info "Copying specified tags under '${component}/${module}' to '${dest_dir}'..."
+        export_by_tag_list "${url}/${component}/${module}" "${dest_dir}" "${tag_list}" ","
+    fi
 }
 
-export_by_category(){
+process_by_category(){
     local category="$1"
     local component="$2"
     local module="$3"
@@ -71,25 +99,51 @@ export_by_category(){
     local temp_dir=""
     local target_dir=""
     case "$category" in
-        basic_config)
-            folder_name="基础配置KE"
-            temp_dir="/tmp/basic_config"
-            target_dir="${PROJECT_BASE_DIR}/KE"
-            ;;
-        test_design)
-            folder_name="测试设计KE"
-            temp_dir="/tmp/test_design"
-            target_dir="${PROJECT_BASE_DIR}/KE"
-            ;;
+        # basic_config)
+        #     folder_name="基础配置KE"
+        #     temp_dir="/tmp/basic_config"
+        #     target_dir="${PROJECT_BASE_DIR}/KE"
+        #     export_dynamically "${KE_SVN_URL}${folder_name}" "${temp_dir}" "$component" "$module" "$tag_list"
+        #     ;;
+        # test_design)
+        #     folder_name="测试设计KE"
+        #     temp_dir="/tmp/test_design"
+        #     target_dir="${PROJECT_BASE_DIR}/KE"
+        #     export_dynamically "${KE_SVN_URL}${folder_name}" "${temp_dir}" "$component" "$module" "$tag_list"
+        #     ;;
         background_scripts)
             folder_name="背景脚本KE"
             temp_dir="/tmp/background_scripts"
-            target_dir="${PROJECT_BASE_DIR}/KE"
+            target_dir="${PROJECT_BASE_DIR}/KE/${component}/${module}"
+            export_dynamically "${KE_SVN_URL}${folder_name}" "${temp_dir}" "${component}" "${module}"
+
+            # Get all folders under the /tmp/background_scripts, 
+            # rename "conftest.py" in these folders to "conftest_{folder_name}.py", 
+            # and "*.topox" files to "{folder_name}.topox".
+            for dir in "${temp_dir}/"*/; do
+                [ -d "$dir" ] || continue
+                folder_basename=$(basename "$dir")
+                if [ -f "${dir}/conftest.py" ]; then
+                    mv "${dir}/conftest.py" "${dir}/conftest_${folder_basename}.py"
+                fi
+                for topox_file in "${dir}"*.topox; do
+                    [ -f "$topox_file" ] || continue
+                    mv -n "$topox_file" "${dir}/${folder_basename}.topox"
+                done
+            done
+            ;;
+        script_expansions)
+            folder_name="脚本扩写KE"
+            temp_dir="/tmp/script_expansions"
+            target_dir="${PROJECT_BASE_DIR}/KE/${component}/${module}"
+            # The module name in script_expansions does not have detailed suffixes
+            export_dynamically "${KE_SVN_URL}${folder_name}" "${temp_dir}" "${component}" "${module%_*}"
             ;;
         script_examples)
             folder_name="脚本样例KE"
             temp_dir="/tmp/script_examples"
-            target_dir="${PROJECT_BASE_DIR}/test_example"
+            target_dir="${PROJECT_BASE_DIR}/test_example/${component}/${module}"
+            export_dynamically "${KE_SVN_URL}${folder_name}" "${temp_dir}" "${component}" "${module}" "${tag_list}"
             ;;
         *)
             log_error "Unsupported category: $category"
@@ -97,32 +151,12 @@ export_by_category(){
             ;;
     esac
 
-    if [ -z "${component}" ]; then
-        log_info "[${category}] Copying all components."
-        local components_list=$(get_svn_folder_contents "${KE_SVN_URL}${folder_name}")
-        IFS=',' read -ra components <<< "$components_list"
-        for component in "${components[@]}"; do
-            [ -z "$component" ] && continue
-            component=$(echo "$component" | xargs)
-            export_by_component "${KE_SVN_URL}${folder_name}/${component}" "${temp_dir}"
-        done
-    elif [ -z "${module}" ]; then
-        log_info "[${category}] Copying all modules under component '${component}'."
-        export_by_component "${KE_SVN_URL}${folder_name}/${component}" "${temp_dir}"
-    elif [ -z "${tag_list}" ]; then
-        log_info "[${category}] Copying all tags under module '${module}' of component '${component}'."
-        export_by_module "${KE_SVN_URL}${folder_name}/${component}/${module}" "${temp_dir}"
-    else
-        log_info "[${category}] Copying specified tags under module '${module}' of component '${component}'."
-        export_by_tag_list "${KE_SVN_URL}${folder_name}/${component}/${module}" "${tag_list}" "${temp_dir}" ","
-    fi
-
     mkdir -p "${target_dir}/"
     if [ -d "${temp_dir}" ] && [ "$(ls -A "${temp_dir}" 2>/dev/null)" ]; then
         cp -r "${temp_dir}/"* "${target_dir}/"
-    else
-        log_warn "[${category}] No files exported to ${temp_dir}, skipping copy."
     fi
+
+    rm -rf "${temp_dir}"
 }
 
 # Main function
@@ -152,10 +186,11 @@ main() {
         esac
     done
 
-    export_by_category "basic_config" "$business_component" "$business_module" "$business_tag_list"
-    export_by_category "test_design" "$business_component" "$business_module" "$business_tag_list"
-    export_by_category "background_scripts" "$business_component" "$business_module" "$business_tag_list"
-    export_by_category "script_examples" "$business_component" "$business_module" "$business_tag_list"
+    # process_by_category "basic_config" "$business_component" "$business_module" "$business_tag_list"
+    # process_by_category "test_design" "$business_component" "$business_module" "$business_tag_list"
+    process_by_category "background_scripts" "$business_component" "$business_module" "$business_tag_list"
+    process_by_category "script_expansions" "$business_component" "$business_module" "$business_tag_list"
+    process_by_category "script_examples" "$business_component" "$business_module" "$business_tag_list"
 }
 
 # Execute main function
