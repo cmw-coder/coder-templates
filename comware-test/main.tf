@@ -269,6 +269,7 @@ resource "coder_script" "start_code_server" {
     install-extension --local /opt/coder/assets/extensions/ms-python.black-formatter-2025.2.0.vsix
     install-extension --local /opt/coder/assets/extensions/ms-python.debugpy-2025.14.0.vsix
     install-extension --local /opt/coder/assets/extensions/ms-python.python-2025.16.0.vsix
+    install-extension --local /opt/coder/assets/extensions/ms-python.vscode-pylance-2025.10.4.vsix
     install-extension --local /opt/coder/assets/extensions/redhat.vscode-xml-0.29.2025081108.vsix
     install-extension --local /opt/coder/assets/extensions/swyddfa.esbonio-0.96.6.vsix
     install-extension --local /opt/coder/assets/extensions/timonwong.shellcheck-0.38.3.vsix

@@ -52,19 +52,19 @@ ignore=CVS
 # ignore-list. The regex matches against paths and can be in Posix or Windows
 # format. Because '\\' represents the directory delimiter on Windows systems,
 # it can't be used as an escape character.
-ignore-paths=
+ignore-paths=(^|.*/)\.venv(/.*)?$
 
 # Files or directories matching the regular expression patterns are skipped.
 # The regex matches against base names, not paths. The default value ignores
 # Emacs file locks
-ignore-patterns=^\.#
+ignore-patterns=^\.venv$,^\..*,^_.*
 
 # List of module names for which member attributes should not be checked and
 # will not be imported (useful for modules/projects where namespaces are
 # manipulated during runtime and thus existing member attributes cannot be
 # deduced by static analysis). It supports qualified module names, as well as
 # Unix pattern matching.
-ignored-modules=
+ignored-modules=atf_assert,run_multithread,atf_check,atf_skip,atf_logs,atf_time_stats,atf_adornment,atf_wait,msend
 
 # Python code to execute, usually for sys.path manipulation such as
 # pygtk.require().
@@ -73,7 +73,7 @@ ignored-modules=
 # Use multiple processes to speed up Pylint. Specifying 0 will auto-detect the
 # number of processors available to use, and will cap the count on Windows to
 # avoid hangs.
-jobs=1
+jobs=2
 
 # Control the amount of potential inferred values when inferring a single
 # object. This can help the performance when dealing with large functions or
@@ -106,7 +106,7 @@ source-roots=
 
 # When enabled, pylint would attempt to guess common misconfiguration and emit
 # user-friendly hints instead of false-positive error messages.
-# suggestion-mode=no
+# suggestion-mode
 
 # Allow loading of arbitrary C extensions. Extensions are imported into the
 # active Python interpreter and may run arbitrary code.
@@ -439,20 +439,18 @@ disable=raw-checker-failed,
         use-symbolic-message-instead,
         use-implicit-booleaness-not-comparison-to-string,
         use-implicit-booleaness-not-comparison-to-zero,
-        no-member,
         invalid-name,
-        f-string-without-interpolation,
-        line-too-long,
         wildcard-import,
         wrong-import-order,
-        unused-import,
-        unused-wildcard-import,
         trailing-whitespace,
         too-many-lines,
         unnecessary-pass,
+        unnecessary-semicolon,
         missing-module-docstring,
-        similarities,
-        missing-final-newline
+        too-few-public-methods,
+        too-many-statements,
+        line-too-long,
+        duplicate-code
 
 # Enable the message, report, category or checker with the given id(s). You can
 # either give multiple identifier separated by comma (,) or put this option
@@ -513,7 +511,7 @@ msg-template=
 # 'colorized', 'json2' (improved json format), 'json' (old json format), msvs
 # (visual studio) and 'github' (GitHub actions). You can also give a reporter
 # class, e.g. mypackage.mymodule.MyReporterClass.
-#output-format=
+output-format= msvs
 
 # Tells whether to display a full report or only the messages.
 reports=no
@@ -537,7 +535,7 @@ ignore-imports=yes
 ignore-signatures=yes
 
 # Minimum lines number of a similarity.
-min-similarity-lines=4
+min-similarity-lines=999
 
 
 [SPELLING]
@@ -585,7 +583,7 @@ contextmanager-decorators=contextlib.contextmanager
 # List of members which are set dynamically and missed by pylint inference
 # system, and so shouldn't trigger E1101 when accessed. Python regular
 # expressions are accepted.
-generated-members=
+generated-members=pytest_atf.atf_globalvar.globalVar
 
 # Tells whether to warn about missing members when the owner of the attribute
 # is inferred to be None.
@@ -623,7 +621,7 @@ missing-member-hint-distance=1
 missing-member-max-choices=1
 
 # Regex pattern to define which classes are considered mixins.
-mixin-class-rgx=.*[Mm]ixin
+mixin-class-rgx=.*Mixin$
 
 # List of decorators that change the signature of a decorated function.
 signature-mutators=
@@ -633,7 +631,7 @@ signature-mutators=
 
 # List of additional names supposed to be defined in builtins. Remember that
 # you should avoid defining new builtins when possible.
-additional-builtins=
+additional-builtins=atf_assert,run_multithread,atf_assert,atf_check,atf_skip,atf_logs,atf_time_stats,atf_adornment,atf_wait,atf_adornmentm,atf_topo_map,atf_topo_unmap,msend,atf_assert_check
 
 # Tells whether unused global variables should be treated as a violation.
 allow-global-unused-variables=yes
@@ -654,7 +652,7 @@ dummy-variables-rgx=_+$|(_[a-zA-Z0-9_]*[a-zA-Z0-9]+?$)|dummy|^ignored_|^unused_
 ignored-argument-names=_.*|^ignored_|^unused_
 
 # Tells whether we should check for unused import in __init__ files.
-init-import=no
+init-import=yes
 
 # List of qualified module names which can have objects that can redefine
 # builtins.
