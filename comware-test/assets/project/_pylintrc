@@ -64,7 +64,12 @@ ignore-patterns=^\.venv$,^\..*,^_.*
 # manipulated during runtime and thus existing member attributes cannot be
 # deduced by static analysis). It supports qualified module names, as well as
 # Unix pattern matching.
-ignored-modules=atf_assert,run_multithread,atf_check,atf_skip,atf_logs,atf_time_stats,atf_adornment,atf_wait,msend
+ignored-modules=atf_assert,run_multithread,atf_check,atf_skip,atf_logs,atf_time_stats,atf_adornment,atf_wait,
+                msend,
+                pytest_atf,
+                pytest
+
+
 
 # Python code to execute, usually for sys.path manipulation such as
 # pygtk.require().
@@ -583,7 +588,7 @@ contextmanager-decorators=contextlib.contextmanager
 # List of members which are set dynamically and missed by pylint inference
 # system, and so shouldn't trigger E1101 when accessed. Python regular
 # expressions are accepted.
-generated-members=pytest_atf.atf_globalvar.globalVar
+generated-members=pytest_atf.atf_globalvar.globalVar,globalVar.*
 
 # Tells whether to warn about missing members when the owner of the attribute
 # is inferred to be None.
@@ -631,7 +636,7 @@ signature-mutators=
 
 # List of additional names supposed to be defined in builtins. Remember that
 # you should avoid defining new builtins when possible.
-additional-builtins=atf_assert,run_multithread,atf_assert,atf_check,atf_skip,atf_logs,atf_time_stats,atf_adornment,atf_wait,atf_adornmentm,atf_topo_map,atf_topo_unmap,msend,atf_assert_check
+additional-builtins=atf_assert,run_multithread,atf_check,atf_skip,atf_logs,atf_time_stats,atf_adornment,atf_wait,atf_adornmentm,atf_topo_map,atf_topo_unmap,msend,atf_assert_check
 
 # Tells whether unused global variables should be treated as a violation.
 allow-global-unused-variables=yes
