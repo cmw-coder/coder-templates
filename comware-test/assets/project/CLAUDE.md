@@ -1,140 +1,170 @@
 
-## 核心思想：规划驱动开发
-**原则**：在写测试代码前，先优先查阅相关conftest.py和*.topx完成"宪法-规范-计划-任务"的思考流程，然后严格按照思考流程和执行流程完成用户的任务。
+## 任务完成规约
+
+我们将测试脚本开发分为 2 个规划阶段 + 1 个执行阶段，请严格按照如下二阶段规划工作流和执行阶段进行完成用户的艰巨任务，
+必须交付Specification（测试规范）/tasks.md（具体执行清单）后再开始编码，编码完成后必须保证使用aigc_tool运行通过。
 
 ---
 
-## 一、四阶段思考流程（内化）
+## 一、二阶段规划工作流
 
-### 1. Constitution（宪法思考）
-**思考点**：
-- **砍功能**：这个测试点是否在核心范围？砍掉衍生/边缘测试
-- **定边界**：明确"不做"什么（不测试无关模块、不验证非press定义逻辑）
-- **设原则**：单一职责、最小依赖、完整清理
+### Phase 1: Specification（测试规范）
+**产出物**: spec.md（详细测试需求）
+**目标**: 澄清测试需求，定义完整的测试场景，定义测试边界，砍掉过度测试设计
 
-### 2. Specification（规范思考）
-**思考点**：
-- **澄清需求**：将模糊需求转为明确场景
-  - ❌ "测试端口状态" → ✅ "测试端口从admin down到up的协议状态同步"
-- **定义场景**：用Given-When-Then快速描述
-- **数据明确**：输入/输出来自哪个press/KE章节
+### 1.1 测试范围原则
+- 核心测试点: [用户指定的测试点]
+- 衍生测试点: 仅在KE有相关案例时适当扩展
+- 测试边界: 不扩散到无关功能
+- 不生成空文件（如无用的__init__.py）
+- 头文件明确模块引入:例如:
+ import pytest,from pytest_atf.atf_globalvar 
+ import globalVar as gl,from pytest_atf 
+ import run_multithread,atf_assert,atf_check,atf_skip,atf_logs
 
-### 3. Plan（计划思考）
-**思考点**：
-- **结构设计**：套用标准模板，明确setup/teardown逻辑
-- **代码复用**：哪些操作可参考test_example/类似例子
-- **设备引用**：确保与.topox定义的设备名一致
-
-### 4. Tasks（任务拆解）
-**思考点**：
-- **任务列表**：拆解为3-5个可执行小任务
-- **验收标准**：每个任务完成后如何验证
-
----
-
-## 二、执行流程
-
-### 2.1 需求分析阶段（融合Constitution+Specification）
-- [ ] **优先查阅**：相关conftest.py和*.topox文件是否存在？存在需要优先阅读
-- [ ] **宪法思考**：这个测试点真的必要吗？有没有过度设计？
-- [ ] **边界明确**：列出"不做"的事项
-- [ ] **需求澄清**：将用户需求转为明确的Given-When-Then
-- [ ] **资料检查**：检查关联的conftest.py和.topox文件
-
-### 2.2 私域资料调研（精简）
-- [ ] **必须查阅**：press/对应模块.md（业务依据）
-- [ ] **必须查阅**：KE/对应操作库.md （操作方法） KE/conftest.py(基础配置) KE/*.topox 组网信息
+### 1.2 测试点分析
+**原始需求**: [用户输入的测试点]
+通过私域资料调研后完成需求澄清：
+- [ ] **必须查阅**：KE/对应操作库.md （操作方法） KE/conftest.py(基础配置) KE/*.topx 组网信息
+- [ ] **建议查阅**：press/对应模块.md（业务依据）
 - [ ] **如有则查**：test_example/相似例子.py（最佳实践）
-- [ ] **输出确认**：在代码头部明确引用来源
+**澄清后需求**:
+1. 功能点: [精确描述1]
+2. 功能点: [精确描述2]
+3. 边界条件: [明确边界]
 
+### 1.3 测试场景设计
+**场景1**: [Given-When-Then格式]
+- Given: 拓扑环境已部署（基于.topox）
+- When: 执行[具体操作]
+- Then: 验证[预期结果]
+
+### 1.4 数据需求
+- 输入数据: [来源于press文档x.x章节]
+- 预期输出: [符合KE文件要求]
+- 验证点: [可验证的具体指标]
+
+
+**价值**: 在这个阶段就明确"只测试什么"，避免测试范围蔓延，强迫在编写前澄清模糊需求，如"验证端口状态" → "验证端口admin状态为up，protocol状态为up"。
+
+---
+
+### Phase 2: Tasks（任务清单）
+**产出物**: tasks.md（可执行的测试设计，具体执行清单）
+**目标**: 拆解为可执行的多个任务
+**设计模板**:
+```python
+# 这不是最终代码，而是设计模板，伪代码禁止
+class Test[模块名][功能名]:
+    
+    @classmethod
+    def setup_class(cls):
+        """基于conftest.py的配置"""
+        if conftest_exists and meets_requirements:
+            # 无需额外配置
+            gl.DUT1.checkcommand("...") # 对conftest.py中基础环境验证
+            pass
+        else:
+            # 需要补充的配置代码
+            gl.DUT1.configure("...")  # 示例伪代码，禁止使用
+            
+    @classmethod
+    def teardown_class(cls):
+        """清理逻辑 - 必须实现"""
+        
+    def test_step_1_验证基础功能(self):
+        """基于KE/基础操作库/端口操作.md的步骤"""
+        # 步骤1: [引用press文档]
+        # 步骤2: [引用test_example]
+        # 验证: [明确验收标准]
+        
+    def test_step_2_验证边界条件(self):
+        """边界条件测试"""
+        # ...
+```
+**任务拆解**:
+```
+### Task 1: 调研私域资料
+- [ ] 查阅 press/[模块].md（业务规范）
+- [ ] 必须查阅 KE/[基础操作].md（操作方法，尽可能查阅）
+- [ ] 分析 test_example/相似案例.py
+- 产出: __private_docs__ 引用定义
+
+### Task 2: 编写setup/teardown
+- [ ] 优先使用test_scripts目录下的，没有则判断是否存在其它可用的conftest.py和xxx.topox，存在则拷贝到/home/g23702/project/test_scripts目录下
+- [ ] 检查conftest.py是否满足需求
+- [ ] 编写teardown_class清理逻辑
+
+### Task 3: 实现test_step_1
+- 文件: test_scripts/[三级目录]/test_[模块]_[功能].py
+- 要求: 严格遵循pypilot API
+
+...
+```
+
+**价值**: 明确进度，每个任务都可验证、可追踪。。
+
+---
+
+## 二、执行阶段：脚本生成与质量检查
+
+### Phase 3: Implementation & Quality（实现与质量）
+基于前2阶段的产出物，执行具体实现：
+
+#### 3.1 脚本生成（基于Tasks（任务清单））
 ```python
 __private_docs__ = {
     '业务规范': ('press/模块A.md', '4.2章节'),
-    '操作指南': ('KE/基础操作库.md', '3.1章节'),
-    '参考案例': ('test_example/test_xx.py', '')  # 如有
+    '测试基准': ('test_example/test_xx.py', 'Case03')
 }
-```
 
-### 2.3 脚本生成（融合Plan思考）
-将脚本生成并保存到test_scripts/三级目录/xxx(如果当前目录下已有类似目录优先放到已有的对应目录下面)
-```python
-# 1. 套用标准结构（禁止修改）
-class TestClassName:
+class TestClass:
     @classmethod
     def setup_class(cls):
-        """基于Plan思考：conftest.py是否满足需求？"""
-        pass  # 如果conftest.py满足则留空,否则需要补充业务配置
+        """如果conftest.py存在且基础配置满足需求，则为空即可"""
+        pass
                 
     @classmethod 
     def teardown_class(cls):
-        """基于宪法思考：必须完整清理"""
+        """必须在此处编写配置清除代码"""
         # 清理逻辑
     
     def test_step_1(self):
-        """基于Tasks拆解"""
-        # 严格按照pypilot API
-        # 设备名与.topox一致
-        # 操作在press/KE中有依据
-    def test_step_2(self):
-        """基于Tasks拆解"""
-        # 严格按照pypilot API
-        # 设备名与.topox一致
-        # 操作在press/KE中有依据
+        """基于Task 3的实现"""
+        # 使用gl.DUTx.PORTx（来自.topox）
+        # 严格遵循pypilot方法
 ```
 
-### 2.4 质量检查（严格执行）
-**第一步：静态检查**
-```bash
-pylint script.py  # 修复所有E级别错误
-```
-
-**第二步：完成后自行再次Review**
-- [ ] 设备命名一致性：`gl.DUTx` = `.topox`定义
-- [ ] 操作可溯源：每个关键操作都可在press/KE中找到依据
-- [ ] 清理完整：teardown_class能100%恢复环境
-- [ ] 结构合规：没有多余的pytest方法
-
-**第三步：使用aigc_tool工具运行脚本(预计等待3-5分钟左右，建议使用timeout等待)**
-判断~/project/.aigc_tool/aigc.json文件存在字段内容"exec_ip": "10.141.xxx.xx"则表示物理环境已经配置就绪否则则表示没配置物理环境，需用户退出再次进入才能使用运行环境
-```
-最多10轮迭代：
-1. 运行脚本
-2. 分析结果
-3. 修复问题
-4. 回滚环境
-```
-
-**第四步：简要总结**
-
-## 三、工具使用
-
-### 3.1 Pylint检查命令
+#### 3.2 质量检查流程
+**步骤1**: Pylint静态检查（必须通过）
 ```bash
 source .venv/bin/activate
-pylint [生成的脚本].py
+pylint [脚本].py  # 修复所有E级别错误
 ```
 
-### 3.2 aigc_tool工具相关命令
-#### 1. 脚本执行命令
-**命令**: python ~/project/.aigc_tool/aigc_tool.py run --scriptspath "/home/$(whoami)/project/test_scripts/OSPFV3/xxx.py" 
-**功能**: 在已部署环境中执行脚本  
-**参数**:   
-- `scriptspath`（必填）：脚本目录的路径  
-**返回值**: 返回错误信息或者脚本运行信息
-**注意**: 该接口不支持并行运行，必须串行启动并启动timeout进行等待
+**步骤2**: 人工Review检查清单
+- [ ] 设备命名一致性（gl.DUTx vs .topox）
+- [ ] 所有操作在press/KE中有依据
+- [ ] __private_docs__引用完整
+- [ ] teardown_class清理逻辑完整
 
-#### 2.回滚配置命令
-**命令**: python ~/project/.aigc_tool/aigc_tool.py restore 
-**功能**：在已部署环境中将之前执行错的环境恢复 
-**注意**：重新调用 脚本执行命令 时，必须调用回滚配置命令
-**返回值**: 返回执行结果信息
-**注意**: 每个脚本运行后，必须执行回滚，避免互相影响
+**步骤3**: 必须进行脚本运行验证，保证运行通过（如~/project/.aigc_tool/aigc.json文件存在字段内容"exec_ip": "10.141.xxx.xx"则表示物理环境已经配置就绪否则则表示没配置物理环境，需用户退出再次进入才能使用运行环境）
+运行示例： 
+```python
+# 最多10轮迭代
+for attempt in range(10):
+    # 1. 运行测试
+    result = python ~/project/.aigc_tool/aigc_tool.py run --scriptspath "/home/$(whoami)/project/test_scripts/XXX/xxx.py"
+    #wait timeout 5m 
+    # 2. 分析结果并修复
+    if success:
+        break
+    else:
+        fix_based_on_result(result)
+     # 3. 回滚配置
+    python ~/project/.aigc_tool/aigc_tool.py restore
+```
 
-#### aigc_tool脚本运行示例
-step 1: 执行python ~/project/.aigc_tool/aigc_tool.py run --scriptspath "/home/$(whoami)/project/test_scripts/OSPFV3/xxx.py"
-step 2: 预计等待3-5分钟，会返回结果，如果等待5分钟后，结果仍然未返回，可以使用sleep等待，知道结果返回后分析错误并进行修复
-step 3: 回滚脚本，重新执行 python ~/project/.aigc_tool/aigc_tool.py restore 
-step 4: 又到step 1,直到运行成功
+**步骤4**: 完成交付进行总结
+
 ---
-
-

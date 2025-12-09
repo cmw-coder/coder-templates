@@ -160,7 +160,7 @@ class AIGCClient:
         # 对于其他类型，直接返回
         return data
     
-    def deploy_environment(self, topofile, versionpath=None):
+    def deploy_environment(self, topofile, versionpath=None, devicetype=None):
         if not topofile:
             return {"return_code": "400", "return_info": "请求参数为空"}
         url = f"{self.base_url}/aigc/deploy"
@@ -170,6 +170,8 @@ class AIGCClient:
         data = {"topofile": f"{topofile}"}
         if versionpath:
             data["versionpath"] = f"{versionpath}"
+        if devicetype:
+            data["devicetype"] = f"{devicetype}"
         try:
             print(data)
             response = requests.post(url, json=data, proxies={"http": None, "https": None})
@@ -415,6 +417,7 @@ def main():
     parser_deploy = subparsers.add_parser("deploy", help="部署测试环境")
     parser_deploy.add_argument("--topofile", required=True, help="topox 文件路径")
     parser_deploy.add_argument("--versionpath", help="版本路径，可选")
+    parser_deploy.add_argument("--devicetype", help="设备类型")
 
     # run 子命令
     parser_run = subparsers.add_parser("run", help="执行脚本")
@@ -431,7 +434,7 @@ def main():
     client = AIGCClient()
 
     if args.command == "deploy":
-        result = client.deploy_environment(args.topofile, args.versionpath)
+        result = client.deploy_environment(args.topofile, args.versionpath, args.devicetype)
     elif args.command == "run":
         result = client.run_script(args.scriptspath)
     elif args.command == "undeploy":

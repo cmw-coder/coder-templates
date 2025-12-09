@@ -65,7 +65,7 @@ data "coder_parameter" "business_component" {
   default = ""
   form_type = "dropdown"
   order = 0
-  mutable = false
+  mutable = true
 
   option {
     name = "All"
@@ -88,7 +88,7 @@ data "coder_parameter" "business_module" {
   default = ""
   form_type = "dropdown"
   order = 1
-  mutable = false
+  mutable = true
 
   option {
     name = "All"
@@ -113,7 +113,7 @@ data "coder_parameter" "module_tag_list" {
   type = "list(string)"
   default = jsonencode([])
   order = 2
-  mutable = false
+  mutable = true
 
   dynamic "option" {
     for_each = local.ke_map[data.coder_parameter.business_component.value][data.coder_parameter.business_module.value]
