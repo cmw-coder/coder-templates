@@ -10,6 +10,8 @@ import base64
 import re
 from pprint import pprint
 import glob
+import queue
+import threading
 
 class AIGCClient:
     def __init__(self, base_url="http://10.111.8.68:8000"):
@@ -310,10 +312,38 @@ class AIGCClient:
                 "scriptspath": f"{unc_path}",        # 使用UNC路径传到接口
                 "executorip": f"{executorip}"
             }
-            
-            # 调用接口（这里用模拟返回，如需真实调用取消下面注释）
-            response = requests.post(url, json=data, proxies={"http": None, "https": None})
-            result = response.json()
+            result_q = queue.Queue(maxsize=1)
+
+            def _call_bg():
+                try:
+                    resp = requests.post(
+                        f"{self.base_url}/aigc/run",
+                        json=data,
+                        proxies={"http": None, "https": None},
+                        timeout=600          # 允许 5 min 长耗时
+                    )
+                    result_q.put(resp.json())
+                except Exception as e:
+                    result_q.put({"return_code": "500", "return_info": f"后台请求异常：{e}"})
+
+            bg_thread = threading.Thread(target=_call_bg, daemon=True)
+            bg_thread.start()
+            print("start thread")
+            # 2. 主线程负责心跳
+            heartbeat_cnt = 0
+            while True:
+                try:
+                    # 每 10 s 轮询一次
+                    result = result_q.get(timeout=10)
+                    # 取到了最终结果，进行后续过滤/落盘逻辑
+                    break
+                except queue.Empty:
+                    # 10 s 内没拿到结果，发心跳
+                    heartbeat_cnt += 1
+                    print(f"脚本正在远端执行中，已等待 {heartbeat_cnt * 10} s …")
+            # # 调用接口（这里用模拟返回，如需真实调用取消下面注释）
+            # response = requests.post(url, json=data, proxies={"http": None, "https": None})
+            # result = response.json()
 
             # 应用过滤逻辑到返回的结果
             try:

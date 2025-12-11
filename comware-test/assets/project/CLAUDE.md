@@ -154,7 +154,7 @@ pylint [脚本].py  # 修复所有E级别错误
 # 最多10轮迭代
 for attempt in range(10):
     # 1. 运行测试
-    result = python ~/project/.aigc_tool/aigc_tool.py run --scriptspath "/home/$(whoami)/project/test_scripts/XXX/xxx.py"
+    result = python -u ~/project/.aigc_tool/aigc_tool.py run --scriptspath "/home/$(whoami)/project/test_scripts/XXX/xxx.py"
     #wait timeout 5m 
     # 2. 分析结果并修复
     if success:
@@ -162,7 +162,7 @@ for attempt in range(10):
     else:
         fix_based_on_result(result)
      # 3. 回滚配置
-    python ~/project/.aigc_tool/aigc_tool.py restore
+    python -u ~/project/.aigc_tool/aigc_tool.py restore
 ```
 
 **步骤4**: 完成交付进行总结
