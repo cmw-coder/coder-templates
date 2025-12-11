@@ -351,6 +351,8 @@ resource "coder_script" "write_assets" {
     echo -e "\033[36m- 📄 Writing '~/project/.aigc_tool/aigc_tool.py'...\033[0m"
     mkdir -p ./project/.aigc_tool
     echo "${filebase64("${path.module}/assets/project/_aigc_tool/aigc_tool.py")}" | base64 -d > ./project/.aigc_tool/aigc_tool.py
+    echo -e "\033[36m- 📄 Writing '~/project/.aigc_tool/data_search_h3c_example.py'...\033[0m"
+    echo "${filebase64("${path.module}/assets/project/_aigc_tool/data_search_h3c_example.py")}" | base64 -d > ./project/.aigc_tool/data_search_h3c_example.py
 
     echo -e "\033[36m- 📄 Writing '~/project/.pylintrc'...\033[0m"
     echo "${filebase64("${path.module}/assets/project/_pylintrc")}" | base64 -d > ./project/.pylintrc
