@@ -323,28 +323,48 @@ resource "coder_script" "init_python_venv" {
   start_blocks_login = true
   script = <<EOF
     #!/bin/bash
+    set -euo pipefail
 
     LOCAL_VENV_PATH="/home/${local.username}/project/.venv"
     SHARED_VENV_PATH="/opt/coder/venvs/comware-test"
+    SYNC_MARKER="$LOCAL_VENV_PATH/.shared_venv_synced"
+    FORCE_REFRESH="$${FORCE_SHARED_VENV_SYNC:-false}"
 
     if [ ! -d "$SHARED_VENV_PATH" ]; then
       echo -e "\033[31m- Shared venv $SHARED_VENV_PATH not found, please verify host setup.\033[0m"
       exit 1
     fi
 
-    if [ -L "$LOCAL_VENV_PATH" ] && [ "$(readlink -f "$LOCAL_VENV_PATH")" = "$SHARED_VENV_PATH" ]; then
-      echo -e "\033[32m- ✔️ Local venv already linked to shared venv.\033[0m"
-      exit 0
+    if [ -L "$LOCAL_VENV_PATH" ]; then
+      echo -e "\033[33m- Removing legacy symlinked venv at $LOCAL_VENV_PATH\033[0m"
+      rm -f "$LOCAL_VENV_PATH"
     fi
 
-    if [ -e "$LOCAL_VENV_PATH" ]; then
-      BACKUP_PATH="$${LOCAL_VENV_PATH}.bak.$(date +%s)"
-      echo -e "\033[33m- Existing venv detected; moving to $BACKUP_PATH\033[0m"
-      mv "$LOCAL_VENV_PATH" "$BACKUP_PATH"
+    if [ "$FORCE_REFRESH" = "true" ]; then
+      echo -e "\033[33m- FORCE_SHARED_VENV_SYNC requested; refreshing local venv copy.\033[0m"
+      rm -rf "$LOCAL_VENV_PATH"
+      rm -f "$SYNC_MARKER"
     fi
 
-    ln -s "$SHARED_VENV_PATH" "$LOCAL_VENV_PATH"
-    echo -e "\033[32m- ✔️ Virtual environment linked to $SHARED_VENV_PATH\033[0m"
+    if [ ! -f "$SYNC_MARKER" ]; then
+      echo -e "\033[36m- Syncing shared venv into $LOCAL_VENV_PATH ...\033[0m"
+      rm -rf "$LOCAL_VENV_PATH"
+      mkdir -p "$LOCAL_VENV_PATH"
+      if command -v rsync >/dev/null 2>&1; then
+        rsync -a --delete "$SHARED_VENV_PATH/" "$LOCAL_VENV_PATH/"
+      else
+        (cd "$SHARED_VENV_PATH" && tar -cf - .) | (cd "$LOCAL_VENV_PATH" && tar -xf -)
+      fi
+      chown -R ${local.username}:${local.username} "$LOCAL_VENV_PATH"
+      if find "$LOCAL_VENV_PATH" -name EXTERNALLY-MANAGED -print -quit >/dev/null 2>&1; then
+        find "$LOCAL_VENV_PATH" -name EXTERNALLY-MANAGED -delete
+      fi
+      "$LOCAL_VENV_PATH/bin/python" -m ensurepip --upgrade
+      touch "$SYNC_MARKER"
+      echo -e "\033[32m- ✔️ Local venv cloned. Install additional packages freely (set FORCE_SHARED_VENV_SYNC=true to refresh).\033[0m"
+    else
+      echo -e "\033[32m- ✔️ Local venv already synced; custom packages preserved.\033[0m"
+    fi
 
     # python -m venv --system-site-packages .venv
     # source .venv/bin/activate
