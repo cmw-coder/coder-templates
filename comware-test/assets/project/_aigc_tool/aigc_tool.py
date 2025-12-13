@@ -268,8 +268,38 @@ class AIGCClient:
             return {"return_code": "404", "return_info": f"脚本路径不存在: {scriptspath}"}
 
         executorip, err, conftestFile = self._get_executorip_from_config()
-        if err:
-            return {"return_code": "400", "return_info": err}
+        # if err:
+        #     return {"return_code": "400", "return_info": err}
+
+        if not conftestFile:
+            # 脚本所在目录
+            base_dir = os.path.dirname(os.path.abspath(scriptspath))
+
+            # 先在本目录匹配 *conftest*.py
+            pattern = os.path.join(base_dir, "*conftest*.py")
+            matches = glob.glob(pattern)
+            if matches:
+                conftestFile = matches[0]          # 取第一个命中
+            else:
+                # 本目录没有，再查上一级目录
+                parent_dir = os.path.dirname(base_dir)
+                pattern = os.path.join(parent_dir, "*conftest*.py")
+                matches = glob.glob(pattern)
+                if matches:
+                    conftestFile = matches[0]
+                else:
+                    return {"return_code": "404",
+                            "return_info": "未找到任何满足 *conftest*.py 的文件（已检索脚本同级及上级目录）"} 
+            # 2. 读旧配置（若无则新建空字典）
+            run_config_path = "~/project/.aigc_tool/aigc.json"
+            if os.path.isfile(run_config_path):
+                with open(run_config_path, encoding="utf-8") as f:
+                    cfg = json.load(f)
+
+                # 3. 仅更新 conftest_file 字段
+                cfg["conftest_file"] = conftest_file
+                with open(run_config_path, "w", encoding="utf-8") as f:
+                    json.dump(cfg, f, indent=4, ensure_ascii=False)
 
         try:
             # 目标目录（部署服务器本地路径）

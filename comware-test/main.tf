@@ -473,12 +473,6 @@ resource "docker_container" "workspace" {
   }
   mounts {
     read_only = true
-    source    = "/opt/coder/assets/bin/h3ccodecli"
-    target    = "/usr/local/bin/h3ccodecli"
-    type      = "bind"
-  }
-  mounts {
-    read_only = true
     source    = "/opt/coder/assets/code-server_${local.local_code_server_version}_amd64.deb"
     target    = "/opt/coder/assets/code-server.deb"
     type      = "bind"
