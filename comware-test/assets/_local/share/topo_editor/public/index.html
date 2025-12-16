@@ -43,7 +43,7 @@
       try {
         const res = await fetch('/api/v1/topox');
         const data = await res.json();
-        output.textContent = `Status: ${res.status}\nBody: ${JSON.stringify(data, null, 2)}`;
+        output.textContent = data.data;
         console.log('GET /api/v1/topox response:', data);
       } catch (err) {
         output.textContent = `Error: ${err}`;

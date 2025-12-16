@@ -110,6 +110,7 @@ def build_topox(payload: RequestBody) -> str:
             ET.SubElement(port_elem, "IPAddr").text = ""
             ET.SubElement(port_elem, "IPv6Addr").text = ""
             ET.SubElement(port_elem, "SLOT_TYPE").text = ""
+            ET.SubElement(port_elem, "TAG").text = ""
 
     _indent(network_elem)
     xml_bytes = ET.tostring(network_elem, encoding="utf-8", xml_declaration=True)
