@@ -389,9 +389,8 @@ resource "coder_script" "init_python_venv" {
     mkdir -p ./.local/share/topo_editor
     echo "${filebase64("${path.module}/assets/_local/share/topo_editor/main.py")}" | base64 -d > ./.local/share/topo_editor/main.py
 
-    echo -e "\033[36m- 📄 Writing '~/.local/share/topo_editor/public/index.html'...\033[0m"
-    mkdir -p ./.local/share/topo_editor/public
-    echo "${filebase64("${path.module}/assets/_local/share/topo_editor/public/index.html")}" | base64 -d > ./.local/share/topo_editor/public/index.html
+    echo -e "\033[36m- Unzipping '/opt/coder/assets/public.zip'...\033[0m"
+    unzip -o /opt/coder/assets/public.zip -d ./.local/share/topo_editor/public/
 
     LOG_FILE="/home/${local.username}/.local/share/topo_editor/app.log"
     echo -e "\033[36m- 🚀 Starting topo editor (logs: $LOG_FILE)\033[0m"
@@ -505,14 +504,20 @@ resource "docker_container" "workspace" {
   }
   mounts {
     read_only = true
-    source    = "/opt/coder/code-server/extensions"
-    target    = "/opt/coder/code-server/extensions"
+    source    = "/opt/coder/assets/public.zip"
+    target    = "/opt/coder/assets/public.zip"
     type      = "bind"
   }
   mounts {
     read_only = true
     source    = "/opt/coder/assets/site-packages.tgz"
     target    = "/opt/coder/assets/site-packages.tgz"
+    type      = "bind"
+  }
+  mounts {
+    read_only = true
+    source    = "/opt/coder/code-server/extensions"
+    target    = "/opt/coder/code-server/extensions"
     type      = "bind"
   }
   mounts {
