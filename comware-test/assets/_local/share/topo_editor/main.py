@@ -141,7 +141,10 @@ async def get_topox() -> JSONResponse:
             data = topox_path.read_text(encoding="utf-8")
         except OSError:
             logger.exception("Failed to read %s", topox_path)
-            data = ""
+            return JSONResponse(
+                content={"status": "error", "message": "Failed to read topox file.", "data": ""},
+                status_code=500,
+            )
     else:
         logger.info("%s not found; returning empty data", topox_path)
         data = ""
@@ -156,7 +159,20 @@ async def post_topox(request: Request) -> JSONResponse:
         "POST /api/v1/topox payload: %s", json.dumps(payload, ensure_ascii=False)
     )
     topox_xml = build_topox(payload)
-    return JSONResponse(content={"status": "ok", "data": topox_xml}, status_code=200)
+    topox_path = Path.home() / "project" / "test_scripts" / "default.topox"
+    try:
+        topox_path.parent.mkdir(parents=True, exist_ok=True)
+        topox_path.write_text(topox_xml, encoding="utf-8")
+        logger.info("Wrote topox to %s", topox_path)
+        return JSONResponse(
+            content={"status": "ok", "data": topox_xml}, status_code=200
+        )
+    except OSError:
+        logger.exception("Failed to write topox to %s", topox_path)
+        return JSONResponse(
+            content={"status": "error", "message": "Failed to write topox file."},
+            status_code=500,
+        )
 
 
 @app.get("/healthz")
