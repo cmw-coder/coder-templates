@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Topo Editor</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    button { padding: 10px 16px; font-size: 16px; cursor: pointer; }
+    pre { background: #f7f7f7; padding: 12px; border-radius: 4px; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <h1>Topo Editor</h1>
+  <button id="call-api">Call GET /api/v1/topox</button>
+  <pre id="output">Click the button to call the API.</pre>
+
+  <script>
+    const button = document.getElementById('call-api');
+    const output = document.getElementById('output');
+
+    button.addEventListener('click', async () => {
+      output.textContent = 'Requesting...';
+      try {
+        const res = await fetch('/api/v1/topox');
+        const data = await res.json();
+        output.textContent = `Status: ${res.status}\nBody: ${JSON.stringify(data, null, 2)}`;
+        console.log('GET /api/v1/topox response:', data);
+      } catch (err) {
+        output.textContent = `Error: ${err}`;
+        console.error('GET /api/v1/topox failed:', err);
+      }
+    });
+  </script>
+</body>
+</html>
