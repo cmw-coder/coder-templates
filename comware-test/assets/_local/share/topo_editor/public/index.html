@@ -13,14 +13,33 @@
 <body>
   <h1>Topo Editor</h1>
   <button id="call-api">Call GET /api/v1/topox</button>
-  <pre id="output">Click the button to call the API.</pre>
+  <button id="post-api">POST sample JSON to /api/v1/topox</button>
+  <pre id="output">Click a button to call the API.</pre>
 
   <script>
-    const button = document.getElementById('call-api');
+    const getButton = document.getElementById('call-api');
+    const postButton = document.getElementById('post-api');
     const output = document.getElementById('output');
 
-    button.addEventListener('click', async () => {
-      output.textContent = 'Requesting...';
+    const samplePayload = {
+      network: {
+        device_list: [
+          { name: 'DUT1', location: '-499,-128' },
+          { name: 'DUT2', location: '-193,-128' },
+        ],
+        link_list: [
+          {
+            start_device: 'DUT1',
+            end_device: 'DUT2',
+            start_port: 'PORT1',
+            end_port: 'PORT2',
+          },
+        ],
+      },
+    };
+
+    getButton.addEventListener('click', async () => {
+      output.textContent = 'Requesting GET...';
       try {
         const res = await fetch('/api/v1/topox');
         const data = await res.json();
@@ -29,6 +48,23 @@
       } catch (err) {
         output.textContent = `Error: ${err}`;
         console.error('GET /api/v1/topox failed:', err);
+      }
+    });
+
+    postButton.addEventListener('click', async () => {
+      output.textContent = 'Requesting POST...';
+      try {
+        const res = await fetch('/api/v1/topox', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(samplePayload),
+        });
+        const data = await res.json();
+        output.textContent = `Status: ${res.status}\nBody: ${JSON.stringify(data, null, 2)}`;
+        console.log('POST /api/v1/topox response:', data);
+      } catch (err) {
+        output.textContent = `Error: ${err}`;
+        console.error('POST /api/v1/topox failed:', err);
       }
     });
   </script>
