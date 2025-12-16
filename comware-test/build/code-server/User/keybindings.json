@@ -2,6 +2,6 @@
     {
         "key": "ctrl+alt+b",
         "command": "simpleBrowser.api.open",
-        "args": "https://topo-editor--${env:WORKSPACE_NAME}--${env:USER}.coder-open.h3c.com"
+        "args": "https://topo-editor--%WORKSPACE_NAME%--%USER%.coder-open.h3c.com"
     }
 ]

@@ -260,11 +260,6 @@ resource "coder_env" "project_base_dir" {
   name     = "PROJECT_BASE_DIR"
   value    = "/home/${local.username}/project"
 }
-resource "coder_env" "workspace_name" {
-  agent_id = coder_agent.main.id
-  name     = "WORKSPACE_NAME"
-  value    = "${data.coder_workspace.me.name}"
-}
 
 resource "coder_script" "start_code_server" {
   agent_id     = coder_agent.main.id
@@ -542,6 +537,7 @@ resource "docker_image" "main" {
       EXTENSION_VERSION = "1.104.0"
       PROXY_URL = "${local.proxy_url}"
       USER = "${local.username}"
+      WORKSPACE_NAME = "${local.workspace}"
     }
   }
   force_remove = true

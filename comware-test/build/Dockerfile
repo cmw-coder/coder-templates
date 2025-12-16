@@ -64,3 +64,7 @@ COPY --chown=${USER}:${USER} project /home/${USER}/project/
 ARG EXTENSION_VERSION=1.99.2025040909
 RUN export LANGUAGEPACK_HASH=$(echo -n "MS-CEINTL.vscode-language-pack-zh-hans${EXTENSION_VERSION}" | md5sum | awk '{print $1}') \
     && sed -i "s|%USER%|${USER}|g;s|%LANGUAGEPACK_HASH%|${LANGUAGEPACK_HASH}|g;s|%EXTENSION_VERSION%|${EXTENSION_VERSION}|g" /home/${USER}/.local/share/code-server/languagepacks.json
+
+# Modify keybindings.json to use dynamic workspace and user names
+ARG WORKSPACE_NAME=default
+RUN sed -i "s|%WORKSPACE_NAME%|${WORKSPACE_NAME}|g;s|%USER%|${USER}|g" /home/${USER}/.local/share/code-server/User/keybindings.json
