@@ -31,10 +31,6 @@ class Device(TypedDict):
     location: str
 
 
-class Network(TypedDict):
-    device_list: List[Device]
-
-
 class Link(TypedDict):
     start_device: str
     start_port: str
@@ -42,9 +38,13 @@ class Link(TypedDict):
     end_port: str
 
 
+class Network(TypedDict):
+    device_list: List[Device]
+    link_list: List[Link]
+
+
 class RequestBody(TypedDict):
     network: Network
-    link_list: List[Link]
 
 
 def _indent(elem: ET.Element, level: int = 0) -> None:
@@ -69,11 +69,19 @@ def build_topox(payload: RequestBody) -> str:
 
     network_elem = ET.Element("NETWORK")
 
+    network_section = payload.get("network", {})
+    device_list = []
+    link_list = []
+
+    if isinstance(network_section, dict):
+        device_list = network_section.get("device_list", []) or []
+        link_list = network_section.get("link_list", []) or []
+
     device_list_elem = ET.SubElement(network_elem, "DEVICE_LIST")
-    for device in payload["network"]["device_list"]:
+    for device in device_list:
         device_elem = ET.SubElement(device_list_elem, "DEVICE")
         prop_elem = ET.SubElement(device_elem, "PROPERTY")
-        ET.SubElement(prop_elem, "NAME").text = device["name"]
+        ET.SubElement(prop_elem, "NAME").text = device.get("name", "")
         ET.SubElement(prop_elem, "TYPE").text = "Simware9"
         ET.SubElement(prop_elem, "ENABLE").text = "TRUE"
         ET.SubElement(prop_elem, "IS_DOUBLE_MCU").text = "FALSE"
@@ -81,14 +89,18 @@ def build_topox(payload: RequestBody) -> str:
         ET.SubElement(prop_elem, "IS_SAME_DUT_TYPE").text = "FALSE"
         ET.SubElement(prop_elem, "MAP_PRIORITY").text = "0"
         ET.SubElement(prop_elem, "IS_DUT").text = "true"
-        ET.SubElement(prop_elem, "LOCATION").text = device["location"]
+        ET.SubElement(prop_elem, "LOCATION").text = device.get("location", "")
 
     link_list_elem = ET.SubElement(network_elem, "LINK_LIST")
-    for link in payload["link_list"]:
+    for link in link_list:
         link_elem = ET.SubElement(link_list_elem, "LINK")
+        start_device = link.get("start_device", "")
+        end_device = link.get("end_device", "")
+        start_port = link.get("start_port", "")
+        end_port = link.get("end_port", "")
         for device_name, port_name in (
-            (link["start_device"], link["start_port"]),
-            (link["end_device"], link["end_port"]),
+            (start_device, start_port),
+            (end_device, end_port),
         ):
             node_elem = ET.SubElement(link_elem, "NODE")
             ET.SubElement(node_elem, "DEVICE").text = device_name
