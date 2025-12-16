@@ -117,6 +117,63 @@ def build_topox(payload: RequestBody) -> str:
     return xml_bytes.decode("utf-8")
 
 
+def parse_topox(xml_text: str) -> Network:
+    """Parse topox XML into Network dict."""
+
+    network: Network = {"device_list": [], "link_list": []}
+
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        logger.exception("Failed to parse topox XML")
+        raise
+
+    device_list_elem = root.find("DEVICE_LIST")
+    if device_list_elem is not None:
+        for device_elem in device_list_elem.findall("DEVICE"):
+            prop_elem = device_elem.find("PROPERTY")
+            device_name = ""
+            device_location = ""
+            if prop_elem is not None:
+                name_elem = prop_elem.find("NAME")
+                location_elem = prop_elem.find("LOCATION")
+                device_name = name_elem.text if name_elem is not None else ""
+                device_location = (
+                    location_elem.text if location_elem is not None else ""
+                )
+            network["device_list"].append(
+                {"name": device_name or "", "location": device_location or ""}
+            )
+
+    link_list_elem = root.find("LINK_LIST")
+    if link_list_elem is not None:
+        for link_elem in link_list_elem.findall("LINK"):
+            nodes = link_elem.findall("NODE")
+            if len(nodes) < 2:
+                continue
+
+            def _node_details(node: ET.Element) -> tuple[str, str]:
+                device_elem = node.find("DEVICE")
+                port_name_elem = node.find("PORT/NAME")
+                device_name = device_elem.text if device_elem is not None else ""
+                port_name = port_name_elem.text if port_name_elem is not None else ""
+                return device_name or "", port_name or ""
+
+            start_device, start_port = _node_details(nodes[0])
+            end_device, end_port = _node_details(nodes[1])
+
+            network["link_list"].append(
+                {
+                    "start_device": start_device,
+                    "start_port": start_port,
+                    "end_device": end_device,
+                    "end_port": end_port,
+                }
+            )
+
+    return network
+
+
 def mount_static(app: FastAPI) -> None:
     """Mount the static files directory if it exists."""
 
@@ -140,17 +197,23 @@ async def get_topox() -> JSONResponse:
     if topox_path.exists():
         try:
             data = topox_path.read_text(encoding="utf-8")
+            network = parse_topox(data)
         except OSError:
             logger.exception("Failed to read %s", topox_path)
             return JSONResponse(
                 content={"status": "error", "message": "Failed to read topox file.", "data": ""},
                 status_code=500,
             )
+        except ET.ParseError:
+            return JSONResponse(
+                content={"status": "error", "message": "Invalid topox XML.", "data": ""},
+                status_code=500,
+            )
     else:
         logger.info("%s not found; returning empty data", topox_path)
-        data = ""
+        network = {"device_list": [], "link_list": []}
 
-    return JSONResponse(content={"status": "ok", "data": data}, status_code=200)
+    return JSONResponse(content={"status": "ok", "data": network}, status_code=200)
 
 
 @app.post("/api/v1/topox")
