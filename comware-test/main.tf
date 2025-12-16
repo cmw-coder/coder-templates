@@ -260,6 +260,11 @@ resource "coder_env" "project_base_dir" {
   name     = "PROJECT_BASE_DIR"
   value    = "/home/${local.username}/project"
 }
+resource "coder_env" "workspace_name" {
+  agent_id = coder_agent.main.id
+  name     = "WORKSPACE_NAME"
+  value    = "${data.coder_workspace.me.name}"
+}
 
 resource "coder_script" "start_code_server" {
   agent_id     = coder_agent.main.id
@@ -388,6 +393,10 @@ resource "coder_script" "init_python_venv" {
     echo -e "\033[36m- 📄 Writing '~/.local/share/topo_editor/main.py'...\033[0m"
     mkdir -p ./.local/share/topo_editor
     echo "${filebase64("${path.module}/assets/_local/share/topo_editor/main.py")}" | base64 -d > ./.local/share/topo_editor/main.py
+
+    echo -e "\033[36m- 📄 Writing '~/.local/share/topo_editor/public/index.html'...\033[0m"
+    mkdir -p ./.local/share/topo_editor/public
+    echo "${filebase64("${path.module}/assets/_local/share/topo_editor/public/index.html")}" | base64 -d > ./.local/share/topo_editor/public/index.html
 
     LOG_FILE="/home/${local.username}/.local/share/topo_editor/app.log"
     echo -e "\033[36m- 🚀 Starting topo editor (logs: $LOG_FILE)\033[0m"
