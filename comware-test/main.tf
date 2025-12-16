@@ -143,7 +143,7 @@ resource "coder_agent" "main" {
   display_apps {
     port_forwarding_helper = true
     ssh_helper = true
-    vscode = true
+    vscode = false
     vscode_insiders = false
     web_terminal = true
   }
