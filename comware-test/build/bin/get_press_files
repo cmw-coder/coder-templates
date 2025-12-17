@@ -14,3 +14,112 @@ source "svn-utils"
 SVN_PASSWORD="Zpr758258%"
 SVN_USERNAME="z11187"
 
+get_svn_folder_contents() {
+    local url=$1
+
+    contents=$(svn_with_auth ls "${url}" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+    result=$?
+    if [ $result -ne 0 ]; then
+        return $result
+    fi
+    echo "${contents}"
+}
+
+export_by_url() {
+    local url="$1"
+    local dest_dir="$2"
+
+    if [ -z "$(get_svn_folder_contents "${url}")" ]; then
+        log_warn "No items under SVN URL: '${url}', skipping export."
+        return
+    fi
+    svn_s export --force "${url}/" "${dest_dir}/"
+}
+
+export_dynamically() {
+    local url="$1"
+    local dest_dir="$2"
+    local categories="$3"
+    local details="$4"
+
+    if [ -z "${url}" ]; then
+        log_error "URL is required."
+        exit 1
+    fi
+
+    if [ -z "${dest_dir}" ]; then
+        log_error "Destination directory is required."
+        exit 1
+    fi
+
+    if [ -z "${categories}" ]; then
+        log_info "Copying all items to '${dest_dir}'..."
+        local components_list=$(get_svn_folder_contents "${url}")
+        IFS=',' read -ra components <<< "$components_list"
+        for component in "${components[@]}"; do
+            [ -z "$component" ] && continue
+            component=$(echo "$component" | xargs)
+            export_by_url "${url}/${component}" "${dest_dir}"
+        done
+    elif [ -z "${details}" ]; then
+        log_info "Copying all items under '${categories}' to '${dest_dir}'..."
+        export_by_url "${url}/${categories}" "${dest_dir}"
+    else
+        log_info "Copying specified tags under '${categories}/${details}' to '${dest_dir}'..."
+        export_by_tag_list "${url}/${categories}/${details}" "${dest_dir}" "${tag_list}" ","
+    fi
+}
+
+process_files(){
+    local version="$1"
+    local categories="$2"
+    local details="$3"
+
+    local temp_dir=""
+    local target_dir=""
+
+    temp_dir="/tmp/press"
+    target_dir="${PROJECT_BASE_DIR}/press/${categories}/${details}"
+    # The module name in script_expansions does not have detailed suffixes
+    export_dynamically "${KE_SVN_URL}${version}" "${temp_dir}" "${categories}" "${details}"
+
+    mkdir -p "${target_dir}/"
+    if [ -d "${temp_dir}" ] && [ "$(ls -A "${temp_dir}" 2>/dev/null)" ]; then
+        cp -r "${temp_dir}/"* "${target_dir}/"
+    fi
+
+    rm -rf "${temp_dir}"
+}
+
+# Main function
+main() {
+    local categories=""
+    local details=""
+    local version=""
+
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --categories)
+                categories="$2"
+                shift 2
+                ;;
+            --details)
+                details="$2"
+                shift 2
+                ;;
+            --version)
+                version="$2"
+                shift 2
+                ;;
+            *)
+                log_error "Unknown argument: $1"
+                exit 1
+                ;;
+        esac
+    done
+
+    process_files "$version" "$categories" "$details"
+}
+
+# Execute main function
+main "$@"

@@ -175,28 +175,10 @@ data "coder_parameter" "press_document_category" {
 }
 
 data "coder_parameter" "press_document_details" {
-  count = length(compact([
-    for v in values(data.coder_parameter.press_document_category) : try(
-      v.value,
-      try(v[0].value, null),
-      try(tostring(v), null)
-    )
-  ]))
+  count = length(jsondecode(data.coder_parameter.press_document_category.value))
   name = "press_document_details_${count.index}"
-  display_name = "[${compact([
-    for v in values(data.coder_parameter.press_document_category) : try(
-      v.value,
-      try(v[0].value, null),
-      try(tostring(v), null)
-    )
-  ])[count.index]}] Press Document Details"
-  description = "Select the details of the press document '${compact([
-    for v in values(data.coder_parameter.press_document_category) : try(
-      v.value,
-      try(v[0].value, null),
-      try(tostring(v), null)
-    )
-  ])[count.index]}'"
+  display_name = "[${jsondecode(data.coder_parameter.press_document_category.value)[count.index]}] Press Document Details"
+  description = "Select the details of the press document '${jsondecode(data.coder_parameter.press_document_category.value)[count.index]}'"
   form_type = "multi-select"
   type = "list(string)"
   default = jsonencode([])
@@ -204,13 +186,7 @@ data "coder_parameter" "press_document_details" {
   mutable = true
 
   dynamic "option" {
-    for_each = try(local.press_map[data.coder_parameter.press_document_version.value][compact([
-      for v in values(data.coder_parameter.press_document_category) : try(
-        v.value,
-        try(v[0].value, null),
-        try(tostring(v), null)
-      )
-    ])[count.index]], [])
+    for_each = try(local.press_map[data.coder_parameter.press_document_version.value][jsondecode(data.coder_parameter.press_document_category.value)[count.index]], [""])
     content {
       name  = option.value
       value = option.value
@@ -394,6 +370,14 @@ resource "coder_script" "create_project_folders" {
     business_module="${try(data.coder_parameter.business_module[0].value, "")}"
     module_tag_list=$(echo "${try(data.coder_parameter.module_tag_list[0].value, jsonencode([]))}" | tr -d '[]"')
     get-ke-files --component "$${business_component}" --module "$${business_module}" --tags "$${module_tag_list}"
+
+    press_document_version="${data.coder_parameter.press_document_version.value}"
+    press_document_category_list=$(echo "${try(data.coder_parameter.press_document_category.value, jsonencode([]))}" | tr -d '[]"')
+    press_document_details_list=$(echo "${join(";", [for d in data.coder_parameter.press_document_details : join(",", jsondecode(d.value))])}")
+    echo "press_document_version: $${press_document_version}"
+    echo "press_document_category_list: $${press_document_category_list}"
+    echo "press_document_details_list: $${press_document_details_list}"
+    # get-press-documents --version "$${press_document_version}" --categories "$${press_document_category_list}" --details "$${press_document_details_list}"
 
     # python -m venv --system-site-packages .venv
     # source .venv/bin/activate
