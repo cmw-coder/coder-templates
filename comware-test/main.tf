@@ -22,7 +22,15 @@ data "external" "ke_map" {
   program = ["bash", "${path.module}/get-ke-json.sh"]
   
   query = {
-    ke_svn_url = "http://10.153.3.214/comware-test-script/50.多环境移植/1/AIGC/KE/"
+    svn_password = "Zpr758258%"
+    svn_username = "z11187"
+  }
+}
+
+data "external" "press_map" {
+  program = ["bash", "${path.module}/get-press-json.sh"]
+  
+  query = {
     svn_password = "Zpr758258%"
     svn_username = "z11187"
   }
@@ -31,8 +39,8 @@ data "external" "ke_map" {
 locals {
   coder_tutorials_url = "https://tutorials.coder-open.h3c.com"
   ke_map = jsondecode(data.external.ke_map.result.data)
-  ke_svn_url = "http://10.153.3.214/comware-test-script/50.多环境移植/1/AIGC/KE/"
   local_code_server_version = "4.105.1"
+  press_map = jsondecode(data.external.press_map.result.data)
   proxy_url = "http://172.22.0.29:8080"
   username = data.coder_workspace_owner.me.name
   workspace = data.coder_workspace.me.name
@@ -46,7 +54,6 @@ locals {
   #   workspace    = local.workspace
   #   email        = data.coder_workspace_owner.me.email
   #   proxy_url    = local.proxy_url
-  #   ke_svn_url   = local.ke_svn_url
   #   custom_value = "example_value"
   # })
 }
@@ -56,6 +63,33 @@ data "coder_provisioner" "me" {
 data "coder_workspace" "me" {
 }
 data "coder_workspace_owner" "me" {
+}
+
+data "coder_parameter" "press_document_version" {
+  name = "press_document_version"
+  display_name = "Press Document Version"
+  description = "Select the version of the press document"
+  default = "V9_press"
+  form_type = "dropdown"
+  order = 0
+  mutable = true
+
+  option {
+    name = "V9"
+    value = "V9_press"
+  } 
+  option {
+    name = "B75"
+    value = "B75_press"
+  }
+  option {
+    name = "B70"
+    value = "B70_press"
+  }
+  option {
+    name = "B64"
+    value = "B64_press"
+  }
 }
 
 data "coder_parameter" "business_component" {
@@ -82,18 +116,13 @@ data "coder_parameter" "business_component" {
 }
 
 data "coder_parameter" "business_module" {
+  count = data.coder_parameter.business_component.value != "" ? 1 : 0
   name = "business_module"
   display_name = "Business Module"
   description = "Select the module for the chosen component"
-  default = ""
   form_type = "dropdown"
   order = 1
   mutable = true
-
-  option {
-    name = "All"
-    value = ""
-  }
 
   dynamic "option" {
     for_each = data.coder_parameter.business_component.value != "" ? keys(local.ke_map[data.coder_parameter.business_component.value]) : []
@@ -137,7 +166,6 @@ resource "coder_agent" "main" {
     HTTPS_PROXY        = "${local.proxy_url}"
     FTP_PROXY          = "${local.proxy_url}"
     NO_PROXY           = "localhost"
-    KE_SVN_URL         = "${local.ke_svn_url}"
   }
 
   display_apps {
@@ -249,11 +277,6 @@ resource "coder_env" "node_extra_ca_certs" {
   agent_id = coder_agent.main.id
   name     = "NODE_EXTRA_CA_CERTS"
   value    = "/etc/ssl/certs/ca-certificates.crt"
-}
-resource "coder_env" "ke_svn_url" {
-  agent_id = coder_agent.main.id
-  name     = "KE_SVN_URL"
-  value    = "${local.ke_svn_url}"
 }
 resource "coder_env" "project_base_dir" {
   agent_id = coder_agent.main.id

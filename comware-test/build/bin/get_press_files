@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# Get configuration from environment variables, use defaults as fallback
+PRESS_SVN_URL=${INFO_SVN_URL:-"http://10.153.3.214/comware-test-script/50.多环境移植/1/AIGC/INFO/"}  # This should be set automatically
+PROJECT_BASE_DIR=${PROJECT_BASE_DIR:-"/home/$USER/project"} # This should be set automatically
+
+# shellcheck source=/dev/null
+source "log-utils"
+# shellcheck source=/dev/null
+source "svn-utils"
+
+# Use a hardcoded SVN credentials
+# TODO: Find a better way to replace this stupid method
+SVN_PASSWORD="Zpr758258%"
+SVN_USERNAME="z11187"
+
