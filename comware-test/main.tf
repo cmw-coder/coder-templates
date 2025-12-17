@@ -65,33 +65,6 @@ data "coder_workspace" "me" {
 data "coder_workspace_owner" "me" {
 }
 
-data "coder_parameter" "press_document_version" {
-  name = "press_document_version"
-  display_name = "Press Document Version"
-  description = "Select the version of the press document"
-  default = "V9_press"
-  form_type = "dropdown"
-  order = 0
-  mutable = true
-
-  option {
-    name = "V9"
-    value = "V9_press"
-  } 
-  option {
-    name = "B75"
-    value = "B75_press"
-  }
-  option {
-    name = "B70"
-    value = "B70_press"
-  }
-  option {
-    name = "B64"
-    value = "B64_press"
-  }
-}
-
 data "coder_parameter" "business_component" {
   name = "business_component"
   display_name = "Business Component"
@@ -114,15 +87,20 @@ data "coder_parameter" "business_component" {
     }
   }
 }
-
 data "coder_parameter" "business_module" {
   count = data.coder_parameter.business_component.value != "" ? 1 : 0
   name = "business_module"
   display_name = "Business Module"
   description = "Select the module for the chosen component"
+  default = ""
   form_type = "dropdown"
   order = 1
   mutable = true
+
+  option {
+    name = "All"
+    value = ""
+  }
 
   dynamic "option" {
     for_each = data.coder_parameter.business_component.value != "" ? keys(local.ke_map[data.coder_parameter.business_component.value]) : []
@@ -132,9 +110,8 @@ data "coder_parameter" "business_module" {
     }
   }
 }
-
 data "coder_parameter" "module_tag_list" {
-  count = data.coder_parameter.business_component.value != "" && data.coder_parameter.business_module.value != "" ? 1 : 0
+  count = data.coder_parameter.business_component.value != "" && length(data.coder_parameter.business_module) > 0 && data.coder_parameter.business_module[0].value != "" ? 1 : 0
   name = "module_tag_list"
   display_name = "Module Tag List"
   description = "Select the KE tags to be pulled"
@@ -145,9 +122,76 @@ data "coder_parameter" "module_tag_list" {
   mutable = true
 
   dynamic "option" {
-    for_each = local.ke_map[data.coder_parameter.business_component.value][data.coder_parameter.business_module.value]
+    for_each = local.ke_map[data.coder_parameter.business_component.value][data.coder_parameter.business_module[0].value]
     content {
       name = option.value
+      value = option.value
+    }
+  }
+}
+data "coder_parameter" "press_document_version" {
+  name = "press_document_version"
+  display_name = "Press Document Version"
+  description = "Select the version of the press document"
+  default = "V9 press"
+  form_type = "dropdown"
+  order = 3
+  mutable = true
+
+  option {
+    name = "V9"
+    value = "V9 press"
+  } 
+  option {
+    name = "B75"
+    value = "B75 press"
+  }
+  option {
+    name = "B70"
+    value = "B70 press"
+  }
+  option {
+    name = "B64"
+    value = "B64 press"
+  }
+}
+data "coder_parameter" "press_document_category" {
+  name = "press_document_category"
+  display_name = "Press Document Category"
+  description = "Select the category of the press document"
+  default = ""
+  form_type = "dropdown"
+  order = 4
+  mutable = true
+
+  option {
+    name = "All"
+    value = ""
+  }
+
+  dynamic "option" {
+    for_each = keys(local.press_map[data.coder_parameter.press_document_version.value])
+    content {
+      name  = option.value
+      value = option.value
+    }
+  }
+}
+data "coder_parameter" "press_document_details" {
+  count = data.coder_parameter.press_document_category.value != "" ? 1 : 0
+  name = "press_document_details"
+  display_name = "Press Document Details"
+  description = "Select the details of the press document"
+  form_type = "multi-select"
+  type = "list(string)"
+  default = jsonencode([])
+  order = 5
+  mutable = true
+
+  dynamic "option" {
+    for_each = local.press_map[data.coder_parameter.press_document_version.value][data.coder_parameter.press_document_category.value]
+    content {
+      name  = option.value
       value = option.value
     }
   }
@@ -295,22 +339,6 @@ resource "coder_script" "start_code_server" {
     echo -e "\033[36m- 📦 Installing code-server v${local.local_code_server_version}\033[0m"
     sudo dpkg -i /opt/coder/assets/code-server.deb
 
-    # echo -e "\033[36m- ⏳ Installing extensions\033[0m"
-    # install-extension --local /opt/coder/assets/extensions/alefragnani.bookmarks-13.5.0.vsix
-    # install-extension --local /opt/coder/assets/extensions/bierner.markdown-mermaid-1.29.0.vsix
-    # install-extension --local /opt/coder/assets/extensions/dbaeumer.vscode-eslint-3.0.16.vsix
-    # install-extension --local /opt/coder/assets/extensions/chrisjsewell.myst-tml-syntax-0.1.3.vsix
-    # install-extension --local /opt/coder/assets/extensions/esbenp.prettier-vscode-11.0.0.vsix
-    # install-extension --local /opt/coder/assets/extensions/iceworks-team.iceworks-time-master-1.0.4.vsix
-    # install-extension --local /opt/coder/assets/extensions/MS-CEINTL.vscode-language-pack-zh-hans-1.104.0.vsix
-    # install-extension --local /opt/coder/assets/extensions/ms-python.black-formatter-2025.2.0.vsix
-    # install-extension --local /opt/coder/assets/extensions/ms-python.debugpy-2025.14.0.vsix
-    # install-extension --local /opt/coder/assets/extensions/ms-python.python-2025.16.0.vsix
-    # install-extension --local /opt/coder/assets/extensions/ms-python.vscode-pylance-2025.10.4.vsix
-    # install-extension --local /opt/coder/assets/extensions/redhat.vscode-xml-0.29.2025081108.vsix
-    # install-extension --local /opt/coder/assets/extensions/swyddfa.esbonio-0.96.6.vsix
-    # install-extension --local /opt/coder/assets/extensions/timonwong.shellcheck-0.38.3.vsix
-
     echo -e "\033[36m- Copying host extensions to user directory...\033[0m"
     cp -r /opt/coder/code-server/extensions "/home/${local.username}/.local/share/code-server/extensions"
 
@@ -342,7 +370,7 @@ resource "coder_script" "create_project_folders" {
     mkdir -p ./test_scripts
 
     business_component="${data.coder_parameter.business_component.value}"
-    business_module="${data.coder_parameter.business_module.value}"
+    business_module="${try(data.coder_parameter.business_module[0].value, "")}"
     module_tag_list=$(echo "${try(data.coder_parameter.module_tag_list[0].value, jsonencode([]))}" | tr -d '[]"')
     get-ke-files --component "$${business_component}" --module "$${business_module}" --tags "$${module_tag_list}"
 

@@ -167,20 +167,8 @@ resource "coder_script" "start_code_server" {
     echo -e "\033[36m- 📦 Installing code-server v${local.local_code_server_version}\033[0m"
     sudo dpkg -i /opt/coder/assets/code-server.deb
 
-    echo -e "\033[36m- ⏳ Installing extensions\033[0m"
-    install-extension --local /opt/coder/assets/extensions/alefragnani.bookmarks-13.5.0.vsix
-    install-extension --local /opt/coder/assets/extensions/bierner.markdown-mermaid-1.29.0.vsix
-    install-extension --local /opt/coder/assets/extensions/dbaeumer.vscode-eslint-3.0.16.vsix
-    install-extension --local /opt/coder/assets/extensions/chrisjsewell.myst-tml-syntax-0.1.3.vsix
-    install-extension --local /opt/coder/assets/extensions/esbenp.prettier-vscode-11.0.0.vsix
-    install-extension --local /opt/coder/assets/extensions/iceworks-team.iceworks-time-master-1.0.4.vsix
-    install-extension --local /opt/coder/assets/extensions/MS-CEINTL.vscode-language-pack-zh-hans-1.104.0.vsix
-    install-extension --local /opt/coder/assets/extensions/ms-python.black-formatter-2025.2.0.vsix
-    install-extension --local /opt/coder/assets/extensions/ms-python.debugpy-2025.14.0.vsix
-    install-extension --local /opt/coder/assets/extensions/ms-python.python-2025.16.0.vsix
-    install-extension --local /opt/coder/assets/extensions/redhat.vscode-xml-0.29.2025081108.vsix
-    install-extension --local /opt/coder/assets/extensions/swyddfa.esbonio-0.96.6.vsix
-    install-extension --local /opt/coder/assets/extensions/timonwong.shellcheck-0.38.3.vsix
+    echo -e "\033[36m- Copying host extensions to user directory...\033[0m"
+    cp -r /opt/coder/code-server/extensions "/home/${local.username}/.local/share/code-server/extensions"
 
     code-server \
     --auth none \
@@ -203,7 +191,7 @@ resource "coder_script" "create_project_folders" {
     #!/bin/bash
 
     mkdir -p /home/${local.username}/project    
-    cp -r /opt/coder/home-clone/project/* /home/${local.username}/project
+    cp -a /opt/coder/home-clone/project/. /home/${local.username}/project
 
     mkdir -p /home/${local.username}/.claude
     cp -r /opt/coder/home-clone/.claude/* /home/${local.username}/.claude/
@@ -335,20 +323,14 @@ resource "docker_container" "workspace" {
   }
   mounts {
     read_only = true
-    source    = "/opt/coder/assets/extensions"
-    target    = "/opt/coder/assets/extensions"
-    type      = "bind"
-  }
-  mounts {
-    read_only = true
-    source    = "/opt/coder/assets/ke"
-    target    = "/opt/coder/assets/ke"
-    type      = "bind"
-  }
-  mounts {
-    read_only = true
     source    = "/opt/coder/assets/site-packages.tgz"
     target    = "/opt/coder/assets/site-packages.tgz"
+    type      = "bind"
+  }
+  mounts {
+    read_only = true
+    source    = "/opt/coder/code-server/extensions"
+    target    = "/opt/coder/code-server/extensions"
     type      = "bind"
   }
   mounts {
@@ -362,6 +344,12 @@ resource "docker_container" "workspace" {
     source    = "coder-${data.coder_parameter.coder_workspace_id.value}-home"
     target    = "/opt/coder/home-clone"
     type      = "volume"
+  }
+  mounts {
+    read_only = true
+    source    = "/opt/coder/venvs/comware-test"
+    target    = "/opt/coder/venvs/comware-test"
+    type      = "bind"
   }
 }
 

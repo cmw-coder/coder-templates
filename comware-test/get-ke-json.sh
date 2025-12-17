@@ -4,10 +4,10 @@
 # Output format for Terraform external data source: {"data": "<escaped_json_string>"}
 
 # Read input from Terraform (stdin)
-eval "$(jq -r '@sh "KE_SVN_URL_INPUT=\(.ke_svn_url) SVN_PASSWORD_INPUT=\(.svn_password) SVN_USERNAME_INPUT=\(.svn_username)"')"
+eval "$(jq -r '@sh "SVN_PASSWORD_INPUT=\(.svn_password) SVN_USERNAME_INPUT=\(.svn_username)"')"
 
 # Get configuration from environment variables, use defaults as fallback
-KE_SVN_URL=${KE_SVN_URL_INPUT:-${KE_SVN_URL:-"http://10.153.3.214/comware-test-script/50.多环境移植/1/AIGC/KE/"}}
+KE_SVN_URL=${KE_SVN_URL:-"http://10.153.3.214/comware-test-script/50.多环境移植/1/AIGC/KE/"}
 SVN_PASSWORD=${SVN_PASSWORD_INPUT:-${SVN_PASSWORD:-"Zpr758258%"}}
 SVN_USERNAME=${SVN_USERNAME_INPUT:-${SVN_USERNAME:-"z11187"}}
 
