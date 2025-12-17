@@ -204,14 +204,71 @@ resource "coder_script" "create_project_folders" {
 
     mkdir -p /home/${local.username}/project    
     cp -r /opt/coder/home-clone/project/* /home/${local.username}/project
+
+    mkdir -p /home/${local.username}/.claude
+    cp -r /opt/coder/home-clone/.claude/* /home/${local.username}/.claude/
+  EOF
+}
+
+resource "coder_script" "init_python_venv" {
+  agent_id     = coder_agent.main.id
+  display_name = "Init Python Virtual Environment"
+  icon         = "/emojis/1f3e0.png"
+  run_on_start = true
+  start_blocks_login = true
+  script = <<EOF
+    #!/bin/bash
+    set -euo pipefail
+
     rm -rf /home/${local.username}/project/.venv
 
-    cd /home/${local.username}/project
-    python -m venv --system-site-packages .venv
-    source .venv/bin/activate
-    # pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com -r requirements.txt
-    cat requirements.txt | sed -e '/^\s*#/d' -e '/^\s*$/d' | xargs -n 1 pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com
-    tar -zxf /opt/coder/assets/site-packages.tgz -C .venv/lib/python3.13/site-packages/
+    LOCAL_VENV_PATH="/home/${local.username}/project/.venv"
+    SHARED_VENV_PATH="/opt/coder/venvs/comware-test"
+    SYNC_MARKER="$LOCAL_VENV_PATH/.shared_venv_synced"
+    FORCE_REFRESH="$${FORCE_SHARED_VENV_SYNC:-false}"
+
+    if [ ! -d "$SHARED_VENV_PATH" ]; then
+      echo -e "\033[31m- Shared venv $SHARED_VENV_PATH not found, please verify host setup.\033[0m"
+      exit 1
+    fi
+
+    if [ -L "$LOCAL_VENV_PATH" ]; then
+      echo -e "\033[33m- Removing legacy symlinked venv at $LOCAL_VENV_PATH\033[0m"
+      rm -f "$LOCAL_VENV_PATH"
+    fi
+
+    if [ "$FORCE_REFRESH" = "true" ]; then
+      echo -e "\033[33m- FORCE_SHARED_VENV_SYNC requested; refreshing local venv copy.\033[0m"
+      rm -rf "$LOCAL_VENV_PATH"
+      rm -f "$SYNC_MARKER"
+    fi
+
+    if [ ! -f "$SYNC_MARKER" ]; then
+      echo -e "\033[36m- Syncing shared venv into $LOCAL_VENV_PATH ...\033[0m"
+      rm -rf "$LOCAL_VENV_PATH"
+      mkdir -p "$LOCAL_VENV_PATH"
+      if command -v rsync >/dev/null 2>&1; then
+        rsync -a --delete "$SHARED_VENV_PATH/" "$LOCAL_VENV_PATH/"
+      else
+        (cd "$SHARED_VENV_PATH" && tar -cf - .) | (cd "$LOCAL_VENV_PATH" && tar -xf -)
+      fi
+      chown -R ${local.username}:${local.username} "$LOCAL_VENV_PATH"
+      if find "$LOCAL_VENV_PATH" -name EXTERNALLY-MANAGED -print -quit >/dev/null 2>&1; then
+        find "$LOCAL_VENV_PATH" -name EXTERNALLY-MANAGED -delete
+      fi
+      "$LOCAL_VENV_PATH/bin/python" -m ensurepip --upgrade
+      touch "$SYNC_MARKER"
+      echo -e "\033[32m- ✔️ Local venv cloned. Install additional packages freely (set FORCE_SHARED_VENV_SYNC=true to refresh).\033[0m"
+    else
+      echo -e "\033[32m- ✔️ Local venv already synced; custom packages preserved.\033[0m"
+    fi
+
+    mkdir -p ./.local/share/topo_editor
+    cp -r /opt/coder/home-clone/.local/share/topo_editor/* ./.local/share/topo_editor/
+
+    LOG_FILE="/home/${local.username}/.local/share/topo_editor/app.log"
+    echo -e "\033[36m- 🚀 Starting topo editor (logs: $LOG_FILE)\033[0m"
+    nohup $${LOCAL_VENV_PATH}/bin/python ./.local/share/topo_editor/main.py >"$LOG_FILE" 2>&1 </dev/null &
   EOF
 }
 
@@ -316,6 +373,7 @@ resource "docker_image" "main" {
       EXTENSION_VERSION = "1.104.0"
       PROXY_URL = "${local.proxy_url}"
       USER = "${local.username}"
+      WORKSPACE_NAME = "${local.workspace}"
     }
   }
   force_remove = true

@@ -10,15 +10,15 @@ COPY debian.sources /etc/apt/sources.list.d/
 # Write proxy configuration to /etc/apt/apt.conf.d/00proxy.conf if PROXY_URL is provided
 ARG PROXY_URL=""
 RUN if [ -n "$PROXY_URL" ]; then \
-    printf 'Acquire::http::Proxy "%s";\nAcquire::https::Proxy "%s";\nAcquire::ftp::Proxy "%s";\n' "$PROXY_URL" "$PROXY_URL" "$PROXY_URL" > /etc/apt/apt.conf.d/00proxy.conf; \
+        printf 'Acquire::http::Proxy "%s";\nAcquire::https::Proxy "%s";\nAcquire::ftp::Proxy "%s";\n' "$PROXY_URL" "$PROXY_URL" "$PROXY_URL" > /etc/apt/apt.conf.d/00proxy.conf; \
     fi
 
 # Install essential packages and set locale and shell
 RUN apt-get update \
     && apt-get install -y build-essential ca-certificates curl locales man-db sudo \
-        default-jdk fzf jq nano neovim unzip zsh \
+        default-jdk fzf jq nano neovim shellcheck unzip zsh \
         git subversion \
-        python3 python3-venv pip python-is-python3 black \
+        python3 python3-venv pip python-is-python3 \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
     && sed -i '/en_US.UTF-8/s/^#//g' /etc/locale.gen && locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
@@ -57,10 +57,13 @@ USER ${USER}
 WORKDIR /home/${USER}
 
 # Copy user specific configuration files
-COPY --chown=${USER}:${USER} _claude /home/${USER}/.claude/
 COPY --chown=${USER}:${USER} code-server /home/${USER}/.local/share/code-server/
 
 # Add languagepacks.json
 ARG EXTENSION_VERSION=1.99.2025040909
 RUN export LANGUAGEPACK_HASH=$(echo -n "MS-CEINTL.vscode-language-pack-zh-hans${EXTENSION_VERSION}" | md5sum | awk '{print $1}') \
     && sed -i "s|%USER%|${USER}|g;s|%LANGUAGEPACK_HASH%|${LANGUAGEPACK_HASH}|g;s|%EXTENSION_VERSION%|${EXTENSION_VERSION}|g" /home/${USER}/.local/share/code-server/languagepacks.json
+
+# Modify keybindings.json to use dynamic workspace and user names
+ARG WORKSPACE_NAME=default
+RUN sed -i "s|%WORKSPACE_NAME%|${WORKSPACE_NAME}|g;s|%USER%|${USER}|g" /home/${USER}/.local/share/code-server/User/keybindings.json
