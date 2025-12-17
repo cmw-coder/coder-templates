@@ -159,15 +159,11 @@ data "coder_parameter" "press_document_category" {
   name = "press_document_category"
   display_name = "Press Document Category"
   description = "Select the category of the press document"
-  default = ""
-  form_type = "dropdown"
+  form_type = "multi-select"
+  type = "list(string)"
+  default = jsonencode([])
   order = 4
   mutable = true
-
-  option {
-    name = "All"
-    value = ""
-  }
 
   dynamic "option" {
     for_each = keys(local.press_map[data.coder_parameter.press_document_version.value])
@@ -177,19 +173,44 @@ data "coder_parameter" "press_document_category" {
     }
   }
 }
+
 data "coder_parameter" "press_document_details" {
-  count = data.coder_parameter.press_document_category.value != "" ? 1 : 0
-  name = "press_document_details"
-  display_name = "Press Document Details"
-  description = "Select the details of the press document"
+  count = length(compact([
+    for v in values(data.coder_parameter.press_document_category) : try(
+      v.value,
+      try(v[0].value, null),
+      try(tostring(v), null)
+    )
+  ]))
+  name = "press_document_details_${count.index}"
+  display_name = "[${compact([
+    for v in values(data.coder_parameter.press_document_category) : try(
+      v.value,
+      try(v[0].value, null),
+      try(tostring(v), null)
+    )
+  ])[count.index]}] Press Document Details"
+  description = "Select the details of the press document '${compact([
+    for v in values(data.coder_parameter.press_document_category) : try(
+      v.value,
+      try(v[0].value, null),
+      try(tostring(v), null)
+    )
+  ])[count.index]}'"
   form_type = "multi-select"
   type = "list(string)"
   default = jsonencode([])
-  order = 5
+  order = 5 + count.index
   mutable = true
 
   dynamic "option" {
-    for_each = local.press_map[data.coder_parameter.press_document_version.value][data.coder_parameter.press_document_category.value]
+    for_each = try(local.press_map[data.coder_parameter.press_document_version.value][compact([
+      for v in values(data.coder_parameter.press_document_category) : try(
+        v.value,
+        try(v[0].value, null),
+        try(tostring(v), null)
+      )
+    ])[count.index]], [])
     content {
       name  = option.value
       value = option.value
