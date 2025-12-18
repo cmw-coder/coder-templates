@@ -371,13 +371,13 @@ resource "coder_script" "create_project_folders" {
     module_tag_list=$(echo "${try(data.coder_parameter.module_tag_list[0].value, jsonencode([]))}" | tr -d '[]"')
     get-ke-files --component "$${business_component}" --module "$${business_module}" --tags "$${module_tag_list}"
 
-    press_document_version="${data.coder_parameter.press_document_version.value}"
-    press_document_category_list=$(echo "${try(data.coder_parameter.press_document_category.value, jsonencode([]))}" | tr -d '[]"')
-    press_document_details_list=$(echo "${join(";", [for d in data.coder_parameter.press_document_details : join(",", jsondecode(d.value))])}")
-    echo "press_document_version: $${press_document_version}"
-    echo "press_document_category_list: $${press_document_category_list}"
-    echo "press_document_details_list: $${press_document_details_list}"
-    # get-press-documents --version "$${press_document_version}" --categories "$${press_document_category_list}" --details "$${press_document_details_list}"
+    press_version="${data.coder_parameter.press_document_version.value}"
+    press_category_list=$(echo "${try(data.coder_parameter.press_document_category.value, jsonencode([]))}" | tr -d '[]"')
+    press_details_list=$(echo "${join(";", [for d in data.coder_parameter.press_document_details : join(",", jsondecode(d.value))])}")
+    echo "press_version: $${press_version}"
+    echo "press_category_list: $${press_category_list}"
+    echo "press_details_list: $${press_details_list}"
+    get-press-files --version "$${press_version}" --categories "$${press_category_list}" --details "$${press_details_list}"
 
     # python -m venv --system-site-packages .venv
     # source .venv/bin/activate

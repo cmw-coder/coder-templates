@@ -59,15 +59,42 @@ export_dynamically() {
         for component in "${components[@]}"; do
             [ -z "$component" ] && continue
             component=$(echo "$component" | xargs)
-            export_by_url "${url}/${component}" "${dest_dir}"
+            export_by_url "${url}/${component}" "${dest_dir}/${component}"
         done
-    elif [ -z "${details}" ]; then
-        log_info "Copying all items under '${categories}' to '${dest_dir}'..."
-        export_by_url "${url}/${categories}" "${dest_dir}"
-    else
-        log_info "Copying specified tags under '${categories}/${details}' to '${dest_dir}'..."
-        export_by_tag_list "${url}/${categories}/${details}" "${dest_dir}" "${tag_list}" ","
+        return
     fi
+
+    IFS=',' read -ra category_arr <<< "${categories}"
+    IFS=';' read -ra detail_groups <<< "${details}"
+
+
+    for idx in "${!category_arr[@]}"; do
+        local category="${category_arr[$idx]}"
+        category=$(echo "$category" | xargs)
+        log_info "category: $category"
+        [ -z "${category}" ] && continue
+
+        local group=""
+        if [ ${#detail_groups[@]} -gt ${idx} ]; then
+            group="${detail_groups[$idx]}"
+        fi
+        log_info "group: $group"
+
+        if [ -z "${group}" ]; then
+            log_info "Copying all items under '${category}' to '${dest_dir}/${category}'..."
+            export_by_url "${url}/${category}" "${dest_dir}/${category}"
+            continue
+        fi
+
+        IFS=',' read -ra detail_arr <<< "${group}"
+        for detail in "${detail_arr[@]}"; do
+            detail=$(echo "$detail" | xargs)
+            log_info "detail: $detail"
+            [ -z "${detail}" ] && continue
+            log_info "Copying '${category}/${detail}' to '${dest_dir}/${category}/${detail}'..."
+            export_by_url "${url}/${category}/${detail}" "${dest_dir}/${category}/${detail}"
+        done
+    done
 }
 
 process_files(){
@@ -79,9 +106,9 @@ process_files(){
     local target_dir=""
 
     temp_dir="/tmp/press"
-    target_dir="${PROJECT_BASE_DIR}/press/${categories}/${details}"
+    target_dir="${PROJECT_BASE_DIR}/press/"
     # The module name in script_expansions does not have detailed suffixes
-    export_dynamically "${KE_SVN_URL}${version}" "${temp_dir}" "${categories}" "${details}"
+    export_dynamically "${PRESS_SVN_URL}${version}" "${temp_dir}" "${categories}" "${details}"
 
     mkdir -p "${target_dir}/"
     if [ -d "${temp_dir}" ] && [ "$(ls -A "${temp_dir}" 2>/dev/null)" ]; then
@@ -117,6 +144,10 @@ main() {
                 ;;
         esac
     done
+
+    echo "version: $version"
+    echo "categories: $categories"
+    echo "details: $details"
 
     process_files "$version" "$categories" "$details"
 }
