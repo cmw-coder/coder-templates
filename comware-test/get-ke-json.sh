@@ -47,80 +47,38 @@ urldecode() {
   printf '%b' "${url_encoded//%/\\x}"
 }
 
-# Build JSON structure using arrays to avoid subshell issues
-declare -A json_data
+# Build JSON using jq to avoid mangling names (e.g., keep dots intact)
+mapfile -t components <<< "$(get_svn_folder_contents "${KE_SVN_URL}脚本样例KE/")"
 
-# Get all components
-components=$(get_svn_folder_contents "${KE_SVN_URL}脚本样例KE/")
+ke_map='{}'
 
-# Build JSON string (store in variable for escaping)
-json_output="{"
-first_component=true
-
-while IFS= read -r ke_component; do
+for ke_component in "${components[@]}"; do
+  ke_component="${ke_component%/}"
   [ -z "$ke_component" ] && continue
-  
-  # Remove trailing slash if present
-  ke_component_clean="${ke_component%/}"
-  
-  # Add comma before component if not first
-  if [ "$first_component" = true ]; then
-    first_component=false
-  else
-    json_output+=","
-  fi
-  
-  json_output+="\"${ke_component_clean}\": {"
-  
-  # Get all modules for this component
-  modules=$(get_svn_folder_contents "${KE_SVN_URL}脚本样例KE/${ke_component}")
-  
-  first_module=true
-  
-  while IFS= read -r ke_module; do
-    [ -z "$ke_module" ] && continue
-    
-    # Remove trailing slash if present
-    ke_module_clean="${ke_module%/}"
-    
-    # Add comma before module if not first
-    if [ "$first_module" = true ]; then
-      first_module=false
-    else
-      json_output+=","
-    fi
-    
-    json_output+="\"${ke_module_clean}\": ["
-    
-    # Get all tags for this module
-    tags=$(get_svn_folder_contents "${KE_SVN_URL}脚本样例KE/${ke_component}${ke_module}")
-    
-    first_tag=true
-    
-    while IFS= read -r ke_tag; do
-      [ -z "$ke_tag" ] && continue
-      
-      # Remove trailing slash if present
-      ke_tag_clean="${ke_tag%/}"
-      
-      # Add comma before tag if not first
-      if [ "$first_tag" = true ]; then
-        first_tag=false
-      else
-        json_output+=", "
-      fi
-      
-      json_output+="\"${ke_tag_clean}\""
-    done <<< "$tags"
-    
-    json_output+="]"
-  done <<< "$modules"
-  
-  json_output+="}"
-done <<< "$components"
 
-json_output+="}"
+  mapfile -t modules <<< "$(get_svn_folder_contents "${KE_SVN_URL}脚本样例KE/${ke_component}/")"
+  component_obj='{}'
+
+  for ke_module in "${modules[@]}"; do
+    ke_module="${ke_module%/}"
+    [ -z "$ke_module" ] && continue
+
+    mapfile -t tags <<< "$(get_svn_folder_contents "${KE_SVN_URL}脚本样例KE/${ke_component}/${ke_module}/")"
+    cleaned_tags=()
+
+    for ke_tag in "${tags[@]}"; do
+      ke_tag="${ke_tag%/}"
+      [ -z "$ke_tag" ] && continue
+      cleaned_tags+=("$ke_tag")
+    done
+
+    tags_json=$(printf '%s\n' "${cleaned_tags[@]}" | jq -R . | jq -s .)
+    component_obj=$(printf '%s\n' "$component_obj" | jq --arg module "$ke_module" --argjson tags "$tags_json" '. + {($module): $tags}')
+  done
+
+  ke_map=$(printf '%s\n' "$ke_map" | jq --arg component "$ke_component" --argjson modules "$component_obj" '. + {($component): $modules}')
+done
 
 # Output in Terraform external data source format
 # The entire ke_map JSON is stored as a string value in the "data" key
-jq -n --arg data "$json_output" '{"data": $data}'
+jq -n --argjson data "$ke_map" '{"data": ($data | tostring)}'

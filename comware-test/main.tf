@@ -350,6 +350,17 @@ resource "coder_script" "start_code_server" {
     echo -e "\033[32m- ✔️ Code server started!\033[0m"
   EOF
 }
+resource "coder_script" "create_gns3_project" {
+  agent_id     = coder_agent.main.id
+  display_name = "Create GNS3 Project"
+  icon         = "/icon/terminal.svg"
+  run_on_start = true
+  start_blocks_login = true
+  script = <<EOF
+    #!/bin/bash
+    
+  EOF
+}
 resource "coder_script" "create_project_folders" {
   agent_id     = coder_agent.main.id
   display_name = "Create Project Folders"
