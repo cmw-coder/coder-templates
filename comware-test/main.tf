@@ -279,10 +279,10 @@ resource "coder_app" "get_workspace_id" {
   icon         = "${data.coder_workspace.me.access_url}/icon/widgets.svg"
   command      = "echo \"Workspace ID:\" && echo ${data.coder_workspace.me.id} && zsh"
 }
-resource "coder_app" "topo_editor" {
+resource "coder_app" "topo_manager" {
   agent_id     = coder_agent.main.id
-  slug         = "topo-editor"
-  display_name = "Topo Editor"
+  slug         = "topo-manager"
+  display_name = "Topo Manager"
   icon         = "https://fastapi.tiangolo.com/img/icon-white.svg"
   url          = "http://localhost:3000"
   subdomain    = true
@@ -441,16 +441,16 @@ resource "coder_script" "init_python_venv" {
     # cat requirements.txt | sed -e '/^\s*#/d' -e '/^\s*$/d' | xargs -n 1 pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com
     # tar -zxf /opt/coder/assets/site-packages.tgz -C .venv/lib/python3.13/site-packages/
 
-    echo -e "\033[36m- 📄 Writing '~/.local/share/topo_editor/main.py'...\033[0m"
-    mkdir -p ./.local/share/topo_editor
-    echo "${filebase64("${path.module}/assets/_local/share/topo_editor/main.py")}" | base64 -d > ./.local/share/topo_editor/main.py
+    echo -e "\033[36m- 📄 Writing '~/.local/share/topo_manager/main.py'...\033[0m"
+    mkdir -p ./.local/share/topo_manager
+    echo "${filebase64("${path.module}/assets/_local/share/topo_manager/main.py")}" | base64 -d > ./.local/share/topo_manager/main.py
 
     echo -e "\033[36m- Unzipping '/opt/coder/assets/public.zip'...\033[0m"
-    unzip -o /opt/coder/assets/public.zip -d ./.local/share/topo_editor/public/
+    unzip -o /opt/coder/assets/public.zip -d ./.local/share/topo_manager/public/
 
-    LOG_FILE="/home/${local.username}/.local/share/topo_editor/app.log"
+    LOG_FILE="/home/${local.username}/.local/share/topo_manager/app.log"
     echo -e "\033[36m- 🚀 Starting topo editor (logs: $LOG_FILE)\033[0m"
-    nohup $${LOCAL_VENV_PATH}/bin/python ./.local/share/topo_editor/main.py >"$LOG_FILE" 2>&1 </dev/null &
+    nohup $${LOCAL_VENV_PATH}/bin/python ./.local/share/topo_manager/main.py >"$LOG_FILE" 2>&1 </dev/null &
   EOF
 }
 resource "coder_script" "install_oh_my_zsh" {

@@ -31,6 +31,7 @@ GNS3_BASE_URL = "http://10.144.41.149:3080"
 GNS3_AUTH_HEADERS = {
     "Authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc2NjYzODU3MH0.9WQ32ECH8NnHp8bAePbHDjqYGR_7HikaxYFcVrcgtkU"
 }
+GNS3_TIMEOUT = 30  # seconds
 
 
 class Device(TypedDict):
@@ -245,8 +246,14 @@ async def post_topox(request: Request) -> JSONResponse:
     links_url = f"{GNS3_BASE_URL}/v3/projects/{project_id}/links"
 
     try:
-        nodes_resp = requests.get(nodes_url, headers=GNS3_AUTH_HEADERS, timeout=15)
-        links_resp = requests.get(links_url, headers=GNS3_AUTH_HEADERS, timeout=15)
+        with requests.Session() as session:
+            session.trust_env = False  # ignore proxy env that may redirect traffic
+            nodes_resp = session.get(
+                nodes_url, headers=GNS3_AUTH_HEADERS, timeout=GNS3_TIMEOUT
+            )
+            links_resp = session.get(
+                links_url, headers=GNS3_AUTH_HEADERS, timeout=GNS3_TIMEOUT
+            )
     except requests.RequestException:
         logger.exception("Failed to fetch topology data from GNS3")
         return JSONResponse(
@@ -279,6 +286,7 @@ async def post_topox(request: Request) -> JSONResponse:
         links_data = []
 
     node_id_to_name: Dict[str, str] = {}
+    node_id_to_portmap: Dict[str, Dict[str, str]] = {}
     device_list: List[Device] = []
 
     for node in nodes_data or []:
@@ -293,6 +301,24 @@ async def post_topox(request: Request) -> JSONResponse:
         if node_id:
             node_id_to_name[node_id] = name
 
+        # Build a port_number -> interface map for this node (used for link port names)
+        properties = node.get("properties") if isinstance(node, dict) else None
+        ports_mapping = (
+            properties.get("ports_mapping") if isinstance(properties, dict) else None
+        )
+        if isinstance(ports_mapping, list):
+            port_map: Dict[str, str] = {}
+            for port in ports_mapping:
+                if not isinstance(port, dict):
+                    continue
+                port_num = port.get("port_number")
+                if port_num is None:
+                    continue
+                iface = port.get("interface") or port.get("name") or ""
+                port_map[str(port_num)] = str(iface)
+            if port_map and node_id:
+                node_id_to_portmap[node_id] = port_map
+
     link_list: List[Link] = []
     for link in links_data or []:
         if not isinstance(link, dict):
@@ -304,10 +330,21 @@ async def post_topox(request: Request) -> JSONResponse:
         start_node = link_nodes[0] if isinstance(link_nodes[0], dict) else {}
         end_node = link_nodes[1] if isinstance(link_nodes[1], dict) else {}
 
-        start_device = node_id_to_name.get(str(start_node.get("node_id", "")), "")
-        end_device = node_id_to_name.get(str(end_node.get("node_id", "")), "")
-        start_port = str(start_node.get("port_number", ""))
-        end_port = str(end_node.get("port_number", ""))
+        start_node_id = str(start_node.get("node_id", ""))
+        end_node_id = str(end_node.get("node_id", ""))
+
+        start_device = node_id_to_name.get(start_node_id, "")
+        end_device = node_id_to_name.get(end_node_id, "")
+
+        start_port_number = start_node.get("port_number")
+        end_port_number = end_node.get("port_number")
+
+        start_port = node_id_to_portmap.get(start_node_id, {}).get(
+            str(start_port_number), str(start_port_number or "")
+        )
+        end_port = node_id_to_portmap.get(end_node_id, {}).get(
+            str(end_port_number), str(end_port_number or "")
+        )
 
         link_list.append(
             {
