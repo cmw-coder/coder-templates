@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Topo Editor API")
 
 GNS3_BASE_URL = "http://10.144.41.149:3080"
+GNS3_AUTH_HEADERS = {
+    "Authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc2NjYzODU3MH0.9WQ32ECH8NnHp8bAePbHDjqYGR_7HikaxYFcVrcgtkU"
+}
 
 
 class Device(TypedDict):
@@ -242,8 +245,8 @@ async def post_topox(request: Request) -> JSONResponse:
     links_url = f"{GNS3_BASE_URL}/v3/projects/{project_id}/links"
 
     try:
-        nodes_resp = requests.get(nodes_url, timeout=15)
-        links_resp = requests.get(links_url, timeout=15)
+        nodes_resp = requests.get(nodes_url, headers=GNS3_AUTH_HEADERS, timeout=15)
+        links_resp = requests.get(links_url, headers=GNS3_AUTH_HEADERS, timeout=15)
     except requests.RequestException:
         logger.exception("Failed to fetch topology data from GNS3")
         return JSONResponse(
