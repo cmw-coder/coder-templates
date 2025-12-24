@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any, Dict, List, TypedDict
 import xml.etree.ElementTree as ET
 
+import requests
+
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -24,6 +26,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Topo Editor API")
+
+GNS3_BASE_URL = "http://10.144.41.149:3080"
 
 
 class Device(TypedDict):
@@ -45,6 +49,10 @@ class Network(TypedDict):
 
 class RequestBody(TypedDict):
     network: Network
+
+
+class ProjectRequest(TypedDict):
+    project_id: str
 
 
 def _indent(elem: ET.Element, level: int = 0) -> None:
@@ -218,11 +226,98 @@ async def get_topox() -> JSONResponse:
 
 @app.post("/api/v1/topox")
 async def post_topox(request: Request) -> JSONResponse:
-    payload: RequestBody = await request.json()
+    payload: ProjectRequest = await request.json()
     logger.info(
         "POST /api/v1/topox payload: %s", json.dumps(payload, ensure_ascii=False)
     )
-    topox_xml = build_topox(payload)
+
+    project_id = payload.get("project_id")
+    if not project_id or not isinstance(project_id, str):
+        return JSONResponse(
+            content={"status": "error", "message": "project_id is required."},
+            status_code=400,
+        )
+
+    nodes_url = f"{GNS3_BASE_URL}/v3/projects/{project_id}/nodes"
+    links_url = f"{GNS3_BASE_URL}/v3/projects/{project_id}/links"
+
+    try:
+        nodes_resp = requests.get(nodes_url, timeout=15)
+        links_resp = requests.get(links_url, timeout=15)
+    except requests.RequestException:
+        logger.exception("Failed to fetch topology data from GNS3")
+        return JSONResponse(
+            content={"status": "error", "message": "Failed to reach GNS3 server."},
+            status_code=502,
+        )
+
+    if nodes_resp.status_code != 200 or links_resp.status_code != 200:
+        logger.error(
+            "GNS3 API error nodes:%s links:%s", nodes_resp.status_code, links_resp.status_code
+        )
+        return JSONResponse(
+            content={"status": "error", "message": "GNS3 API returned an error."},
+            status_code=502,
+        )
+
+    try:
+        nodes_data: List[Dict[str, Any]] = nodes_resp.json()  # type: ignore[assignment]
+        links_data: List[Dict[str, Any]] = links_resp.json()  # type: ignore[assignment]
+    except ValueError:
+        logger.exception("Failed to decode GNS3 responses")
+        return JSONResponse(
+            content={"status": "error", "message": "Invalid response from GNS3."},
+            status_code=502,
+        )
+
+    if not isinstance(nodes_data, list):
+        nodes_data = []
+    if not isinstance(links_data, list):
+        links_data = []
+
+    node_id_to_name: Dict[str, str] = {}
+    device_list: List[Device] = []
+
+    for node in nodes_data or []:
+        if not isinstance(node, dict):
+            continue
+        name = str(node.get("name", ""))
+        node_id = str(node.get("node_id", ""))
+        x = node.get("x")
+        y = node.get("y")
+        location = f"{x},{y}" if x is not None and y is not None else ""
+        device_list.append({"name": name, "location": location})
+        if node_id:
+            node_id_to_name[node_id] = name
+
+    link_list: List[Link] = []
+    for link in links_data or []:
+        if not isinstance(link, dict):
+            continue
+        link_nodes = link.get("nodes") or []
+        if not isinstance(link_nodes, list) or len(link_nodes) < 2:
+            continue
+
+        start_node = link_nodes[0] if isinstance(link_nodes[0], dict) else {}
+        end_node = link_nodes[1] if isinstance(link_nodes[1], dict) else {}
+
+        start_device = node_id_to_name.get(str(start_node.get("node_id", "")), "")
+        end_device = node_id_to_name.get(str(end_node.get("node_id", "")), "")
+        start_port = str(start_node.get("port_number", ""))
+        end_port = str(end_node.get("port_number", ""))
+
+        link_list.append(
+            {
+                "start_device": start_device,
+                "start_port": start_port,
+                "end_device": end_device,
+                "end_port": end_port,
+            }
+        )
+
+    network: Network = {"device_list": device_list, "link_list": link_list}
+    topox_xml = build_topox({"network": network})
+
     topox_path = Path.home() / "project" / "test_scripts" / "default.topox"
     try:
         topox_path.parent.mkdir(parents=True, exist_ok=True)
