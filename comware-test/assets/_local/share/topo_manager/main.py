@@ -286,6 +286,7 @@ async def post_topox(request: Request) -> JSONResponse:
     try:
         with requests.Session() as session:
             session.trust_env = False  # ignore proxy env that may redirect traffic
+            session.verify = False  # align with to_web_ui; certs are managed via custom bundle
             nodes_resp = session.get(
                 nodes_url, headers=GNS3_AUTH_HEADERS, timeout=GNS3_TIMEOUT
             )
