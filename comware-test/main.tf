@@ -362,7 +362,7 @@ resource "coder_script" "create_gns3_project" {
     
     echo -e "\033[36m- 📄 Writing '~/.local/share/create_gns3_project.py'...\033[0m"
     echo "${filebase64("${path.module}/assets/_local/share/create_gns3_project.py")}" | base64 -d > /home/${local.username}/.local/share/create_gns3_project.py
-    python3 /home/${local.username}/.local/share/create_gns3_project.py --project-name "${local.workspace}--${local.username}" --project-id-file "/home/${local.username}/.gns3_project_id"
+    python3 /home/${local.username}/.local/share/create_gns3_project.py --project-name "topo-manager--${local.workspace}--${local.username}" --project-id-file "/home/${local.username}/.gns3_project_id"
   EOF
 }
 

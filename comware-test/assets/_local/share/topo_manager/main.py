@@ -15,8 +15,8 @@ import xml.etree.ElementTree as ET
 import requests
 
 import uvicorn
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Topo Editor API")
 
-GNS3_BASE_URL = "http://10.144.41.149:3080"
+GNS3_BASE_URL = "https://gns3-server.coder-open.h3c.com"
 GNS3_AUTH_HEADERS = {
     "Authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImV4cCI6MTc2NjYzODU3MH0.9WQ32ECH8NnHp8bAePbHDjqYGR_7HikaxYFcVrcgtkU"
 }
@@ -57,6 +57,28 @@ class RequestBody(TypedDict):
 
 class ProjectRequest(TypedDict):
     project_id: str
+
+
+def load_project_id_from_file() -> tuple[str, str | None]:
+    """Load project id from ~/.gns3_project_id with logging.
+
+    Returns a tuple of (project_id, error_message). error_message is populated
+    when reading fails or the file is empty so callers can surface a user-friendly
+    message while logs keep the details.
+    """
+
+    project_id_path = Path.home() / ".gns3_project_id"
+    try:
+        project_id = project_id_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        logger.exception("Failed to read %s", project_id_path)
+        return "", "Failed to read project id file."
+
+    if not project_id:
+        logger.error("%s is empty", project_id_path)
+        return "", "Project id file is empty."
+
+    return project_id, None
 
 
 def _indent(elem: ET.Element, level: int = 0) -> None:
@@ -230,15 +252,31 @@ async def get_topox() -> JSONResponse:
 
 @app.post("/api/v1/topox")
 async def post_topox(request: Request) -> JSONResponse:
-    payload: ProjectRequest = await request.json()
+    try:
+        payload_raw: Any = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("POST /api/v1/topox received no JSON body or invalid JSON")
+        payload_raw = {}
+    except Exception:
+        logger.exception("POST /api/v1/topox failed to parse JSON body")
+        payload_raw = {}
+
+    payload: Dict[str, Any] = payload_raw if isinstance(payload_raw, dict) else {}
     logger.info(
         "POST /api/v1/topox payload: %s", json.dumps(payload, ensure_ascii=False)
     )
 
-    project_id = payload.get("project_id")
-    if not project_id or not isinstance(project_id, str):
+    project_id = payload.get("project_id") if isinstance(payload.get("project_id"), str) else ""
+    project_id_error: str | None = None
+    if not project_id:
+        project_id, project_id_error = load_project_id_from_file()
+
+    if not project_id:
         return JSONResponse(
-            content={"status": "error", "message": "project_id is required."},
+            content={
+                "status": "error",
+                "message": project_id_error or "project_id is required (body or .gns3_project_id).",
+            },
             status_code=400,
         )
 
@@ -372,6 +410,64 @@ async def post_topox(request: Request) -> JSONResponse:
             content={"status": "error", "message": "Failed to write topox file."},
             status_code=500,
         )
+
+
+@app.get("/api/v1/to-web-ui", response_model=None)
+async def to_web_ui() -> Response:
+    logger.info("GET /api/v1/to-web-ui")
+
+    auth_url = f"{GNS3_BASE_URL.rstrip('/')}/v3/access/users/authenticate"
+    try:
+        with requests.Session() as session:
+            session.trust_env = False  # ignore proxy env that may redirect traffic
+            session.verify = False  # mirror create_gns3_project.py behavior
+            auth_resp = session.post(
+                auth_url,
+                json={"username": "admin", "password": "admin"},
+                timeout=GNS3_TIMEOUT,
+            )
+    except requests.RequestException:
+        logger.exception("Failed to authenticate with GNS3")
+        return JSONResponse(
+            content={"status": "error", "message": "Failed to reach GNS3 server."},
+            status_code=502,
+        )
+
+    if auth_resp.status_code not in (200, 201):
+        logger.error("GNS3 auth failed status:%s", auth_resp.status_code)
+        return JSONResponse(
+            content={"status": "error", "message": "GNS3 authentication failed."},
+            status_code=502,
+        )
+
+    try:
+        token = auth_resp.json().get("access_token", "")
+    except ValueError:
+        logger.exception("Failed to decode GNS3 auth response")
+        return JSONResponse(
+            content={"status": "error", "message": "Invalid response from GNS3."},
+            status_code=502,
+        )
+
+    if not token:
+        logger.error("GNS3 auth response missing access_token")
+        return JSONResponse(
+            content={"status": "error", "message": "No access_token received from GNS3."},
+            status_code=502,
+        )
+
+    project_id, project_id_error = load_project_id_from_file()
+    if project_id_error:
+        return JSONResponse(
+            content={"status": "error", "message": project_id_error},
+            status_code=500,
+        )
+
+    target_url = (
+        f"{GNS3_BASE_URL.rstrip('/')}/static/web-ui/controller/1/project/"
+        f"{project_id}?token={token}"
+    )
+    return RedirectResponse(url=target_url, status_code=302)
 
 
 @app.get("/healthz")
