@@ -366,33 +366,6 @@ resource "coder_script" "create_gns3_project" {
   EOF
 }
 
-resource "coder_script" "delete_gns3_project" {
-  agent_id     = coder_agent.main.id
-  display_name = "Delete GNS3 Project"
-  icon         = "/icon/terminal.svg"
-  run_on_stop  = true
-  start_blocks_login = false
-  script = <<EOF
-    #!/bin/bash
-    set -euo pipefail
-
-    if [ "${data.coder_workspace.me.transition}" != "delete" ]; then
-      echo "Workspace transition is '${data.coder_workspace.me.transition}' (not delete); skipping GNS3 project deletion"
-      exit 0
-    fi
-
-    if [ -f "/home/${local.username}/.gns3_project_id" ]; then
-      echo -e "\033[36m- 🗑️ Deleting GNS3 project...\033[0m"
-      echo -e "\033[36m- 📄 Writing '~/.local/share/delete_gns3_project.py'...\033[0m"
-      echo "${filebase64("${path.module}/assets/_local/share/delete_gns3_project.py")}" | base64 -d > /home/${local.username}/.local/share/delete_gns3_project.py
-    
-      python3 /home/${local.username}/.local/share/delete_gns3_project.py --project-id-file "/home/${local.username}/.gns3_project_id"
-      echo -e "\033[32m- ✔️ GNS3 project deleted.\033[0m"
-    else
-      echo -e "\033[33m- No GNS3 project ID file found; skipping deletion.\033[0m"
-    fi
-  EOF
-}
 resource "coder_script" "create_project_folders" {
   agent_id     = coder_agent.main.id
   display_name = "Create Project Folders"
