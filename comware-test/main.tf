@@ -376,10 +376,9 @@ resource "coder_script" "create_project_folders" {
     #!/bin/bash
 
     cd /home/${local.username}/project
-    mkdir -p ./KE
+    mkdir -p ./KE知识库
     mkdir -p ./press
     mkdir -p ./test_cases
-    mkdir -p ./test_example
     mkdir -p ./test_scripts
 
     business_component="${data.coder_parameter.business_component.value}"

@@ -7,7 +7,7 @@
 eval "$(jq -r '@sh "SVN_PASSWORD_INPUT=\(.svn_password) SVN_USERNAME_INPUT=\(.svn_username)"')"
 
 # Get configuration from environment variables, use defaults as fallback
-KE_SVN_URL=${KE_SVN_URL:-"http://10.153.3.214/comware-test-script/50.多环境移植/1/AIGC/KE/"}
+KE_SVN_URL=${KE_SVN_URL:-"http://10.153.3.214/comware-test-script/50.多环境移植/1/AIGC/KE_ver2/"}
 SVN_PASSWORD=${SVN_PASSWORD_INPUT:-${SVN_PASSWORD:-"Zpr758258%"}}
 SVN_USERNAME=${SVN_USERNAME_INPUT:-${SVN_USERNAME:-"z11187"}}
 
@@ -48,7 +48,7 @@ urldecode() {
 }
 
 # Build JSON using jq to avoid mangling names (e.g., keep dots intact)
-mapfile -t components <<< "$(get_svn_folder_contents "${KE_SVN_URL}脚本样例KE/")"
+mapfile -t components <<< "$(get_svn_folder_contents "${KE_SVN_URL}/")"
 
 ke_map='{}'
 
@@ -56,14 +56,14 @@ for ke_component in "${components[@]}"; do
   ke_component="${ke_component%/}"
   [ -z "$ke_component" ] && continue
 
-  mapfile -t modules <<< "$(get_svn_folder_contents "${KE_SVN_URL}脚本样例KE/${ke_component}/")"
+  mapfile -t modules <<< "$(get_svn_folder_contents "${KE_SVN_URL}/${ke_component}/")"
   component_obj='{}'
 
   for ke_module in "${modules[@]}"; do
     ke_module="${ke_module%/}"
     [ -z "$ke_module" ] && continue
 
-    mapfile -t tags <<< "$(get_svn_folder_contents "${KE_SVN_URL}脚本样例KE/${ke_component}/${ke_module}/")"
+    mapfile -t tags <<< "$(get_svn_folder_contents "${KE_SVN_URL}/${ke_component}/${ke_module}/脚本示例")"
     cleaned_tags=()
 
     for ke_tag in "${tags[@]}"; do

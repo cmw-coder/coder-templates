@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Get configuration from environment variables, use defaults as fallback
-KE_SVN_URL=${KE_SVN_URL:-"http://10.153.3.214/comware-test-script/50.多环境移植/1/AIGC/KE/"}        # This should be set automatically
+KE_SVN_URL=${KE_SVN_URL:-"http://10.153.3.214/comware-test-script/50.多环境移植/1/AIGC/KE_ver2/"}        # This should be set automatically
 PROJECT_BASE_DIR=${PROJECT_BASE_DIR:-"/home/$USER/project"} # This should be set automatically
 
 # shellcheck source=/dev/null
@@ -25,20 +25,20 @@ get_svn_folder_contents() {
     echo "${contents}"
 }
 
-export_by_tag_list() {
-    local url="$1"
-    local dest_dir="$2"
-    local tag_list="$3"
-    local separator="$4"
+# export_by_tag_list() {
+#     local url="$1"
+#     local dest_dir="$2"
+#     local tag_list="$3"
+#     local separator="$4"
 
-    # Split by separator and export each tag individually
-    IFS="$separator" read -ra tags <<< "$tag_list"
-    for item in "${tags[@]}"; do
-        [ -z "$item" ] && continue
-        item_clean=$(echo "$item" | xargs)
-        svn_s export --force "${url}/${item_clean}/" "${dest_dir}/${item_clean}"
-    done
-}
+#     # Split by separator and export each tag individually
+#     IFS="$separator" read -ra tags <<< "$tag_list"
+#     for item in "${tags[@]}"; do
+#         [ -z "$item" ] && continue
+#         item_clean=$(echo "$item" | xargs)
+#         svn_s export --force "${url}/${item_clean}/" "${dest_dir}/${item_clean}"
+#     done
+# }
 
 export_by_url() {
     local url="$1"
@@ -51,116 +51,66 @@ export_by_url() {
     svn_s export --force "${url}/" "${dest_dir}/"
 }
 
-export_dynamically() {
-    local url="$1"
-    local dest_dir="$2"
-    local component="$3"
-    local module="$4"
-    local tag_list="$5"
+select_script_examples() {
+    local base_dir="$1"
+    local tag_list="$2"
 
-    if [ -z "${url}" ]; then
-        log_error "URL is required."
-        exit 1
-    fi
+    local separator=","
 
-    if [ -z "${dest_dir}" ]; then
-        log_error "Destination directory is required."
-        exit 1
-    fi
+    # Create an associative array for quick lookup
+    declare -A valid_tags
+    IFS="$separator" read -ra tags_array <<< "$tag_list"
+    for tag in "${tags_array[@]}"; do
+        tag_clean=$(echo "$tag" | xargs)
+        valid_tags["$tag_clean"]=1
+    done
+
+    # Iterate over directories in the base_dir
+    for dir in "${base_dir}/脚本示例"*/; do
+        [ -d "$dir" ] || continue
+        dir_name=$(basename "$dir")
+        if [ -z "${valid_tags[$dir_name]}" ]; then
+            log_info "Removing redundant script example directory: ${dir}"
+            rm -rf "$dir"
+        else
+            log_info "Keeping script example directory: ${dir}"
+            folder_basename=$(basename "$dir")
+            for python_file in "${dir}"*.py; do
+                [ -f "$python_file" ] || continue
+                mv -n "$python_file" "${dir}/${folder_basename}.py"
+            done
+        fi
+    done
+}
+
+process() {
+    local component="$1"
+    local module="$2"
+    local tag_list="$3"
+
+    local temp_dir="/tmp/ke_export"
+    local target_dir="${PROJECT_BASE_DIR}/KE知识库"
 
     if [ -z "${component}" ]; then
-        log_info "Copying all items to '${dest_dir}'..."
-        local components_list=$(get_svn_folder_contents "${url}")
+        log_info "Copying all items to '${temp_dir}'..."
+        local components_list=$(get_svn_folder_contents "${KE_SVN_URL}")
         IFS=',' read -ra components <<< "$components_list"
         for component in "${components[@]}"; do
             [ -z "$component" ] && continue
             component=$(echo "$component" | xargs)
-            export_by_url "${url}/${component}" "${dest_dir}"
+            export_by_url "${KE_SVN_URL}/${component}" "${temp_dir}/${component}"
         done
     elif [ -z "${module}" ]; then
-        log_info "Copying all items under '${component}' to '${dest_dir}'..."
-        export_by_url "${url}/${component}" "${dest_dir}"
+        log_info "Copying all items under '${component}' to '${temp_dir}'..."
+        export_by_url "${KE_SVN_URL}/${component}" "${temp_dir}/${component}"
     elif [ -z "${tag_list}" ]; then
-        log_info "Copying all items under '${component}/${module}' to '${dest_dir}'..."
-        export_by_url "${url}/${component}/${module}" "${dest_dir}"
+        log_info "Copying all items under '${component}/${module}' to '${temp_dir}'..."
+        export_by_url "${KE_SVN_URL}/${component}/${module}" "${temp_dir}/${component}/${module}"
     else
-        log_info "Copying specified tags under '${component}/${module}' to '${dest_dir}'..."
-        export_by_tag_list "${url}/${component}/${module}" "${dest_dir}" "${tag_list}" ","
+        log_info "Copying specified tags under '${component}/${module}' to '${temp_dir}'..."
+        export_by_url "${KE_SVN_URL}/${component}/${module}" "${temp_dir}/${component}/${module}"
+        select_script_examples "${temp_dir}/${component}/${module}" "${tag_list}"
     fi
-}
-
-process_by_category(){
-    local category="$1"
-    local component="$2"
-    local module="$3"
-    local tag_list="$4"
-
-    local folder_name=""
-    local temp_dir=""
-    local target_dir=""
-    case "$category" in
-        # basic_config)
-        #     folder_name="基础配置KE"
-        #     temp_dir="/tmp/basic_config"
-        #     target_dir="${PROJECT_BASE_DIR}/KE"
-        #     export_dynamically "${KE_SVN_URL}${folder_name}" "${temp_dir}" "$component" "$module" "$tag_list"
-        #     ;;
-        # test_design)
-        #     folder_name="测试设计KE"
-        #     temp_dir="/tmp/test_design"
-        #     target_dir="${PROJECT_BASE_DIR}/KE"
-        #     export_dynamically "${KE_SVN_URL}${folder_name}" "${temp_dir}" "$component" "$module" "$tag_list"
-        #     ;;
-        background_scripts)
-            folder_name="背景脚本KE"
-            temp_dir="/tmp/background_scripts"
-            target_dir="${PROJECT_BASE_DIR}/KE/${component}/${module}"
-            export_dynamically "${KE_SVN_URL}${folder_name}" "${temp_dir}" "${component}" "${module}"
-
-            # Get all folders under the /tmp/background_scripts,
-            # rename "conftest.py" in these folders to "conftest_{folder_name}.py",
-            # and "*.topox" files to "{folder_name}.topox".
-            for dir in "${temp_dir}/"*/; do
-                [ -d "$dir" ] || continue
-                folder_basename=$(basename "$dir")
-                if [ -f "${dir}/conftest.py" ]; then
-                    mv "${dir}/conftest.py" "${dir}/conftest_${folder_basename}.py"
-                fi
-                for topox_file in "${dir}"*.topox; do
-                    [ -f "$topox_file" ] || continue
-                    mv -n "$topox_file" "${dir}/${folder_basename}.topox"
-                done
-            done
-            ;;
-        script_expansions)
-            folder_name="脚本扩写KE"
-            temp_dir="/tmp/script_expansions"
-            target_dir="${PROJECT_BASE_DIR}/KE/${component}/${module}"
-            # The module name in script_expansions does not have detailed suffixes
-            export_dynamically "${KE_SVN_URL}${folder_name}" "${temp_dir}" "${component}" "${module%_*}"
-            ;;
-        script_examples)
-            folder_name="脚本样例KE"
-            temp_dir="/tmp/script_examples"
-            target_dir="${PROJECT_BASE_DIR}/test_example/${component}/${module}"
-            export_dynamically "${KE_SVN_URL}${folder_name}" "${temp_dir}" "${component}" "${module}" "${tag_list}"
-
-            # Get all folders under the /tmp/background_scripts,
-            # rename "*.py" in these folders to "{folder_name}.py"
-            for dir in "${temp_dir}/"*/; do
-                [ -d "$dir" ] || continue
-                folder_basename=$(basename "$dir")
-                for python_file in "${dir}"*.py; do
-                    [ -f "$python_file" ] || continue
-                    mv -n "$python_file" "${dir}/${folder_basename}.py"
-                done
-            done
-            ;;
-        *)
-            log_error "Unsupported category: $category"
-            exit 1
-            ;;
-    esac
 
     mkdir -p "${target_dir}/"
     if [ -d "${temp_dir}" ] && [ "$(ls -A "${temp_dir}" 2>/dev/null)" ]; then
@@ -197,11 +147,7 @@ main() {
         esac
     done
 
-    # process_by_category "basic_config" "$business_component" "$business_module" "$business_tag_list"
-    # process_by_category "test_design" "$business_component" "$business_module" "$business_tag_list"
-    process_by_category "background_scripts" "$business_component" "$business_module" "$business_tag_list"
-    process_by_category "script_expansions" "$business_component" "$business_module" "$business_tag_list"
-    process_by_category "script_examples" "$business_component" "$business_module" "$business_tag_list"
+    process "$business_component" "$business_module" "$business_tag_list"
 }
 
 # Execute main function
