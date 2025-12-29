@@ -66,7 +66,7 @@ select_script_examples() {
     done
 
     # Iterate over directories in the base_dir
-    for dir in "${base_dir}/脚本示例"*/; do
+    for dir in "${base_dir}/脚本示例/"*/; do
         [ -d "$dir" ] || continue
         dir_name=$(basename "$dir")
         if [ -z "${valid_tags[$dir_name]}" ]; then

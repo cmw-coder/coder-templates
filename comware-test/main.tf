@@ -279,10 +279,10 @@ resource "coder_app" "get_workspace_id" {
   icon         = "${data.coder_workspace.me.access_url}/icon/widgets.svg"
   command      = "echo \"Workspace ID:\" && echo ${data.coder_workspace.me.id} && zsh"
 }
-resource "coder_app" "topo_manager" {
+resource "coder_app" "topo_scriptgen" {
   agent_id     = coder_agent.main.id
-  slug         = "topo-manager"
-  display_name = "Topo Manager"
+  slug         = "topo-scriptgen"
+  display_name = "Topo Scriptgen"
   icon         = "https://fastapi.tiangolo.com/img/icon-white.svg"
   url          = "http://localhost:3000"
   subdomain    = true
@@ -362,7 +362,7 @@ resource "coder_script" "create_gns3_project" {
     
     echo -e "\033[36m- 📄 Writing '~/.local/share/create_gns3_project.py'...\033[0m"
     echo "${filebase64("${path.module}/assets/_local/share/create_gns3_project.py")}" | base64 -d > /home/${local.username}/.local/share/create_gns3_project.py
-    python3 /home/${local.username}/.local/share/create_gns3_project.py --project-name "topo-manager--${local.workspace}--${local.username}" --project-id-file "/home/${local.username}/.gns3_project_id"
+    python3 /home/${local.username}/.local/share/create_gns3_project.py --project-name "topo-scriptgen--${local.workspace}--${local.username}" --project-id-file "/home/${local.username}/.gns3_project_id"
   EOF
 }
 
@@ -393,11 +393,6 @@ resource "coder_script" "create_project_folders" {
     echo "press_category_list: $${press_category_list}"
     echo "press_details_list: $${press_details_list}"
     get-press-files --version "$${press_version}" --categories "$${press_category_list}" --details "$${press_details_list}"
-
-    # python -m venv --system-site-packages .venv
-    # source .venv/bin/activate
-    # cat requirements.txt | sed -e '/^\s*#/d' -e '/^\s*$/d' | xargs -n 1 pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com
-    # tar -zxf /opt/coder/assets/site-packages.tgz -C .venv/lib/python3.13/site-packages/
   EOF
 }
 resource "coder_script" "init_python_venv" {
@@ -456,16 +451,11 @@ resource "coder_script" "init_python_venv" {
     # cat requirements.txt | sed -e '/^\s*#/d' -e '/^\s*$/d' | xargs -n 1 pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com
     # tar -zxf /opt/coder/assets/site-packages.tgz -C .venv/lib/python3.13/site-packages/
 
-    echo -e "\033[36m- 📄 Writing '~/.local/share/topo_manager/main.py'...\033[0m"
-    mkdir -p ./.local/share/topo_manager
-    echo "${filebase64("${path.module}/assets/_local/share/topo_manager/main.py")}" | base64 -d > ./.local/share/topo_manager/main.py
+    git clone --recursive https://github.com/cmw-coder/topo-scriptgen-backend.git /home/${local.username}/.local/share/topo-scriptgen-backend
 
-    echo -e "\033[36m- Unzipping '/opt/coder/assets/public.zip'...\033[0m"
-    unzip -o /opt/coder/assets/public.zip -d ./.local/share/topo_manager/public/
-
-    LOG_FILE="/home/${local.username}/.local/share/topo_manager/app.log"
-    echo -e "\033[36m- 🚀 Starting topo editor (logs: $LOG_FILE)\033[0m"
-    nohup $${LOCAL_VENV_PATH}/bin/python ./.local/share/topo_manager/main.py >"$LOG_FILE" 2>&1 </dev/null &
+    LOG_FILE="/home/${local.username}/.local/share/topo-scriptgen-backend/app.log"
+    echo -e "\033[36m- 🚀 Starting topo-scriptgen-backend (logs: $LOG_FILE)\033[0m"
+    nohup $${LOCAL_VENV_PATH}/bin/python ./.local/share/topo-scriptgen-backend/main.py >"$LOG_FILE" 2>&1 </dev/null &
   EOF
 }
 resource "coder_script" "install_oh_my_zsh" {
@@ -571,12 +561,6 @@ resource "docker_container" "workspace" {
     read_only = true
     source    = "/opt/coder/assets/code-server_${local.local_code_server_version}_amd64.deb"
     target    = "/opt/coder/assets/code-server.deb"
-    type      = "bind"
-  }
-  mounts {
-    read_only = true
-    source    = "/opt/coder/assets/public.zip"
-    target    = "/opt/coder/assets/public.zip"
     type      = "bind"
   }
   mounts {
