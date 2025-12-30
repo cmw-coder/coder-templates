@@ -451,6 +451,9 @@ resource "coder_script" "init_python_venv" {
     # cat requirements.txt | sed -e '/^\s*#/d' -e '/^\s*$/d' | xargs -n 1 pip install -i http://rdmirrors.h3c.com/pypi/web/simple --trusted-host rdmirrors.h3c.com
     # tar -zxf /opt/coder/assets/site-packages.tgz -C .venv/lib/python3.13/site-packages/
 
+    echo -e "\033[36m- 🧹 Clearing existing topo-scriptgen-backend (if any)...\033[0m"
+    rm -rf /home/${local.username}/.local/share/topo-scriptgen-backend
+    echo -e "\033[36m- 📦 Cloning topo-scriptgen-backend
     git clone --recursive https://github.com/cmw-coder/topo-scriptgen-backend.git /home/${local.username}/.local/share/topo-scriptgen-backend
 
     LOG_FILE="/home/${local.username}/.local/share/topo-scriptgen-backend/app.log"
