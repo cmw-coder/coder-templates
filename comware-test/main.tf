@@ -453,7 +453,8 @@ resource "coder_script" "init_python_venv" {
 
     echo -e "\033[36m- 🧹 Clearing existing topo-scriptgen-backend (if any)...\033[0m"
     rm -rf /home/${local.username}/.local/share/topo-scriptgen-backend
-    echo -e "\033[36m- 📦 Cloning topo-scriptgen-backend
+
+    echo -e "\033[36m- 📦 Cloning topo-scriptgen-backend...\033[0m"
     git clone --recursive https://github.com/cmw-coder/topo-scriptgen-backend.git /home/${local.username}/.local/share/topo-scriptgen-backend
 
     LOG_FILE="/home/${local.username}/.local/share/topo-scriptgen-backend/app.log"
