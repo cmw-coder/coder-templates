@@ -1,0 +1,7 @@
+[
+    {
+        "key": "ctrl+alt+b",
+        "command": "simpleBrowser.api.open",
+        "args": "https://topo-scriptgen--%WORKSPACE_NAME%--%USER%.coder-open.h3c.com/api/v1/to-web-ui"
+    }
+]

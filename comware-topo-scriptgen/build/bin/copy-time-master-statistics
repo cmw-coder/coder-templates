@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Read configuration file
+if [ -f ~/project/.h3c_session ]; then
+    source ~/project/.h3c_session
+else
+    echo "WARN: Session file '~/project/.h3c_session' not found"
+    exit 0
+fi
+
+# Build PROJECT_ID logic
+if [ -n "$PROJECT_ID" ]; then
+    echo -e "\033[36m- 📋 Copying Time Master statistics (PROJECT_ID: ${PROJECT_ID})\033[0m"
+    mkdir -p /opt/coder/statistics/build/${USER}/${PROJECT_ID}/TimeMaster
+    cp -r /home/${USER}/.appworks/TimeMaster/days \
+    /opt/coder/statistics/build/${USER}/${PROJECT_ID}/TimeMaster/
+else
+    echo "Error: PROJECT_ID or SESSION_ID not found in configuration file"
+    exit 1
+fi
