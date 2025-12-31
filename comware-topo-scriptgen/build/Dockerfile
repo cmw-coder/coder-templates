@@ -37,7 +37,7 @@ RUN if [ -n "$PROXY_URL" ]; then \
         && npm config set https-proxy "$PROXY_URL" \
         && npm config set strict-ssl false; \
     fi
-RUN npm install -g @anthropic-ai/claude-code@latest
+RUN npm install -g @anthropic-ai/claude-code@2.0.76
 
 # Create a non-root user with sudo privileges
 ARG USER=coder
