@@ -206,7 +206,7 @@ resource "coder_agent" "main" {
     HTTP_PROXY         = "${local.proxy_url}"
     HTTPS_PROXY        = "${local.proxy_url}"
     FTP_PROXY          = "${local.proxy_url}"
-    NO_PROXY           = "localhost"
+    NO_PROXY           = "localhost,10.0.0.0/8"
   }
 
   display_apps {
@@ -312,7 +312,7 @@ resource "coder_env" "ftp_proxy" {
 resource "coder_env" "no_proxy" {
   agent_id = coder_agent.main.id
   name     = "NO_PROXY"
-  value    = "localhost"
+  value    = "localhost,10.0.0.0/8"
 }
 resource "coder_env" "node_extra_ca_certs" {
   agent_id = coder_agent.main.id
