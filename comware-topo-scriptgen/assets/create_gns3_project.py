@@ -40,6 +40,21 @@ def request_json(url: str, data: dict, headers: dict, timeout: int) -> Tuple[int
         return -1, str(e)
 
 
+def request_get(url: str, headers: dict, timeout: int) -> Tuple[int, str]:
+    req = urllib.request.Request(url=url, headers=headers, method="GET")
+    ctx = ssl._create_unverified_context()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            status = resp.getcode()
+            body = resp.read().decode("utf-8", errors="replace")
+            return status, body
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace") if e.fp else ""
+        return e.code, body
+    except Exception as e:
+        return -1, str(e)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create GNS3 project and store project_id")
     parser.add_argument("--base-url", default="https://gns3-server.coder-open.h3c.com", help="GNS3 API base URL")
@@ -74,10 +89,60 @@ def main() -> int:
         sys.stderr.write("No access_token in auth response\n")
         return 1
 
-    projects_url = f"{args.base_url.rstrip('/')}/v3/projects"
+    project_id = None
+
+    if os.path.isfile(args.project_id_file):
+        try:
+            with open(args.project_id_file, "r", encoding="utf-8") as f:
+                saved_id = f.read().strip()
+            if saved_id:
+                existing_url = f"{args.base_url.rstrip('/')}/v3/projects/{saved_id}"
+                status, body = request_get(
+                    existing_url,
+                    {
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {token}",
+                    },
+                    timeout=args.timeout,
+                )
+                if status == 200:
+                    project_id = saved_id
+                else:
+                    sys.stderr.write(f"Existing project check failed (status {status}): {body}\n")
+        except Exception as e:
+            sys.stderr.write(f"Failed to read existing project_id file: {e}\n")
+
+    if not project_id:
+        projects_url = f"{args.base_url.rstrip('/')}/v3/projects"
+        status, body = request_json(
+            projects_url,
+            {"name": args.project_name},
+            {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}",
+            },
+            timeout=args.timeout,
+        )
+
+        if status not in (200, 201):
+            sys.stderr.write(f"Create project failed (status {status}): {body}\n")
+            return 1
+
+        try:
+            data = json.loads(body)
+            project_id = data.get("project_id") or data.get("project_uuid") or data.get("id")
+        except Exception as e:
+            sys.stderr.write(f"Project response parse error: {e}\nBody: {body}\n")
+            return 1
+
+        if not project_id:
+            sys.stderr.write("Project created but no project_id found in response\n")
+            return 1
+
+    open_url = f"{args.base_url.rstrip('/')}/v3/projects/{project_id}/open"
     status, body = request_json(
-        projects_url,
-        {"name": args.project_name},
+        open_url,
+        {},
         {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {token}",
@@ -85,19 +150,8 @@ def main() -> int:
         timeout=args.timeout,
     )
 
-    if status not in (200, 201):
-        sys.stderr.write(f"Create project failed (status {status}): {body}\n")
-        return 1
-
-    try:
-        data = json.loads(body)
-        project_id = data.get("project_id") or data.get("project_uuid") or data.get("id")
-    except Exception as e:
-        sys.stderr.write(f"Project response parse error: {e}\nBody: {body}\n")
-        return 1
-
-    if not project_id:
-        sys.stderr.write("Project created but no project_id found in response\n")
+    if status not in (200, 201, 204):
+        sys.stderr.write(f"Open project failed (status {status}): {body}\n")
         return 1
 
     try:
