@@ -6,7 +6,7 @@ from pytest_atf.atf_globalvar import globalVar as gl
 
 # 执行层及使用拓扑文件名称
 level = 3
-topo = r'demo.topox'
+topo = r'demo.topox' # 需要替换为实际的 topox 文件名称
 
 # 用于声明脚本共用的变量或方法，不能修改类名。
 # 变量或方法都要定义为类属性，不要定义为实例属性。

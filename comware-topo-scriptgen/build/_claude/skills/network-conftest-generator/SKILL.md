@@ -182,6 +182,7 @@ description: 生成并配置用于新华三技术有限公司H3C网络设备自�
          stop_max_attempt=3, wait_fixed=2)
    ```
 7. 接口使用注意实现事项：
+   - 端口名引用：    gl.dut.port1.intf    -----  永远不要用gl.dut.port1.name
    - 端口ipv4地址掩码：    gl.dut.port1.mask
    - 端口ipv4地址反掩码：  gl.dut.port1.hostmask
    - 端口ipv6地址:         gl.dut.port1.ip6
