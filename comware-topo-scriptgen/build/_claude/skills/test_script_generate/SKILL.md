@@ -68,10 +68,11 @@ description: 编写用于新华三技术有限公司H3C网络设备自动化测�
 - **单需求/测试点单脚本**：每个测试需求生成一个脚本文件。
 - **不生成空文件**：禁止生成无用的 `__init__.py`。
 - **头文件明确模块引入**：
+例如：
   ```python
   import pytest
   from pytest_atf.atf_globalvar import globalVar as gl
-  from pytest_atf import run_multithread, atf_assert, atf_check, atf_skip, atf_logs
+  from pytest_atf import *
   ```
 
 ### 3.2 资料引用规范
