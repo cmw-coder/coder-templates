@@ -248,5 +248,23 @@ while True:
 - ✅ **是否执行了“检索-分析-优化关键词-再检索”的迭代过程？**
 - ✅ **是否在代码生成后将 spec/tasks/topoConfig 移动到了 `./templeate/{test_abbr}/`？**
 - ✅ **是否严守纪律，从未尝试读取 `./templeate/` 文件夹中的内容？**
-- ✅ 测试脚本名称是否是test_case_序号？从0开始递增的。
+- ✅ **测试脚本名称是否是test_case_序号**？从0开始递增的。
+- ✅ 不要使用atf_check和atf_assert，这种方式是违法的，对于H3C设备相关的检查只可以使用CheckCommand， 例如：
+   ```pythone
+   gl.DUT.CheckCommand('检查端口信息，预期链路状态UP，IP地址正确', 
+                  cmd=f'display interface Ethernet0/1',
+         expect=['Line protocol current state: UP', 'Internet Address is 11.91.255.79/24'],
+         is_strict=True, 
+                  relationship='and',
+         stop_max_attempt=3, wait_fixed=2)
+   ```
+- ✅ 接口使用注意实现事项：
+   - 端口名引用：    gl.dut.port1.intf    -----  永远不要用gl.dut.port1.name
+   - 端口ipv4地址掩码：     gl.dut.port1.mask
+   - 端口ipv4地址反掩码：   gl.dut.port1.hostmask
+   - 端口ipv6地址:         gl.dut.port1.ip6
+   - 端口ipv6地址掩码:      gl.dut.port1.mask6
+   - 端口ipv6地址掩码长度： gl.dut.port1.masklen6
+   - atf_logs(f'脚本记录', 'info')   -----  只支持info warn error 三个级别
+   - 等待时间:  atf_wait('等待原因描述', 5)   ----  单位为秒
 ```
