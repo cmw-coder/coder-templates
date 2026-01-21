@@ -250,6 +250,36 @@ while True:
 - ✅ **是否在代码生成后将 spec/tasks/topoConfig 移动到了 `./templeate/{test_abbr}/`？**
 - ✅ **是否严守纪律，从未尝试读取 `./templeate/` 文件夹中的内容？**
 - ✅ **测试脚本名称是否是test_case_序号**？从0开始递增的。
+- ✅ 不要使用topox中不存在的设备名或者或者端口, 注意是大小问题和是否存在问题?
+      例如一下拓扑的设备名是dut1,端口名是port1。
+      ```xml
+          <LINK_LIST>
+          <LINK>
+            <NODE>
+            <DEVICE>dut1</DEVICE>
+            <PORT>
+                <NAME>port1</NAME>
+                <TYPE/>
+                <IPAddr/>
+                <IPv6Addr/>
+                <SLOT_TYPE/>
+                <TAG/>
+            </PORT>
+            </NODE>
+            <NODE>
+            <DEVICE>PC</DEVICE>
+            <PORT>
+                <NAME>port1</NAME>
+                <TYPE/>
+                <IPAddr/>
+                <IPv6Addr/>
+                <SLOT_TYPE/>
+                <TAG/>
+            </PORT>
+            </NODE>
+          </LINK>
+      </LINK_LIST>
+      ```
 - ✅ 不要使用atf_check和atf_assert，这种方式是违法的，对于H3C设备相关的检查只可以使用CheckCommand， 例如：
    ```pythone
    gl.DUT.CheckCommand('检查端口信息，预期链路状态UP，IP地址正确', 
