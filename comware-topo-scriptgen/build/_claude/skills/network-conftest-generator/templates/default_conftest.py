@@ -24,6 +24,14 @@ def setup():
 def teardown():
     pass
 
+#用于用户自定义在测试用例前后/用例间/步骤前后/步骤间自定义操作，配合设置开关使用，举例：--extra-operations="{'class':True}"
+@decorator_for_user_log()
+def pre_func():
+    pass
+
+@decorator_for_user_log()
+def post_func():
+    pass
 # ---------END-----------
 
 @fixture(scope="package", autouse=True)

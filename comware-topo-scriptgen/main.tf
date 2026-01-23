@@ -304,6 +304,10 @@ resource "coder_script" "write_assets" {
 
     cd /home/${local.username}
 
+    echo -e "\033[36m- 📄 Writing '~/project/conftest.py'...\033[0m"
+    mkdir -p ./project
+    echo "${filebase64("${path.module}/assets/project/conftest.py")}" | base64 -d > ./project/conftest.py
+
     echo -e "\033[32m- ✔️ Assets written successfully!\033[0m"
   EOF
 }

@@ -27,34 +27,34 @@ description: 生成并配置用于新华三技术有限公司H3C网络设备自�
 使用一下`bash`脚本可以完成指定的知识库检索。
 1. **design_ke库检索，存储用户历史测试经验，需要优先重点参考**: 需要配置时间段策略
    ```bash
-   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "IGMP snooping查询组" --indexname "design_ke"
+   python {当前skill路径}/script/data_search_h3c_example.py --description "IGMP snooping查询组" --indexname "design_ke"
    ```
 
 2. **background_ke库检索，该库有历史背景背景代码conftest.py**: 搭建DPI功能，必须检索
    ```bash
-   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "DPI安全测试" --indexname "background_ke"
+   python {当前skill路径}/script/data_search_h3c_example.py --description "DPI安全测试" --indexname "background_ke"
    ```
 
 3. **v9_press_example库检索，该库有常见的组网配置**: 配置交换机实现多网段互通
    ```bash
-   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "交换机多网段配置" --indexname "v9_press_example"
+   python {当前skill路径}/script/data_search_h3c_example.py --description "交换机多网段配置" --indexname "v9_press_example"
    ```
 
 4. **example_ke库检索，该库有测试用例的实现代码，包含部分背景配置代码**: DHCP中继测试用例，必须检索
    ```bash
-   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "DHCP中继" --indexname "example_ke"
+   python {当前skill路径}/script/data_search_h3c_example.py --description "DHCP中继" --indexname "example_ke"
    ```
 
 5. **cmd_ke库检索，用于存储网络设备命令行**: 配置接口IP地址
    ```bash
-   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "ip address " --indexname "cmd_ke"
+   python {当前skill路径}/script/data_search_h3c_example.py --description "ip address " --indexname "cmd_ke"
 
-   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "配置接口IP地址" --indexname "cmd_ke"
+   python {当前skill路径}/script/data_search_h3c_example.py --description "配置接口IP地址" --indexname "cmd_ke"
    ```
 
 6. **press_config_des库检索，存储标准化的配置步骤说明，提供详细的配置流程和参数说明。**: 需要配置时间段策略
    ```bash
-   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "时间段配置" --indexname "press_config_des"
+   python {当前skill路径}/script/data_search_h3c_example.py --description "时间段配置" --indexname "press_config_des"
    ```
 
 
@@ -75,7 +75,7 @@ description: 生成并配置用于新华三技术有限公司H3C网络设备自�
      - 直接跳到步骤 2。
 
 ### 步骤 2：深度校验与循环知识检索
-目标：**这是最关键的一步**，通过**多轮循环检索且每轮都遍历所有数据库**，通过动态调整检索词的循环,从宏观到微观完全吃透业务背景，从各个维度（背景+命令+步骤）深刻理解业务，，对比“当前conftest.py文件能力”与“用户实际需求”。
+目标：**这是最关键的一步**，通过**多轮循环并行检索且每轮都遍历所有数据库**，通过动态调整检索词的循环,从宏观到微观完全吃透业务背景，从各个维度（背景+命令+步骤）深刻理解业务，，对比“当前conftest.py文件能力”与“用户实际需求”。
 
 **严禁事项：**
 - **严禁**在检索开始前就制定好所有的检索轮次（例如：“我计划第1轮查BGP，第2轮查邻居...”）。这是错误的！
@@ -83,6 +83,7 @@ description: 生成并配置用于新华三技术有限公司H3C网络设备自�
 
 **必做事项**
 - **Todo List**：每完成一轮的检索，必须**更新Todo List, 但是不要删除步骤4的校验**。
+- **后台并发检索**：每轮内部的多个数据库检索命令后台并行执行。
 
 
 1. **读取现状**
@@ -96,10 +97,10 @@ description: 生成并配置用于新华三技术有限公司H3C网络设备自�
 
    - **执行循环 (Start Loop)**：
      1. **全库扫描 (Action)**：
-        - 使用当前的“关键词”，**连续执行 5 次检索命令**，遍历所有 5 个数据库。
+        - 使用当前的“关键词”，**后台并发执行 6 次检索命令**，遍历所有 6 个数据库。
      
      2. **结果分析 (Observation)**：
-        - 仔细阅读 5 个库的返回内容。
+        - 仔细阅读 6 个库的返回内容。
         - **寻找“未知的已知”**：注意那些在返回结果中出现，但你还不知道具体配置方法的**新术语**。
           - *示例*：你搜索了“BGP”，结果中提到了“需要配置 Route-Reflector 才能生效”。此时，“Route-Reflector”就是检索结果暴露出的新盲区。
 
