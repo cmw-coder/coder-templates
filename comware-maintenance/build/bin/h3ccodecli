@@ -1,0 +1,107 @@
+#!/bin/bash
+# ============================================
+# H3C Code CLI 智能体 v3.6 (Linux版本)
+# ============================================
+
+# 设置脚本严格模式，兼容不同的shell版本
+# 使用更可靠的方法检测当前shell类型
+H3CCODERVERSION=V3.6
+if [ -n "$BASH_VERSION" ]; then
+    # 在bash中运行
+    set -euo pipefail
+else
+    # 在非bash shell中运行（如dash）
+    set -eu
+fi
+IFS=$'\n\t'
+
+# ============================================
+# 初始化用户信息和时间戳
+# ============================================
+echo ""
+echo "[系统] 初始化环境信息..."
+
+# 获取当前时间
+TIME_STAMP="$(date +"%Y%m%d_%H%M%S")"
+USERNAME_LINUX="$(whoami)"
+
+
+
+# 格式化当前日期时间（用于显示）
+CURRENT_DATETIME="$(date +"%Y-%m-%d %H:%M:%S")"
+
+# 提取年月日时分秒
+YYYY="$(date +"%Y")"
+MM="$(date +"%m")"
+DD="$(date +"%d")"
+hh="$(date +"%H")"
+nn="$(date +"%M")"
+ss="$(date +"%S")"
+
+echo "[用户] 当前用户: ${USERNAME_LINUX}"
+echo "[时间] 执行时间: ${YYYY}-${MM}-${DD} ${hh}:${nn}:${ss}"
+echo "[标识] 时间戳: ${TIME_STAMP}"
+
+# ============================================
+# AI模型配置和启动
+# ============================================
+echo ""
+echo "[AI模型] 配置AI模型参数..."
+
+export HTTPS_PROXY="http://172.22.0.29:8080"
+export HTTP_PROXY="http://172.22.0.29:8080"
+unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
+
+# 设置模型API配置
+export ANTHROPIC_BASE_URL="http://10.144.41.149:4000/"
+
+export ANTHROPIC_AUTH_TOKEN="xx"
+#export ANTHROPIC_MODEL="deepseek-chat"
+#export ANTHROPIC_SMALL_FAST_MODEL="deepseek-chat"
+export DISABLE_AUTOUPDATER=1 
+export BASH_MAX_TIMEOUT_MS=600000
+#export CLAUDE_CODE_MAX_OUTPUT_TOKENS=50000
+echo "[AI模型] API KEY: ${ANTHROPIC_AUTH_TOKEN}"
+#echo "[AI模型] 模型类型: ${ANTHROPIC_MODEL}"
+echo "[AI模型] API地址: ${ANTHROPIC_BASE_URL}"
+
+# 启用遥测功能
+export CLAUDE_CODE_ENABLE_TELEMETRY="1"
+export OTEL_METRICS_EXPORTER="otlp,prometheus"
+export OTEL_LOGS_EXPORTER="otlp"
+export OTEL_EXPORTER_OTLP_PROTOCOL="grpc"
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://10.112.112.154:4317"
+echo "[遥测] 遥测服务已启用"
+
+# 调试配置：减少导出间隔
+export OTEL_METRIC_EXPORT_INTERVAL="100000"
+export OTEL_LOGS_EXPORT_INTERVAL="50000"
+export CLAUDE_SESSION_START=$(date +%s)
+
+
+echo ""
+echo "==========================================="
+echo "[启动] 正在启动H3C CODE CLI工具 版本: ${H3CCODERVERSION} "
+echo "[提示] 请在CLI中输入您的需求"
+echo "==========================================="
+echo ""
+
+# ============================================
+# 启动Claude项目实时监控备份
+# ============================================
+
+# 启动Claude CLI (阻塞执行)
+claude --allowedTools "Bash,Read" --permission-mode acceptEdits --dangerously-skip-permissions
+
+# ============================================
+# 完成信息
+# ============================================
+echo ""
+echo "==========================================="
+echo "[完成] H3C Code CLI ${H3CCODERVERSION} 执行完毕"
+echo "[时间] 结束时间: $(date +"%Y-%m-%d %H:%M:%S")"
+echo "==========================================="
+echo ""
+
+# 退出脚本
+exit 0

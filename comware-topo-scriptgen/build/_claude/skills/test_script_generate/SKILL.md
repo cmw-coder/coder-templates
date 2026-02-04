@@ -14,7 +14,7 @@ description: 编写用于新华三技术有限公司H3C网络设备自动化测�
 
 **Phase 2: Tasks** → 基于Phase 1的交付物，继续**全库检索**细节，产出 `tasks.md`（任务清单）。
 
-**Phase 3: Implementation & Archiving** → 根据前两个阶段交付物完成编码，并**强制归档**过程文档。
+**Phase 3: Implemen·tation & Archiving** → 根据前两个阶段交付物完成编码，并**强制归档**过程文档。
 
 **强制交付顺序**：必须完成 `spec.md` 和 `tasks.md` 后，才能开始编码。编码完成后必须清理环境。
 
@@ -23,44 +23,30 @@ description: 编写用于新华三技术有限公司H3C网络设备自动化测�
 ## 2. 工具使用与数据库检索标准（唯一真理源）
 
 必须通过以下工具检索云端知识库。
-**检索策略（强制）**：在每一阶段，必须遍历所有 indexname。初次检索后，必须阅读返回内容，提取更准确的专业术语或命令片段，优化检索词（Description）后进行**迭代检索**，直到获得足够精确的信息。
+**检索策略（强制）**：在每一阶段，必须**后台并行运行命令遍历所有 indexname**。初次检索后，必须阅读返回内容，提取更准确的专业术语或命令片段，优化检索词（Description）后进行**迭代检索**，直到获得足够精确的信息。
+**注意** ： 每轮内部的多个数据库检索命令后台并行执行。
 
-### 2.1 获取背景与环境 (`background_ke`)
-- **用途**：查找相似业务背景以**理解**用户提供的 `conftest.py` 逻辑。
-- **命令**：
-  ```bash
-  /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "[业务描述]" --indexname "background_ke"
-  ```
+### 2.1 **design_ke库检索，存储用户历史测试经验，需要优先重点参考**: 需要配置时间段策略
+   ```bash
+   python {当前skill路径}/script/data_search_h3c_example.py --description "IGMP snooping查询组" --indexname "design_ke"
+   ```
 
-### 2.2 获取组网配置 (`v9_press_example`)
-- **用途**：查找常见的组网配置、交换机多网段互通配置等。
-- **命令**：
-  ```bash
-  /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "[配置描述]" --indexname "v9_press_example"
-  ```
+### 2.2 **example_ke库检索，该库有测试用例的实现代码，包含部分背景配置代码**: DHCP中继测试用例，必须检索
+   ```bash
+   python {当前skill路径}/script/data_search_h3c_example.py --description "DHCP中继" --indexname "example_ke"
+   ```
 
-### 2.3 获取测试代码实现 (`example_ke`)
-- **用途**：查找测试用例的具体实现代码（Reference Code）。
-- **命令**：
-  ```bash
-  /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "[功能描述]" --indexname "example_ke"
-  ```
+### 2.3 **cmd_ke库检索，用于存储网络设备命令行**: 配置接口IP地址
+   ```bash
+   python {当前skill路径}/script/data_search_h3c_example.py --description "ip address " --indexname "cmd_ke"
 
-### 2.4 获取设备命令行 (`cmd_ke`)
-- **用途**：查询具体的网络设备命令行（CLI）。
-- **命令**：
-  ```bash
-  /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "[命令意图]" --indexname "cmd_ke"
-  ```
+   python {当前skill路径}/script/data_search_h3c_example.py --description "配置接口IP地址" --indexname "cmd_ke"
+   ```
 
-### 2.5 获取配置步骤说明 (`press_config_des`)
-- **用途**：查询标准化的配置流程、参数说明、步骤描述。
-- **命令**：
-  ```bash
-  /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "[配置逻辑]" --indexname "press_config_des"
-  ```
-
----
+### 2.4 **press_config_des库检索，存储标准化的配置步骤说明，提供详细的配置流程和参数说明。**: 需要配置时间段策略
+   ```bash
+   python {当前skill路径}/script/data_search_h3c_example.py --description "时间段配置" --indexname "press_config_des"
+   ```
 
 ## 3. 通用约束与原则
 
@@ -73,12 +59,13 @@ description: 编写用于新华三技术有限公司H3C网络设备自动化测�
   import pytest
   from pytest_atf.atf_globalvar import globalVar as gl
   from pytest_atf import *
+  from .conftest import *
   ```
 
 ### 3.2 资料引用规范
 所有设计与代码实现必须有据可查：
-- **环境背景**：参考用户提供的 `conftest.py`，辅助参考 `background_ke`。
-- **业务逻辑**：来源 `v9_press_example` / `press_config_des`。
+- **环境背景**：参考用户提供的 `conftest.py`。
+- **业务逻辑**：来源 `design_ke` / `press_config_des`。
 - **代码参考**：来源 `example_ke`。
 - **具体命令**：来源 `cmd_ke`。
 
@@ -103,7 +90,7 @@ description: 编写用于新华三技术有限公司H3C网络设备自动化测�
 
 **执行流程**:
 1. **检查用户输入**: 确认目录下是否存在用户提供的 `conftest.py` 和 `*.topox`。
-2. **全库迭代检索**: 即使是分析拓扑，也必须运行所有 5 个检索工具 (`background_ke` 至 `press_config_des`)。
+2. **全库迭代检索**: 即使是分析拓扑，也必须后台运行所有 6 个检索工具 (`background_ke` 至 `press_config_des`)。
 3. **迭代优化**: 如果初次检索返回的配置或背景不够匹配，根据返回内容中的关键词优化 `--description` 参数，再次检索。
 4. **评估匹配度**: 确认用户提供的文件是否满足当前测试需求。
 
@@ -117,10 +104,10 @@ description: 编写用于新华三技术有限公司H3C网络设备自动化测�
 - topox文件: [用户已提供/未提供]
 
 ## 2. 数据库检索与迭代记录 (强制记录)
-- 遍历索引: [必须包含全部5个索引名]
+- 后台遍历索引: [必须包含全部4个索引名]
 - 迭代次数: [记录优化检索词的次数]
 - 最终使用的关键词: [关键词]
-- 关键参考来源: [background_ke/v9_press_example等]
+- 关键参考来源: [example_ke/press_config_des等]
 
 ## 3. 需求对齐分析
 - 用户提供的配置是否满足需求: [是/否]
@@ -138,13 +125,13 @@ description: 编写用于新华三技术有限公司H3C网络设备自动化测�
 ### 5.1 拓扑与基础配置确认（⚠️ 独立任务）
 **执行动作**：
 1. 检查目录下的 `conftest.py` 和 `topox`。
-2. **全库检索**：运行 2.1 至 2.5 所有检索工具。
+2. **全库检索**：后台运行 2.1 至 2.4 所有检索工具。
 3. **分析与迭代**：阅读返回的 JSON/文本，若发现不明确的术语，将其加入新检索词重新搜索。
 4. 产出 `topoConfig.md`。
 
 ### 5.2 测试点分析与场景设计
 **执行动作**：
-1. 再次**全库检索**：重点关注 `press_config_des` 和 `v9_press_example`，但必须同时查询 `cmd_ke` 和 `example_ke` 以验证可行性。
+1. 再次**全库检索**：重点关注 `design_ke` 和 `example_ke`，但必须同时查询 `cmd_ke`以验证可行性。
 2. 产出 `spec.md`，明确：
    - **测试点英文缩写 (`test_abbr`)**：必须定义一个简洁的英文缩写（如 `vlan_iso`, `ospf_basic`），后续归档将使用此名称。
    - **测试场景**: Given-When-Then 格式。
@@ -168,9 +155,6 @@ class Test[模块名][功能名]:
             
     def test_step_1(self):
         """基于 example_ke 与 cmd_ke 综合检索结果"""
-        # 步骤: 参考 press_config_des 逻辑
-        # 实现: 参考 example_ke 代码
-        # 命令: 参考 cmd_ke
 ```
 
 ### 6.2 任务拆解清单
@@ -182,8 +166,8 @@ class Test[模块名][功能名]:
 
 #### Task 1: 深度代码调研（迭代检索）
 while True:
-  - [ ] **全库遍历**：运行全部 5 个索引检索。
-  - [ ] **迭代优化**：根据每次索引检索返回的内容，加深对业务的了解。然后变更搜索词，用具体的命令再次运行5个索引检索。
+  - [ ] **后台全库遍历**：后台运行全部 4 个索引检索。
+  - [ ] **迭代优化**：根据每次索引检索返回的内容，加深对业务的了解。然后变更搜索词，用具体的命令再次运行4个索引检索。
   - [ ] **评估匹配度**：确认检索提示的知识是否满足当前测试需求。
 - 产出: `__reference_code__` 引用定义（记录在tasks.md中），必须包含经过验证的最佳匹配片段。
 
@@ -206,7 +190,7 @@ while True:
 ### 7.1 脚本实现
 严格按照 `tasks.md` 和检索到的参考代码进行编码。禁止臆造命令或配置流程。如果在编码过程中发现细节模糊：
 1. 暂停编码。
-2. 使用具体的模糊点（如报错信息、特定参数）作为 Description，再次对 **所有数据库** 进行检索。
+2. 使用具体的模糊点（如报错信息、特定参数）作为 Description，再次对 **所有数据库** 进行后台检索。
 3. 根据新检索结果修正代码。
 
 ### 7.2 产物归档（强制执行）
@@ -231,11 +215,11 @@ while True:
 ### 执行顺序（强制）：
 1. **Phase 1**: 
    - 检查用户上传文件。
-   - **遍历所有数据库**并进行**迭代检索**优化关键词。
+   - **后台遍历所有数据库**并进行**迭代检索**优化关键词。
    - 产出 `topoConfig.md` + `spec.md`（含 `test_abbr` 定义）。
 
 2. **Phase 2**:
-   - **遍历所有数据库**，针对代码实现细节进行**迭代检索**。
+   - **后台遍历所有数据库**，针对代码实现细节进行**迭代检索**。
    - 产出 `tasks.md`。
 
 3. **Phase 3**:
@@ -245,7 +229,7 @@ while True:
 ### 关键检查点：
 - ✅ 是否**没有**生成或修改 `conftest.py`？
 - ✅ 是否完全脱离了本地 `press/KE` 文件夹，仅使用工具检索？
-- ✅ **是否在每个阶段（Phase 1/2/3）都遍历了全部 5 个数据库索引？**
+- ✅ **是否在每个阶段（Phase 1/2/3）都后台遍历了全部 4 个数据库索引？**
 - ✅ **是否执行了“检索-分析-优化关键词-再检索”的迭代过程？**
 - ✅ **是否在代码生成后将 spec/tasks/topoConfig 移动到了 `./templeate/{test_abbr}/`？**
 - ✅ **是否严守纪律，从未尝试读取 `./templeate/` 文件夹中的内容？**

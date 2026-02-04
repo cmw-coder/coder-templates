@@ -1,0 +1,53 @@
+#!/bin/bash
+
+SKILL_SVN_URL=${SKILL_SVN_URL:-"http://10.153.3.214/comware-test-script/50.多环境移植/1/AIGC/agentskills/maintenance/"} # This should be set automatically
+
+# shellcheck source=/dev/null
+source "log-utils"
+# shellcheck source=/dev/null
+source "svn-utils"
+
+# Use a hardcoded SVN credentials
+# TODO: Find a better way to replace this stupid method
+SVN_PASSWORD="Zpr758258%"
+SVN_USERNAME="z11187"
+
+get_svn_folder_contents() {
+    local url=$1
+
+    contents=$(svn_with_auth ls "${url}" 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+    result=$?
+    if [ $result -ne 0 ]; then
+        return $result
+    fi
+    echo "${contents}"
+}
+
+export_by_url() {
+    local url="$1"
+    local dest_dir="$2"
+
+    if [ -z "$(get_svn_folder_contents "${url}")" ]; then
+        log_warn "No items under SVN URL: '${url}', skipping export."
+        return
+    fi
+    svn_s export --force "${url}/" "${dest_dir}/"
+}
+
+# Main function
+main() {
+    temp_dir="/tmp/skills/"
+    target_dir="/home/${USER}/.claude/skills/"
+
+    export_by_url "${SKILL_SVN_URL}" "${temp_dir}"
+    mkdir -p "${target_dir}"
+
+    if [ -d "${temp_dir}" ] && [ "$(ls -A "${temp_dir}" 2>/dev/null)" ]; then
+        cp -r "${temp_dir}"* "${target_dir}"
+    fi
+
+    rm -rf "${temp_dir}"
+}
+
+# Execute main function
+main "$@"
