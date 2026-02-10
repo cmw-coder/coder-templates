@@ -1,5 +1,5 @@
 ---
-name: test_script_generate
+name: test-script-generate
 description: 编写用于新华三技术有限公司H3C网络设备自动化测试脚本。支持全库检索、迭代优化策略以及过程文档自动归档。
 ---
 
