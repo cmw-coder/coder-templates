@@ -27,34 +27,34 @@ description: 生成并配置用于新华三技术有限公司H3C网络设备自�
 使用一下`bash`脚本可以完成指定的知识库检索。
 1. **design_ke库检索，存储用户历史测试经验，需要优先重点参考**: 需要配置时间段策略
    ```bash
-   python {当前skill路径}/script/data_search_h3c_example.py --description "IGMP snooping查询组" --indexname "design_ke"
+   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "IGMP snooping查询组" --indexname "design_ke"
    ```
 
 2. **background_ke库检索，该库有历史背景背景代码conftest.py**: 搭建DPI功能，必须检索
    ```bash
-   python {当前skill路径}/script/data_search_h3c_example.py --description "DPI安全测试" --indexname "background_ke"
+   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "DPI安全测试" --indexname "background_ke"
    ```
 
 3. **v9_press_example库检索，该库有常见的组网配置**: 配置交换机实现多网段互通
    ```bash
-   python {当前skill路径}/script/data_search_h3c_example.py --description "交换机多网段配置" --indexname "v9_press_example"
+   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "交换机多网段配置" --indexname "v9_press_example"
    ```
 
 4. **example_ke库检索，该库有测试用例的实现代码，包含部分背景配置代码**: DHCP中继测试用例，必须检索
    ```bash
-   python {当前skill路径}/script/data_search_h3c_example.py --description "DHCP中继" --indexname "example_ke"
+   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "DHCP中继" --indexname "example_ke"
    ```
 
 5. **cmd_ke库检索，用于存储网络设备命令行**: 配置接口IP地址
    ```bash
-   python {当前skill路径}/script/data_search_h3c_example.py --description "ip address " --indexname "cmd_ke"
+   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "ip address " --indexname "cmd_ke"
 
-   python {当前skill路径}/script/data_search_h3c_example.py --description "配置接口IP地址" --indexname "cmd_ke"
+   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "配置接口IP地址" --indexname "cmd_ke"
    ```
 
 6. **press_config_des库检索，存储标准化的配置步骤说明，提供详细的配置流程和参数说明。**: 需要配置时间段策略
    ```bash
-   python {当前skill路径}/script/data_search_h3c_example.py --description "时间段配置" --indexname "press_config_des"
+   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "时间段配置" --indexname "press_config_des"
    ```
 
 
@@ -183,11 +183,11 @@ description: 生成并配置用于新华三技术有限公司H3C网络设备自�
          stop_max_attempt=3, wait_fixed=2)
    ```
 7. 接口使用注意实现事项：
-   - 端口名引用：    gl.dut.port1.intf    -----  永远不要用gl.dut.port1.name
-   - 端口ipv4地址掩码：    gl.dut.port1.mask
-   - 端口ipv4地址反掩码：  gl.dut.port1.hostmask
+   - 端口名引用：           gl.dut.port1.intf    -----  永远不要用gl.dut.port1.name
+   - 端口ipv4地址掩码：     gl.dut.port1.mask
+   - 端口ipv4地址反掩码：   gl.dut.port1.hostmask
    - 端口ipv6地址:         gl.dut.port1.ip6
-   - 端口ipv6地址掩码:     gl.dut.port1.mask6
+   - 端口ipv6地址掩码:      gl.dut.port1.mask6
    - 端口ipv6地址掩码长度： gl.dut.port1.masklen6
    - atf_logs(f'脚本记录', 'info')   -----  只支持info warn error 三个级别
    - 等待时间:  atf_wait('等待原因描述', 5)   ----  单位为秒

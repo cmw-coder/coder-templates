@@ -1,0 +1,395 @@
+{
+  "title": "通用NETCONF功能测试Checklist",
+  "description": "本Checklist基于网络设备NETCONF核心操作逻辑设计，覆盖配置获取、数据操作（增/改/删）、边界场景、异常处理等核心维度，可作为新增NETCONF测试点的标准化编写模板",
+  "sections": [
+    {
+      "section_id": "basic_config_retrieval",
+      "section_name": "一、基础配置获取能力测试（必选）",
+      "subsections": [
+        {
+          "subsection_id": "empty_config",
+          "subsection_name": "1.1 空配置场景验证",
+          "test_items": [
+            {
+              "test_item": "get操作空配置校验",
+              "operation_requirement": "设备处于未配置目标业务状态，发送NETCONF get请求（目标为业务对应的YANG节点）",
+              "expected_result": [
+                "响应报文格式符合NETCONF RFC标准（无XML语法错误）",
+                "返回配置数据为空（无目标业务的任何配置节点）",
+                "响应状态码为ok（无rpc-error）"
+              ]
+            },
+            {
+              "test_item": "get-config操作空配置校验",
+              "operation_requirement": "设备处于未配置目标业务状态，发送NETCONF get-config请求（目标datastore为running/startup，指定业务YANG节点）",
+              "expected_result": [
+                "响应报文格式合规",
+                "目标datastore中无该业务配置数据",
+                "响应状态码为ok"
+              ]
+            },
+            {
+              "test_item": "get-bulk操作空配置校验",
+              "operation_requirement": "设备处于未配置目标业务状态，发送NETCONF get-bulk请求（批量查询包含目标业务节点的多个YANG路径）",
+              "expected_result": [
+                "响应报文无语法错误，批量返回逻辑正常",
+                "目标业务节点对应数据为空",
+                "响应状态码为ok（无批量查询导致的超时/异常）"
+              ]
+            },
+            {
+              "test_item": "get-bulk-config操作空配置校验",
+              "operation_requirement": "设备处于未配置目标业务状态，发送NETCONF get-bulk-config请求（批量查询多个datastore中目标业务的配置）",
+              "expected_result": [
+                "响应报文格式合规，批量datastore查询逻辑正常",
+                "所有目标datastore中无该业务配置",
+                "响应状态码为ok"
+              ]
+            }
+          ]
+        },
+        {
+          "subsection_id": "non_empty_config",
+          "subsection_name": "1.2 非空配置场景验证",
+          "test_items": [
+            {
+              "test_item": "业务配置下发",
+              "operation_requirement": "先通过NETCONF edit-config下发目标业务的合法配置，确认配置下发成功",
+              "expected_result": [
+                "配置下发响应状态码为ok",
+                "设备本地业务模块已加载该配置（可通过设备CLI辅助验证）"
+              ]
+            },
+            {
+              "test_item": "get操作非空校验",
+              "operation_requirement": "基于上一步已配置状态，发送get请求查询目标业务YANG节点",
+              "expected_result": [
+                "响应报文包含完整的业务配置数据（字段值与下发值完全一致，无缺失/篡改）",
+                "响应格式合规，状态码为ok"
+              ]
+            },
+            {
+              "test_item": "get-config操作非空校验",
+              "operation_requirement": "基于已配置状态，发送get-config请求（指定running/startup datastore）查询目标业务",
+              "expected_result": [
+                "响应数据与下发的业务配置完全匹配",
+                "datastore数据一致性正常（如running与设备当前运行配置一致）",
+                "响应状态码为ok"
+              ]
+            },
+            {
+              "test_item": "get-bulk操作非空校验",
+              "operation_requirement": "基于已配置状态，发送get-bulk请求（批量查询包含目标业务的多个节点）",
+              "expected_result": [
+                "批量返回结果中，目标业务配置数据完整且正确",
+                "其他非目标节点数据正常（无因批量查询导致的目标数据丢失）",
+                "响应状态码为ok"
+              ]
+            },
+            {
+              "test_item": "get-bulk-config操作非空校验",
+              "operation_requirement": "基于已配置状态，发送get-bulk-config请求（批量查询多个datastore中的目标业务）",
+              "expected_result": [
+                "各datastore中目标业务配置与下发值一致（如running有配置，startup若已保存则也有配置）",
+                "批量查询无超时/数据错乱，响应状态码为ok"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "section_id": "service_config_operations",
+      "section_name": "二、业务配置操作验证",
+      "description": "针对目标业务的核心配置节点，需覆盖create/merge/replace/delete/remove 5类核心操作",
+      "subsections": [
+        {
+          "subsection_id": "create_operation",
+          "subsection_name": "2.1 Create操作验证（新增配置，需确保目标节点不存在时才能成功）",
+          "test_scenarios": [
+            {
+              "scenario": "正常新增",
+              "operation_requirement": "1. 确保设备未配置目标节点；2. 发送edit-config请求（operation=create），下发目标节点的合法配置",
+              "expected_result": [
+                "响应状态码为ok",
+                "通过get-config查询，目标节点配置已存在且值正确"
+              ]
+            },
+            {
+              "scenario": "边界值新增",
+              "operation_requirement": "1. 确保未配置目标边界值节点；2. 发送create请求下发边界值配置",
+              "expected_result": [
+                "响应状态码为ok（若边界值为业务允许值）",
+                "get-config查询确认边界值配置正确生效"
+              ]
+            },
+            {
+              "scenario": "重复新增异常",
+              "operation_requirement": "1. 目标节点已配置；2. 再次发送create请求下发相同节点配置",
+              "expected_result": [
+                "响应返回rpc-error",
+                "错误码符合NETCONF标准（如data-exists）",
+                "错误描述清晰（明确提示“目标配置已存在，无法重复创建”）"
+              ]
+            },
+            {
+              "scenario": "非法值新增异常",
+              "operation_requirement": "发送create请求下发业务非法配置",
+              "expected_result": [
+                "响应返回rpc-error",
+                "错误码为invalid-value或data-invalid",
+                "错误描述明确非法原因"
+              ]
+            }
+          ]
+        },
+        {
+          "subsection_id": "merge_operation",
+          "subsection_name": "2.2 Merge操作验证（合并配置，目标节点不存在则新增，存在则覆盖/补充）",
+          "test_scenarios": [
+            {
+              "scenario": "无配置时merge",
+              "operation_requirement": "1. 未配置目标节点；2. 发送edit-config请求（operation=merge）下发配置",
+              "expected_result": [
+                "响应状态码为ok",
+                "get-config确认目标节点新增成功，配置值正确"
+              ]
+            },
+            {
+              "scenario": "有配置时merge（同值）",
+              "operation_requirement": "1. 目标节点已配置；2. 发送merge请求下发与现有值相同的配置",
+              "expected_result": [
+                "响应状态码为ok（merge允许同值操作，无异常）",
+                "配置无变化（get-config结果与之前一致）"
+              ]
+            },
+            {
+              "scenario": "有配置时merge（不同值）",
+              "operation_requirement": "1. 目标节点已配置；2. 发送merge请求下发不同的合法值",
+              "expected_result": [
+                "响应状态码为error-tag",
+                "get-config确认目标节点值已更新为新下发值"
+              ]
+            },
+            {
+              "scenario": "边界值merge",
+              "operation_requirement": "1. 未配置边界值节点；2. 发送merge请求下发边界值配置",
+              "expected_result": [
+                "响应状态码为ok",
+                "get-config确认边界值配置正确生效"
+              ]
+            },
+            {
+              "scenario": "非法值merge异常",
+              "operation_requirement": "发送merge请求下发业务非法配置",
+              "expected_result": [
+                "响应返回rpc-error",
+                "错误码为invalid-value，错误描述明确非法原因",
+                "设备原有配置无变化"
+              ]
+            }
+          ]
+        },
+        {
+          "subsection_id": "replace_operation",
+          "subsection_name": "2.3 Replace操作验证（替换配置，目标节点不存在则新增，存在则完全替换）",
+          "test_scenarios": [
+            {
+              "scenario": "无配置时replace",
+              "operation_requirement": "1. 未配置目标节点；2. 发送edit-config请求（operation=replace）下发配置",
+              "expected_result": [
+                "响应状态码为ok",
+                "get-config确认目标节点新增成功，配置值正确"
+              ]
+            },
+            {
+              "scenario": "有配置时replace（同值）",
+              "operation_requirement": "1. 目标节点已配置；2. 发送replace请求下发与现有值相同的配置",
+              "expected_result": [
+                "响应状态码为ok",
+                "配置无变化（get-config结果一致）"
+              ]
+            },
+            {
+              "scenario": "有配置时replace（不同值）",
+              "operation_requirement": "1. 目标节点已配置；2. 发送replace请求下发不同的合法值",
+              "expected_result": [
+                "响应状态码为ok",
+                "get-config确认目标节点值已完全替换为新值"
+              ]
+            },
+            {
+              "scenario": "边界值replace",
+              "operation_requirement": "1. 未配置边界值节点；2. 发送replace请求下发边界值",
+              "expected_result": [
+                "响应状态码为ok",
+                "边界值配置正确生效，get-config结果匹配"
+              ]
+            },
+            {
+              "scenario": "非法值replace异常",
+              "operation_requirement": "发送replace请求下发非法配置",
+              "expected_result": [
+                "响应返回rpc-error",
+                "错误码为invalid-value，描述清晰",
+                "原有配置无变化"
+              ]
+            }
+          ]
+        },
+        {
+          "subsection_id": "delete_operation",
+          "subsection_name": "2.4 Delete操作验证（删除配置，需目标节点存在时才能成功，不存在则报错）",
+          "test_scenarios": [
+            {
+              "scenario": "存在配置时delete",
+              "operation_requirement": "1. 目标节点已配置；2. 发送edit-config请求（operation=delete）删除该节点",
+              "expected_result": [
+                "响应状态码为ok",
+                "get-config查询确认目标节点已删除（无残留配置）"
+              ]
+            },
+            {
+              "scenario": "边界值配置delete",
+              "operation_requirement": "1. 目标边界值节点已配置；2. 发送delete请求删除该节点",
+              "expected_result": [
+                "响应状态码为ok",
+                "get-config确认边界值节点已删除"
+              ]
+            },
+            {
+              "scenario": "不存在配置时delete异常",
+              "operation_requirement": "1. 目标节点未配置；2. 发送delete请求删除该节点",
+              "expected_result": [
+                "响应返回rpc-error",
+                "错误码符合标准（如data-missing）",
+                "错误描述明确“目标配置不存在，无法删除”"
+              ]
+            },
+            {
+              "scenario": "依赖配置delete异常",
+              "operation_requirement": "若目标节点存在依赖配置，发送delete请求删除目标节点",
+              "expected_result": [
+                "响应返回rpc-error",
+                "错误码为data-in-use",
+                "错误描述提示“存在依赖配置，需先删除依赖”"
+              ]
+            }
+          ]
+        },
+        {
+          "subsection_id": "remove_operation",
+          "subsection_name": "2.5 Remove操作验证（移除配置，目标节点存在则删除，不存在则无操作但返回成功）",
+          "test_scenarios": [
+            {
+              "scenario": "存在配置时remove",
+              "operation_requirement": "1. 目标节点已配置；2. 发送edit-config请求（operation=remove）移除该节点",
+              "expected_result": [
+                "响应状态码为ok",
+                "get-config确认目标节点已删除"
+              ]
+            },
+            {
+              "scenario": "边界值配置remove",
+              "operation_requirement": "1. 目标边界值节点已配置；2. 发送remove请求移除该节点",
+              "expected_result": [
+                "响应状态码为ok",
+                "get-config确认边界值节点已删除"
+              ]
+            },
+            {
+              "scenario": "不存在配置时remove",
+              "operation_requirement": "1. 目标节点未配置；2. 发送remove请求移除该节点",
+              "expected_result": [
+                "响应状态码为ok（remove允许对不存在的节点操作，不报错）",
+                "设备配置无变化（无异常删除其他节点）"
+              ]
+            },
+            {
+              "scenario": "依赖配置remove异常",
+              "operation_requirement": "若目标节点存在依赖配置，发送remove请求删除",
+              "expected_result": [
+                "响应返回rpc-error",
+                "错误码为data-in-use，描述提示依赖关系",
+                "目标节点未被删除"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "section_id": "config_cleanup",
+      "section_name": "三、配置清理与一致性验证（必选）",
+      "test_items": [
+        {
+          "test_item": "主动清配置（check-config）",
+          "operation_requirement": "所有操作测试完成后，发送check-config或edit-config请求，清理目标业务的所有配置",
+          "expected_result": [
+            "清配置响应状态码为ok",
+            "get-config查询确认目标业务配置已完全清空（回到空配置状态）"
+          ]
+        },
+        {
+          "test_item": "设备重启后配置一致性",
+          "operation_requirement": "1. 下发目标业务配置并保存到startup datastore；2. 重启设备；3. 设备启动后，发送get-config查询running和startup datastore",
+          "expected_result": [
+            "设备正常启动，无配置加载异常",
+            "running和startup datastore中目标业务配置一致，且与重启前下发值一致"
+          ]
+        },
+        {
+          "test_item": "多会话配置一致性",
+          "operation_requirement": "1. 会话1下发目标业务配置；2. 会话2发送get-config查询目标业务；3. 会话2发送merge请求修改配置；4. 会话1发送get-config查询",
+          "expected_result": [
+            "会话2能实时获取会话1下发的配置",
+            "会话1能实时获取会话2修改后的配置",
+            "无多会话数据同步延迟/错乱"
+          ]
+        }
+      ]
+    },
+    {
+      "section_id": "exception_scenarios",
+      "section_name": "四、异常场景补充测试（可选）",
+      "test_items": [
+        {
+          "test_item": "超时测试",
+          "operation_requirement": "发送get-bulk/get-bulk-config请求（批量查询大量节点），模拟网络延迟或设备高负载",
+          "expected_result": [
+            "若超时，响应返回rpc-error（错误码timeout）",
+            "无设备宕机/配置丢失",
+            "超时后重新发起请求可正常执行"
+          ]
+        },
+        {
+          "test_item": "断连重连测试",
+          "operation_requirement": "1. 发送配置请求过程中，断开NETCONF会话；2. 重新建立会话后，查询目标配置",
+          "expected_result": [
+            "断连时未完成的请求不生效（无partial配置）",
+            "重连后会话正常，get-config结果与断连前一致"
+          ]
+        },
+        {
+          "test_item": "权限控制测试",
+          "operation_requirement": "使用低权限NETCONF用户（无目标业务配置权限），发送create/delete请求",
+          "expected_result": [
+            "响应返回rpc-error",
+            "错误码为access-denied",
+            "错误描述明确“无操作权限”"
+          ]
+        }
+      ]
+    },
+    {
+      "section_id": "usage_instructions",
+      "section_name": "使用说明",
+      "instructions": [
+        "业务适配：新增测试点时，将“目标业务”替换为具体模块，“目标节点”替换为该模块的核心配置节点",
+        "场景取舍：基础配置获取、核心操作（create/merge/replace/delete/remove）为必选项；异常场景可根据业务优先级选择性添加",
+        "预期结果细化：需结合具体YANG模型字段细化预期结果，确保字段值匹配、错误码精准",
+        "辅助验证：必要时可结合设备CLI、SNMP等方式辅助验证NETCONF配置的实际生效情况"
+      ]
+    }
+  ]
+}

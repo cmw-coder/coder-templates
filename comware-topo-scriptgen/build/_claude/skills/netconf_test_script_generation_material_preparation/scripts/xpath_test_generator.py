@@ -1,0 +1,526 @@
+#!/usr/bin/env python3
+"""
+NETCONF XPath测试生成器
+
+根据文档分析结果(.new.json文件)中的XPath，生成对应的测试文件夹结构。
+包括YIN子模块提取、文档内容匹配和测试模板复制。
+
+作者: Claude Code
+版本: 2.0 - 参数化版本
+"""
+
+import os
+import argparse
+from lxml import etree
+import traceback
+import copy
+import json
+import shutil
+from typing import Tuple, Dict
+
+# 定义YIN的命名空间URI，方便后续使用
+YIN_NS_URI = 'urn:ietf:params:xml:ns:yang:yin:1'
+YIN_NS_MAP = {'yin': YIN_NS_URI}
+
+
+def extract_and_save_yin_submodule(yin_file_path: str, yang_path: list, output_yin_path: str):
+    """
+    根据指定的YANG路径，Extracted XPath fromYIN文件中提取子模块定义，并将其保存为一个新的、独立的YIN文件。
+    """
+    if not yang_path:
+        print("Error: YANG path list cannot be empty.")
+        return
+
+    # 步骤 1: 解析输入文件
+    if not os.path.exists(yin_file_path):
+        print(f"Error: Input file not found: {yin_file_path}")
+        return
+
+    print(f"Step 1: Parsing YIN file: {yin_file_path}")
+    try:
+        parser = etree.XMLParser(remove_blank_text=True)
+        original_tree = etree.parse(yin_file_path, parser)
+        original_root = original_tree.getroot()
+    except etree.XMLSyntaxError as e:
+        print(f"Error: Failed to parse YIN file: {e}")
+        return
+
+    # 步骤 2: 验证路径是否存在
+    relative_xpath_parts = [f"yin:*[@name='{tag_name}']" for tag_name in yang_path]
+    full_xpath_for_check = f"./{'/'.join(relative_xpath_parts)}"
+
+    if not original_root.xpath(full_xpath_for_check, namespaces=YIN_NS_MAP):
+        print(f"Error: Path {yang_path} in YIN file {yin_file_path} does not exist.")
+        return
+    print(f"Step 2: Path {yang_path} verified successfully.")
+
+    # 步骤 3: 收集头部信息
+    print("Step 3: Collecting header information from original module...")
+    original_module_name = original_root.get('name')
+    prefix_element = original_root.find('yin:prefix', namespaces=YIN_NS_MAP)
+    original_prefix = prefix_element.get('value') if prefix_element is not None else None
+    imports = original_root.findall('yin:import', namespaces=YIN_NS_MAP)
+
+    # 步骤 4: 创建新的子模块根并添加头部
+    print("Step 4: Creating new YIN submodule skeleton...")
+    submodule_name = f"{original_module_name.split('@')[0]}-{yang_path[-1]}-submodule"
+    new_root = etree.Element('submodule', name=submodule_name, nsmap={None: YIN_NS_URI})
+
+    root_tag_name = original_root.tag.split('}')[-1]
+    if root_tag_name == 'module':
+        if not original_prefix:
+            print(f"Error: In original module {original_module_name} cannot find <prefix> definition.")
+            return
+        belongs_to = etree.SubElement(new_root, 'belongs-to', module=original_module_name)
+        etree.SubElement(belongs_to, 'prefix', value=original_prefix)
+    elif root_tag_name == 'submodule':
+        original_belongs_to = original_root.find('yin:belongs-to', namespaces=YIN_NS_MAP)
+        if original_belongs_to is not None:
+            new_root.append(copy.deepcopy(original_belongs_to))
+    for imp in imports:
+        new_root.append(copy.deepcopy(imp))
+
+    # 核心逻辑：递归构建路径
+    def build_path_recursively(source_node, dest_node, path_segment):
+        if not path_segment:
+            for child in source_node:
+                dest_node.append(copy.deepcopy(child))
+            return
+
+        next_node_name_in_path = path_segment[0]
+        remaining_path = path_segment[1:]
+        next_source_node_on_path = None
+
+        for child in source_node:
+            child_tag = etree.QName(child.tag).localname
+            if child.get('name') == next_node_name_in_path and child_tag in ['container', 'list']:
+                next_source_node_on_path = child
+            elif child_tag not in ['container', 'list']:
+                dest_node.append(copy.deepcopy(child))
+
+        if next_source_node_on_path is not None:
+            new_dest_container = etree.Element(
+                next_source_node_on_path.tag,
+                name=next_source_node_on_path.get('name')
+            )
+            dest_node.append(new_dest_container)
+            build_path_recursively(next_source_node_on_path, new_dest_container, remaining_path)
+        else:
+            print(f"Warning: Path node '{next_node_name_in_path}'")
+
+    print("Step 5: Recursively building path and copying sibling nodes...")
+    build_path_recursively(original_root, new_root, yang_path)
+
+    # 步骤 5.5: 规范化描述文本
+    print("Step 5.5: Normalizing description text to single line...")
+    text_nodes = new_root.xpath("//yin:text", namespaces=YIN_NS_MAP)
+    for text_node in text_nodes:
+        if text_node.text:
+            lines = [line.strip() for line in text_node.text.strip().split('\n')]
+            single_line_text = ' '.join(filter(None, lines))
+            text_node.text = single_line_text
+
+    # 步骤 6: 写入最终文件
+    print(f"Step 6: Writing final YIN submodule to file: {output_yin_path}")
+    try:
+        print(f"Writing file: {output_yin_path}...")
+        tree = etree.ElementTree(new_root)
+        tree.write(
+            output_yin_path,
+            pretty_print=True,
+            xml_declaration=True,
+            encoding='UTF-8'
+        )
+        print(f"Success! YIN submodule saved to: {output_yin_path}")
+    except Exception as e:
+        print(f"Error: Failed to write YIN file: {e}")
+        print(traceback.format_exc())
+
+
+def replace_in_file(file_path, old_str, new_str):
+    """替换文件中的字符串"""
+    with open(file_path, 'r', encoding='utf-8') as file:
+        file_content = file.read()
+    updated_content = file_content.replace(old_str, new_str)
+    with open(file_path, 'w', encoding='utf-8') as file:
+        file.write(updated_content)
+
+
+def map_modules_to_yin_files(yin_directory: str) -> dict:
+    """
+    扫描包含YIN文件的目录，并创建一个Extracted XPath from模块名到文件路径的映射。
+    映射的键是YIN模块中顶层容器(container)的名称。
+    """
+    print(f"Loading all NETCONF docs from directory {yin_directory} ...")
+    module_map = {}
+    parser = etree.XMLParser(remove_blank_text=True)
+
+    for filename in os.listdir(yin_directory):
+        if filename.endswith(".yin") and '-config' in filename:
+            file_path = os.path.join(yin_directory, filename)
+            try:
+                tree = etree.parse(file_path, parser)
+                root = tree.getroot()
+                top_level_containers = root.findall("yin:container", namespaces=YIN_NS_MAP)
+
+                for container in top_level_containers:
+                    container_name = container.get('name')
+                    if container_name:
+                        module_map[container_name] = file_path
+                        print(f"  > Found mapping: '{container_name}' -> {filename}")
+            except etree.XMLSyntaxError:
+                print(f"Warning: Skipping unparsable XML file: {filename}")
+
+    return module_map
+
+
+def load_all_netconf_docs(docs_directory: str) -> Tuple[dict, dict]:
+    """
+    Extracted XPath from指定目录及其子目录加载所有NETCONF文档JSON文件和revision文件，并合并成两个字典。
+    返回: (all_docs_dict, revision_sections_dict)
+    """
+    print(f"Loading all NETCONF docs from directory {docs_directory} and its subdirectories...")
+    all_docs = {}
+    revision_sections = {}  # 存储revision.json中的二级章节名映射，格式: {文件路径: {章节名: 章节名}}
+
+    for root, dirs, files in os.walk(docs_directory):
+        for filename in files:
+            if filename.endswith(".new.json"):
+                file_path = os.path.join(root, filename)
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    try:
+                        data = json.load(f)
+                        all_docs.update(data)
+                    except json.JSONDecodeError:
+                        print(f"Warning: Skipping malformed JSON file: {filename}")
+
+            # 加载对应的revision.json文件
+            elif filename.endswith(".revisions.json"):
+                file_path = os.path.join(root, filename)
+                # 找到对应的.new.json文件路径
+                base_name = filename.replace('.revisions.json', '.new.json')
+                corresponding_new_json_path = os.path.join(root, base_name)
+
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    try:
+                        revision_data = json.load(f)
+                        # revision_data格式: {"二级章节名": [修订记录列表]}
+                        # 我们只需要键名作为有效的二级章节，按文件存储
+                        revision_chapter_keys = {key: key for key in revision_data.keys()}
+                        # 使用revision.json文件的路径作为key，以便后续匹配
+                        revision_sections[file_path] = revision_chapter_keys
+                        print(f"  > Loaded revision file: {filename}, containing {len(revision_chapter_keys)} secondary chapters")
+                        print(f"    - Corresponding doc file: {base_name}")
+                        for key in revision_chapter_keys:
+                            print(f"      - Secondary chapter: {key}")
+                    except json.JSONDecodeError:
+                        print(f"Warning: Skipping malformed revision JSON file: {filename}")
+
+    # 计算总的revision章节数
+    total_revision_chapters = sum(len(chapters) for chapters in revision_sections.values())
+    print(f"All docs loaded. Contains {len(all_docs)} document entries and {len(revision_sections)} revision files, total {total_revision_chapters} revision chapters.")
+
+    return all_docs, revision_sections
+
+
+def extract_xpaths_from_docs(docs_directory: str, revision_sections: dict = None) -> list:
+    """
+    Extracted XPath from文档分析结果(.new.json文件)中提取所有有效的XPath路径
+    如果提供了revision_sections，则只提取revision.json中存在的二级章节对应的XPath
+    revision_sections格式: {文件路径: {章节名: 章节名}}
+    """
+    print(f"Extracting XPaths from document analysis results...")
+    all_xpaths = []
+
+    for root, _, files in os.walk(docs_directory):
+        for filename in files:
+            if filename.endswith(".new.json"):
+                file_path = os.path.join(root, filename)
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        doc_data = json.load(f)
+
+                    # Extracted XPath from文档数据中提取XPath
+                    for chapter_key, chapter_content in doc_data.items():
+                        xpath = chapter_content.get('xpath')
+                        if xpath and xpath.strip():
+                            clean_xpath = xpath.strip()
+
+                            # 如果提供了revision_sections，则检查章节是否在对应文件的revision中
+                            if revision_sections is not None:
+                                # 通过文件基本名称匹配revision记录
+                                file_base_name = filename.replace('.new.json', '.revisions.json')
+                                file_revision_path = os.path.join(root, file_base_name)
+
+                                # 检查当前文件是否有对应的revision记录
+                                if file_revision_path not in revision_sections:
+                                    print(f"  > Skipping file without revision record: {filename}")
+                                    continue
+
+                                # 检查chapter_key是否在对应文件的revision章节中
+                                file_revision_sections = revision_sections[file_revision_path]
+                                if chapter_key not in file_revision_sections:
+                                    print(f"  > Skipping chapter not in revision: {chapter_key} (file: {filename})")
+                                    continue
+                                print(f"  > Found chapter in revision: {chapter_key} (file: {filename})")
+
+                            if clean_xpath not in all_xpaths:
+                                all_xpaths.append(clean_xpath)
+                                print(f"  > Extracted XPath from {filename} : {clean_xpath}")
+
+                except json.JSONDecodeError:
+                    print(f"Warning: Skipping malformed JSON file: {filename}")
+                except Exception as e:
+                    print(f"Warning: Error processing file {filename} : {e}")
+
+    print(f"总共Extracted XPath from文档中提取了 {len(all_xpaths)} XPaths from documents")
+    return all_xpaths
+
+
+def generate_test_folders(yin_dir, docs_dir, template_dir, output_dir):
+    """
+    主要功能：根据文档分析结果生成测试文件夹结构
+
+    Args:
+        yin_dir: YIN file directory
+        docs_dir: 文档JSON文件目录
+        template_dir: 模板文件目录
+        output_dir: 输出目录
+
+    Returns:
+        bool: 是否处理成功
+    """
+    print(f"\n{'='*60}")
+    print("Starting XPath Test Folder Structure Generation")
+    print(f"{'='*60}")
+
+    # 验证输入目录
+    for dir_name, dir_path in [
+        ("YIN file directory", yin_dir),
+        ("Document directory", docs_dir),
+        ("Template directory", template_dir)
+    ]:
+        if not os.path.exists(dir_path):
+            print(f"错误: {dir_name}does not exist: {dir_path}")
+            return False
+        if not os.path.isdir(dir_path):
+            print(f"错误: {dir_name}is not a valid directory: {dir_path}")
+            return False
+
+    # 创建输出目录
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"Output directory: {output_dir}")
+
+    # --- 步骤 1: 准备工作 ---
+    # 创建 '模块顶层容器名' -> '路径/到/文件.yin' 的映射
+    module_to_yin_map = map_modules_to_yin_files(yin_dir)
+
+    if not module_to_yin_map:
+        print("Error: No valid YIN module mappings found")
+        return False
+
+    # 将所有文档加载到一个大的字典中，并获取revision章节
+    all_netconf_docs, revision_sections = load_all_netconf_docs(docs_dir)
+
+    if not all_netconf_docs:
+        print("Warning: No document content loaded")
+
+    # Extracted XPath from文档分析结果中提取XPath，优先使用revision过滤
+    # 如果没有revision文件，传入None以跳过revision检查
+    all_xpaths = extract_xpaths_from_docs(docs_dir, revision_sections if revision_sections else None)
+
+    if not all_xpaths:
+        print("错误: 未Extracted XPath from文档中提取到任何XPath")
+        return False
+
+    # 获取需要复制的模板文件名列表
+    template_files = []
+    if os.path.exists(template_dir):
+        template_files = [f for f in os.listdir(template_dir)
+                        if os.path.isfile(os.path.join(template_dir, f))]
+    else:
+        print(f"警告: Template directorydoes not exist: {template_dir}")
+
+    # --- 步骤 2: 主处理循环 ---
+    processed_count = 0
+    skipped_count = 0
+
+    for xpath_str in all_xpaths:
+        print(f"\nProcessing XPath: {xpath_str}")
+
+        # Extracted XPath fromXPath中解析出模块/顶层容器名和路径列表
+        yang_path_list = xpath_str.strip('/').split('/')
+        if not yang_path_list:
+            print(f"Warning: Invalid XPath '{xpath_str}', skipping.")
+            skipped_count += 1
+            continue
+
+        top_level_name = yang_path_list[0]
+
+        # 使用映射动态查找对应的YIN文件
+        input_yin_file = module_to_yin_map.get(top_level_name)
+
+        if not input_yin_file:
+            print(f"Warning: Cannot find YIN file for module/container '{top_level_name}'. Skipping XPath: {xpath_str}")
+            skipped_count += 1
+            continue
+
+        print(f"Matched YIN file: {input_yin_file}")
+
+        # 准备输出目录和文件名
+        file_name = xpath_str.replace('/', '_').strip('_')
+        current_output_dir = os.path.join(output_dir, file_name)
+        os.makedirs(current_output_dir, exist_ok=True)
+        output_yin_file = os.path.join(current_output_dir, 'yin.txt')
+
+        # 调用核心函数，提取子模块
+        extract_and_save_yin_submodule(
+            yin_file_path=input_yin_file,
+            yang_path=yang_path_list,
+            output_yin_path=output_yin_file
+        )
+
+        # 查找并保存对应的文档内容
+        found_doc = False
+        for doc_title, doc_content in all_netconf_docs.items():
+            doc_xpath = doc_content.get('xpath', '')
+            if doc_xpath and doc_xpath.strip('/') == xpath_str.strip('/'):
+                md_content = doc_content.get('markdown_content', '')
+                if md_content:
+                    output_md_file = os.path.join(current_output_dir, 'netconf.txt')
+                    with open(output_md_file, "w", encoding="utf-8") as f:
+                        f.write(md_content)
+                    print(f"Found and saved [exact match] document: '{doc_title}'")
+                    found_doc = True
+                    break
+
+        # 如果没找到完全匹配的，尝试最长前缀匹配
+        if not found_doc:
+            print(f"No exact match found, trying [longest prefix match]...")
+            longest_match_xpath = ""
+            best_match_title = ""
+            best_match_content = ""
+
+            for doc_title, doc_content in all_netconf_docs.items():
+                doc_xpath = doc_content.get('xpath', '')
+                if not doc_xpath:
+                    continue
+
+                if doc_xpath and xpath_str.strip('/').startswith(doc_xpath):
+                    if len(doc_xpath) > len(longest_match_xpath):
+                        longest_match_xpath = doc_xpath
+                        best_match_content = doc_content.get('markdown_content', '')
+                        best_match_title = doc_title
+
+            if best_match_content:
+                output_md_file = os.path.join(current_output_dir, 'netconf.txt')
+                with open(output_md_file, "w", encoding="utf-8") as f:
+                    f.write(best_match_content)
+                print(f"Found and saved [longest prefix match] document: '{best_match_title}' (matched path: /{longest_match_xpath})")
+                found_doc = True
+
+        # 如果两种方法都没有找到文档
+        if not found_doc:
+            print(f"Warning: Could not find any matching document for {xpath_str} ")
+
+        # 复制并修改模板文件
+        for template_file in template_files:
+            source_file = os.path.join(template_dir, template_file)
+            destination_file = os.path.join(current_output_dir, template_file)
+            if os.path.isfile(source_file):
+                shutil.copy(source_file, destination_file)
+                if template_file == "test_netconf.py":
+                    replace_in_file(destination_file, "NQA/UdpJitterEntries", xpath_str)
+
+        print(f"Template files copied and configured for {xpath_str} .")
+        processed_count += 1
+
+    # --- 处理完成报告 ---
+    print(f"\n{'='*60}")
+    print("Processing Complete Statistics")
+    print(f"{'='*60}")
+    print(f"Total XPaths extracted: {len(all_xpaths)}")
+    print(f"Successfully processed: {processed_count}")
+    print(f"Skipped: {skipped_count}")
+    print(f"Output directory: {output_dir}")
+    print(f"{'='*60}")
+
+    return processed_count > 0
+
+
+def main():
+    """
+    主函数，处理命令行参数并启动XPath测试文件夹生成过程
+    """
+    # 获取脚本所在目录的父目录下的templates/generate_prompt作为默认模板路径
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    default_template_dir = os.path.abspath(os.path.join(script_dir, '..', 'templates', 'generate_prompt'))
+
+    parser = argparse.ArgumentParser(
+        description='根据文档分析结果生成NETCONF XPath测试文件夹结构',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用示例:
+  # 基本用法
+  python xpath_test_generator.py --yin-dir D:\\yang\\B75_yin --docs-dir D:\\netconf_doc --template-dir C:\\templates --output D:\\output
+
+  # 简写形式
+  python xpath_test_generator.py -y D:\\yang\\B75_yin -d D:\\netconf_doc -t C:\\templates -o D:\\output
+
+  # 只指定必需参数，使用默认模板路径
+  python xpath_test_generator.py -y D:\\yang\\B75_yin -d D:\\netconf_doc -o D:\\output
+        """
+    )
+
+    # 必需参数
+    parser.add_argument(
+        '-y', '--yin-dir',
+        required=True,
+        help='YIN file directory路径（必需）'
+    )
+
+    parser.add_argument(
+        '-d', '--docs-dir',
+        required=True,
+        help='文档分析结果(.new.json文件)目录路径（必需）'
+    )
+
+    parser.add_argument(
+        '-o', '--output',
+        required=True,
+        help='输出目录路径（必需）'
+    )
+
+    # 可选参数
+    parser.add_argument(
+        '-t', '--template-dir',
+        default=default_template_dir,
+        help=f'模板文件目录路径（可选，默认: {default_template_dir}）'
+    )
+
+    # 解析参数
+    args = parser.parse_args()
+
+    print(f"YIN file directory: {args.yin_dir}")
+    print(f"Document directory: {args.docs_dir}")
+    print(f"Output directory: {args.output}")
+    print(f"Template directory: {args.template_dir}")
+
+    # 执行主要功能
+    success = generate_test_folders(
+        yin_dir=args.yin_dir,
+        docs_dir=args.docs_dir,
+        template_dir=args.template_dir,
+        output_dir=args.output
+    )
+
+    if success:
+        print("\nXPath test folder generation completed successfully!")
+        return 0
+    else:
+        print("\nXPath test folder generation failed!")
+        return 1
+
+
+if __name__ == "__main__":
+    exit(main())
