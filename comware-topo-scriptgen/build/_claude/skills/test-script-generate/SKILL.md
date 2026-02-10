@@ -28,24 +28,24 @@ description: 编写用于新华三技术有限公司H3C网络设备自动化测�
 
 ### 2.1 **design_ke库检索，存储用户历史测试经验，需要优先重点参考**: 需要配置时间段策略
    ```bash
-   python {当前skill路径}/script/data_search_h3c_example.py --description "IGMP snooping查询组" --indexname "design_ke"
+   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "IGMP snooping查询组" --indexname "design_ke"
    ```
 
 ### 2.2 **example_ke库检索，该库有测试用例的实现代码，包含部分背景配置代码**: DHCP中继测试用例，必须检索
    ```bash
-   python {当前skill路径}/script/data_search_h3c_example.py --description "DHCP中继" --indexname "example_ke"
+   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "DHCP中继" --indexname "example_ke"
    ```
 
 ### 2.3 **cmd_ke库检索，用于存储网络设备命令行**: 配置接口IP地址
    ```bash
-   python {当前skill路径}/script/data_search_h3c_example.py --description "ip address " --indexname "cmd_ke"
+   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "ip address " --indexname "cmd_ke"
 
-   python {当前skill路径}/script/data_search_h3c_example.py --description "配置接口IP地址" --indexname "cmd_ke"
+   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "配置接口IP地址" --indexname "cmd_ke"
    ```
 
 ### 2.4 **press_config_des库检索，存储标准化的配置步骤说明，提供详细的配置流程和参数说明。**: 需要配置时间段策略
    ```bash
-   python {当前skill路径}/script/data_search_h3c_example.py --description "时间段配置" --indexname "press_config_des"
+   /opt/coder/venvs/comware-test/bin/python {当前skill路径}/script/data_search_h3c_example.py --description "时间段配置" --indexname "press_config_des"
    ```
 
 ## 3. 通用约束与原则
@@ -59,7 +59,6 @@ description: 编写用于新华三技术有限公司H3C网络设备自动化测�
   import pytest
   from pytest_atf.atf_globalvar import globalVar as gl
   from pytest_atf import *
-  from .conftest import *
   ```
 
 ### 3.2 资料引用规范

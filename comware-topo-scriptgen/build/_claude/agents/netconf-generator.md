@@ -1,5 +1,5 @@
 ---
-name: netconf_generator
+name: netconf-generator
 description: 读取目录下所有参考文件，生成netconf测试函数, 写入test_netconf.py文件。
 model: sonnet
 ---
