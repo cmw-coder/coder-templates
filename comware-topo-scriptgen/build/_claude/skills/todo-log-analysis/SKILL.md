@@ -1,5 +1,5 @@
 ---
-name: todo_log_analysis
+name: todo-log-analysis
 description: 解析 Agent 执行日志，计算并输出文件准备、检索、代码生成及最终校验四个核心阶段的耗时。
 ---
 

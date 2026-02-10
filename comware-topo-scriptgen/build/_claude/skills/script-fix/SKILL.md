@@ -1,5 +1,5 @@
 ---
-name: script_fix
+name: script-fix
 description: 修复生成的conftest.py和pytest脚本
 ---
 

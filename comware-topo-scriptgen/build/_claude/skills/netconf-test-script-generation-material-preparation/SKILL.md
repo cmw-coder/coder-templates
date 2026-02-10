@@ -1,5 +1,5 @@
 ---
-name: netconf_test_script_generation_material_preparation
+name: netconf-test-script-generation-material-preparation
 description: 全栈 NETCONF/YANG 处理工作流。负责将 YANG 文件转换为 YIN/DSDL，解析 Word 需求文档提取 XPath，并基于文档分析结果自动生成测试文件夹结构。适用于 NETCONF 协议开发和测试场景。
 allowed-tools: Bash, Read, Glob, Write
 ---
@@ -12,7 +12,7 @@ allowed-tools: Bash, Read, Glob, Write
 
 **重要提示**：请区分以下两个不同的路径概念：
 - **当前工作目录**：用户执行命令时所在的目录，yang 文件和 docx 文件应位于此目录
-- **当前 SKILL 路径**：本 SKILL 定义文件所在的目录，即 `c:\Users\m31660\.claude\skills\netconf_test_script_generation_material_preparation\`
+- **当前 SKILL 路径**：本 SKILL 定义文件所在的目录，即 `c:\Users\m31660\.claude\skills\netconf-test-script-generation-material-preparation\`
 
 ### 脚本位置
 所有 Python 脚本均位于：`{当前SKILL路径}/scripts/`
@@ -104,12 +104,12 @@ allowed-tools: Bash, Read, Glob, Write
 **场景：全流程生成测试**
 
 > User: "我有 `D:\work\yang\v1` 下的模型文件和 `D:\work\docs\Spec.docx` 文档，当前工作目录是 `D:\work`"
-> SKILL 路径: `c:\Users\m31660\.claude\skills\netconf_test_script_generation_material_preparation\`
+> SKILL 路径: `c:\Users\m31660\.claude\skills\netconf-test-script-generation-material-preparation\`
 
 Claude 应执行：
 1. 进入脚本目录并转换 YANG 文件：
    ```bash
-   cd "c:\Users\m31660\.claude\skills\netconf_test_script_generation_material_preparation\scripts"
+   cd "c:\Users\m31660\.claude\skills\netconf-test-script-generation-material-preparation\scripts"
    python yang_converter.py --all "D:\work\yang\v1"
    ```
    - 输出目录: `D:\work\yang\v1_converted\` (包含 .yin 文件)
@@ -124,7 +124,7 @@ Claude 应执行：
 
 3. 生成测试结构：
    ```bash
-   python xpath_test_generator.py -y "D:\work\yang\v1_converted" -d "D:\work\docs\converted_docs" -t "c:\Users\m31660\.claude\skills\netconf_test_script_generation_material_preparation\templates\generate_prompt/" -o "D:\work\test_output"
+   python xpath_test_generator.py -y "D:\work\yang\v1_converted" -d "D:\work\docs\converted_docs" -t "c:\Users\m31660\.claude\skills\netconf-test-script-generation-material-preparation\templates\generate_prompt/" -o "D:\work\test_output"
    ```
 
 **关键点**：
