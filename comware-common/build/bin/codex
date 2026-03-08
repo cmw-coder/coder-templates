@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # Get configuration from environment variables, use defaults as fallback
+JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"11c7798a2446cc8acb1f871ad486a4b8ff"}    # This should be set automatically
+JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.174:8080"}            # This should be set automatically
 PROJECT_PLATFORM_PATH=${PROJECT_PLATFORM_PATH:-""}  # This should be set automatically
 PROJECT_PUBLIC_PATH=${PROJECT_PUBLIC_PATH:-""}      # This should be set automatically
 

@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Get configuration from environment variables, use defaults as fallback
-CODER_WORKSPACE_ID=${CODER_WORKSPACE_ID:-""}  # This should be set automatically
+CODER_SERVICE_NAME=${CODER_SERVICE_NAME:-""}  # This should be set automatically
+
 
 # shellcheck source=/dev/null
 source "log-utils"
@@ -130,13 +131,15 @@ get_current_branch_url() {
 get_shadow_branch_url() {
     local current_branch_url="$1"
 
-    if [[ "$current_branch_url" == *"/trunk"* ]]; then
+    if [[ "${current_branch_url}" == *"/tags"* ]]; then
+         echo "${current_branch_url/tags\/trunk_tags/branches_bugfix}/${CODER_SERVICE_NAME}"
+    elif [[ "$current_branch_url" == *"/trunk"* ]]; then
         local latest_version_tag
         current_branch_url="${current_branch_url%%/trunk*}/trunk"
-        latest_version_tag=$(svn_s cat "http://10.153.120.104/cmwcode-public/${current_branch_url#*/cmwcode-*/}/PUBLIC/init/all/platver.def" | grep -oP 'V\d+R\d+B\d+D\d+')
-        echo "${current_branch_url%/trunk}/branches_bugfix/COMWARE${latest_version_tag}/coder_workspace_${CODER_WORKSPACE_ID}"
+        latest_version_tag=$(svn_s cat "http://10.153.120.104/cmwcode-public/${current_branch_url#*/cmwcode-*/}/PUBLIC/init/all/platver.def" | grep -oP 'V\d+R\d+B\d+D\d+(SP\d+)?')
+        echo "${current_branch_url%/trunk}/branches_bugfix/COMWARE${latest_version_tag}/${CODER_SERVICE_NAME}"
     else
-        echo "${current_branch_url%/*}/coder_workspace_${CODER_WORKSPACE_ID}"
+        echo "${current_branch_url%/*}/${CODER_SERVICE_NAME}"
     fi
 }
 
@@ -186,6 +189,7 @@ sync_to_shadow_branch() {
         # TODO: Find a better way to replace this stupid method
         SVN_PASSWORD="Zpr758258%"
         SVN_USERNAME="z11187"
+        SVN_USERNAME="z11187"
     fi
 
     # Recreate shadow branch
@@ -218,7 +222,7 @@ show_help() {
     echo ""
     echo "Configurable Environment Variables:"
     echo "  Current script:"
-    echo "    CODER_WORKSPACE_ID            Coder workspace UUID, this should be set automatically"
+    echo "    CODER_SERVICE_NAME            Coder workspace's Docker service name, this should be set automatically"
     echo ""
     echo "  Inherited from log-utils:"
     echo "    LOG_LEVEL                     Log level, 0=error, 1=info, 2=debug, default is 1"

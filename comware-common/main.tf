@@ -89,6 +89,10 @@ data "coder_parameter" "svn_password" {
   description   = "Specify a SVN password to checkout codes"
   type          = "string"
   mutable       = true
+
+  styling = jsonencode({
+    mask_input = true
+  })
 }
 data "coder_provisioner" "me" {
 }
@@ -205,10 +209,10 @@ resource "coder_app" "coder_tutorials" {
   external     = true
 }
 
-resource "coder_env" "coder_workspace" {
+resource "coder_env" "coder_service_name" {
   agent_id = coder_agent.main.id
-  name     = "CODER_WORKSPACE_ID"
-  value    = "${data.coder_workspace.me.id}"
+  name     = "CODER_SERVICE_NAME"
+  value    = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
 }
 resource "coder_env" "extensions_gallery" {
   agent_id = coder_agent.main.id
@@ -219,6 +223,11 @@ resource "coder_env" "node_extra_ca_certs" {
   agent_id = coder_agent.main.id
   name     = "NODE_EXTRA_CA_CERTS"
   value    = "/etc/ssl/certs/ca-certificates.crt"
+}
+resource "coder_env" "node_options" {
+  agent_id = coder_agent.main.id
+  name     = "NODE_OPTIONS"
+  value    = "--max-old-space-size=16384"
 }
 resource "coder_env" "project_platform_folder_list" {
   agent_id = coder_agent.main.id
@@ -287,7 +296,6 @@ resource "coder_script" "start_code_server" {
     ${local.code_server_dir}/bin/code-server --install-extension "ms-python.debugpy@prerelease" --force
     ${local.code_server_dir}/bin/code-server --install-extension "ms-vscode.cpptools@prerelease" --force
     ${local.code_server_dir}/bin/code-server --install-extension "timonwong.shellcheck" --force
-    ${local.code_server_dir}/bin/code-server --install-extension "rangav.vscode-thunder-client" --force
     ${local.code_server_dir}/bin/code-server --install-extension "redhat.vscode-xml@prerelease" --force
     ${local.code_server_dir}/bin/code-server --install-extension "rogalmic.bash-debug" --force
     ${local.code_server_dir}/bin/code-server --install-extension "rsbondi.highlight-words" --force
@@ -325,6 +333,19 @@ resource "coder_script" "checkout_public_svn" {
   script = <<EOF
     #!/bin/bash
     checkout-list public
+  EOF
+}
+resource "coder_script" "create_python_venv" {
+  agent_id     = coder_agent.main.id
+  display_name = "Create Python Venv"
+  icon         = "/icon/python.svg"
+  run_on_start = true
+  start_blocks_login = true
+  script = <<EOF
+    #!/bin/bash
+    cd "${local.project_path}"
+    python -m venv .venv --system-site-packages
+    .venv/bin/pip install tree-sitter tree-sitter-c
   EOF
 }
 
@@ -406,12 +427,7 @@ resource "docker_image" "main" {
   }
   force_remove = true
   triggers = {
-    dir_sha1 = sha1(join("", concat(
-      [for f in fileset(path.module, "build/**") : filesha1("${path.module}/${f}")],
-      [for f in fileset(path.module, "build/_*/**") : filesha1("${path.module}/${f}")],
-      [for f in fileset(path.module, "build/**/.*") : filesha1("${path.module}/${f}")],
-      [for f in fileset(path.module, "build/**/_*") : filesha1("${path.module}/${f}")]
-    )))
+    dir_sha1 = sha1(join("", [for f in fileset(path.module, "build/**") : filesha1(f)]))
   }
 }
 
@@ -428,11 +444,6 @@ resource "docker_registry_image" "main" {
   insecure_skip_verify  = true
   keep_remotely = false
   triggers              = {
-    dir_sha1 = sha1(join("", concat(
-      [for f in fileset(path.module, "build/**") : filesha1("${path.module}/${f}")],
-      [for f in fileset(path.module, "build/_*/**") : filesha1("${path.module}/${f}")],
-      [for f in fileset(path.module, "build/**/.*") : filesha1("${path.module}/${f}")],
-      [for f in fileset(path.module, "build/**/_*") : filesha1("${path.module}/${f}")]
-    )))
+    dir_sha1 = sha1(join("", [for f in fileset(path.module, "build/**") : filesha1(f)]))
   }
 }
