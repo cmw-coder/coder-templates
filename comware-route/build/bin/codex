@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # Get configuration from environment variables, use defaults as fallback
+JENKINS_API_TOKEN=${JENKINS_API_TOKEN:-"11f97ad64a077b6190737e4f604ee201ec"}    # This should be set automatically
+JENKINS_SERVER_URL=${JENKINS_SERVER_URL:-"http://10.153.3.127:8080"}            # This should be set automatically
 PROJECT_PLATFORM_PATH=${PROJECT_PLATFORM_PATH:-""}  # This should be set automatically
 PROJECT_PUBLIC_PATH=${PROJECT_PUBLIC_PATH:-""}      # This should be set automatically
 
@@ -247,7 +249,7 @@ main() {
         local shadow_branch_url
         shadow_branch_url=$(shadow-branch -f -k "$PROJECT_PLATFORM_PATH")
         # TODO: Support other platforms, currently only cmwcode-open is supported
-        if [[ "$shadow_branch_url" != *"cmwcode-open"* ]]; then
+        if [[ "$shadow_branch_url" != *"cmwcode-open"* && "$shadow_branch_url" != *"cmwcode-route"* ]]; then
             handle_error "Invalid shadow branch url, this may be caused by an incorrect PROJECT_PLATFORM_PATH."
             return 1
         fi
@@ -255,7 +257,8 @@ main() {
         shadow-branch -f -k "$PROJECT_PUBLIC_PATH"
 
         svn_path=${shadow_branch_url#*cmwcode-open}
-        log_debug "Found cmwcode-open in SVN path, extracted path: $svn_path"
+        svn_path=${shadow_branch_url#*cmwcode-route}
+        log_debug "Found cmwcode-* in SVN path, extracted path: $svn_path"
     fi
 
     build_job_codex "$module_list" "$svn_path" "$extra_params"

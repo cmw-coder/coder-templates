@@ -133,7 +133,7 @@ get_shadow_branch_url() {
     if [[ "$current_branch_url" == *"/trunk"* ]]; then
         local latest_version_tag
         current_branch_url="${current_branch_url%%/trunk*}/trunk"
-        latest_version_tag=$(svn_s cat "http://10.153.120.104/cmwcode-public/${current_branch_url#*/cmwcode-*/}/PUBLIC/init/all/platver.def" | grep -oP 'V\d+R\d+B\d+D\d+')
+        latest_version_tag=$(svn_s cat "http://10.153.120.104/cmwcode-public/${current_branch_url#*/cmwcode-*/}/PUBLIC/init/all/platver.def" | grep -oP 'V\d+R\d+B\d+D\d+(SP\d+)?')
         echo "${current_branch_url%/trunk}/branches_bugfix/COMWARE${latest_version_tag}/coder_workspace_${CODER_WORKSPACE_ID}"
     else
         echo "${current_branch_url%/*}/coder_workspace_${CODER_WORKSPACE_ID}"

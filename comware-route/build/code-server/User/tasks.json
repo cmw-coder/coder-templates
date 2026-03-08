@@ -14,7 +14,7 @@
       "id": "openCoderDocs",
       "type": "command",
       "command": "simpleBrowser.show",
-      "args": ["https://coder-docs.cmwcoder.h3c.com"]
+      "args": ["https://docs.coder-route.h3c.com"]
     }
   ]
 }

@@ -183,7 +183,7 @@ run_build_job() {
     local shadow_branch_url
     shadow_branch_url=$(shadow-branch -f -k "$PROJECT_PLATFORM_PATH")
     # TODO: Support other platforms, currently only cmwcode-open is supported
-    if [[ "$shadow_branch_url" != *"cmwcode-open"* ]]; then
+    if [[ "$shadow_branch_url" != *"cmwcode-open"* && "$shadow_branch_url" != *"cmwcode-route"* ]]; then
         handle_error "Invalid shadow branch url, this may be caused by an incorrect PROJECT_PLATFORM_PATH."
         return 1
     fi
@@ -199,7 +199,8 @@ run_build_job() {
     shadow-branch -f -k "$PROJECT_PUBLIC_PATH"
 
     local svn_path=${shadow_branch_url#*cmwcode-open}
-    log_debug "Found cmwcode-open in SVN path, extracted path: $svn_path"
+    svn_path=${shadow_branch_url#*cmwcode-route}
+    log_debug "Found cmwcode-* in SVN path, extracted path: $svn_path"
 
     # Construct build command
     local build_cmd="-s ${svn_path}"
