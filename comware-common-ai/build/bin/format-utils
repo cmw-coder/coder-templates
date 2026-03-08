@@ -1,0 +1,10 @@
+#!/bin/bash
+
+format_elapsed_seconds() {
+    local elapsed_seconds=$(($(date +%s) - $1))
+
+    local hours=$((elapsed_seconds / 3600))
+    local minutes=$(((elapsed_seconds % 3600) / 60))
+    local seconds=$((elapsed_seconds % 60))
+    printf "%02d:%02d:%02d" $hours $minutes $seconds
+}

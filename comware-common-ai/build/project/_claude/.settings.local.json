@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(abuild)",
+      "Skill(generating-comware-buildrun)",
+      "Skill(tree-sitter)",
+      "Skill(universal-Ctags)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
