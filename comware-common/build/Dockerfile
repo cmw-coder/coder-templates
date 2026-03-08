@@ -1,33 +1,55 @@
-FROM registry.coder.h3c.com/ubuntu:24.04
+FROM registry.coder.h3c.com/node:lts-trixie-slim
+
+# Set environment variables
+ENV DEVCONTAINER=true
+ENV TZ=Asia/Shanghai
 
 COPY --chmod=755 bin /usr/local/bin
 COPY ca-certs /usr/local/share/ca-certificates/
-COPY ubuntu.sources /etc/apt/sources.list.d/
+COPY debian.sources /etc/apt/sources.list.d/
 
 RUN apt-get update \
-    && apt-get install -y build-essential ca-certificates curl jq nano neovim sudo \
+    && apt-get install -y build-essential ca-certificates curl fzf jq man-db nano neovim sudo unzip \
     && update-ca-certificates \
-    && apt-get install -y language-pack-en-base locales subversion \
-    && sed -i '/en_US.UTF-8/s/^#//g' /etc/locale.gen \
-    && locale-gen en_US.UTF-8 \
-    && apt-get install -y python3 python3-pip black \
-    && ln -s /usr/bin/python3 /usr/bin/python \
+    && apt-get install -y locales subversion universal-ctags \
+    && sed -i 's|# en_US.UTF-8|en_US.UTF-8|g' /etc/locale.gen \
+    && locale-gen \
+    && apt-get install -y python3 python3-venv pip python-is-python3 black python3-chardet python3-requests \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /opt/glibc/include \
     && mkdir -p /opt/open-headers/include
 
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+# Set the default editor and visual
+ENV EDITOR=nvim
+ENV VISUAL=nvim
 
+# Install Claude Code
+RUN npm config set registry http://rdmirrors.h3c.com/npm \
+    && npm install -g @anthropic-ai/claude-code@2.0.76
+
+# Create a non-root user with sudo privileges
 ARG USER=coder
 RUN useradd --groups sudo --no-create-home --shell /bin/bash ${USER} \
     && echo "${USER} ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/${USER} \
     && chmod 0440 /etc/sudoers.d/${USER}
-
+# Ensure user has access to /usr/local/share
+RUN mkdir -p /usr/local/share/npm-global && \
+  chown -R ${USER}:${USER} /usr/local/share
+# Persist bash history.
+RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
+  && mkdir /commandhistory \
+  && touch /commandhistory/.bash_history \
+  && chown -R ${USER} /commandhistory
+# Set the default user and working directory
 USER ${USER}
 WORKDIR /home/${USER}
 
+COPY --chown=${USER}:${USER} _bashrc /home/${USER}/.bashrc
+COPY --chown=${USER}:${USER} _config/pip /home/${USER}/.config/pip/
 COPY --chown=${USER}:${USER} code-server /home/${USER}/.local/share/code-server/
-COPY --chown=${USER}:${USER} pip.conf /home/${USER}/.pip/
+COPY --chown=${USER}:${USER} project/_claude /home/${USER}/project/.claude/
+COPY --chown=${USER}:${USER} project/_tools /home/${USER}/project/.tools/
 
 # Add languagepacks.json
 ARG EXTENSION_VERSION=1.99.2025040909
