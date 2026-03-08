@@ -1,0 +1,42 @@
+=== ABUILD  V0057G    Fast  Reliable  Quantitative  ===
+
+options:
+ -e  64sim7cen,S6890                   # one or many ipes in one cmd
+ -e  sr8800:mpu_xlp:lpu_xlp            # only specified boards
+ -s  B70D047/TB201902030405            # svn pure rule, down changed code
+ -s  B70D047[:lan,ofp,bgp]             # optional, specify team
+ -s  V7R1_AUTUMNB70/trunk[:ofp]
+ -u|-k                                 # only user or kernel
+ -o                                    # build obj (both user and kernel)
+ -v  d20210521.142010                  # Rev by data.time 
+ -v  r206285:r721528:r139908           # Rev by rxxxx in public:open:route  
+
+ -i  libDir1   [-i libDir2]            # import other libs  
+ -x  uploadDir                         # export cur build libs  
+ -d|-r                                 # debug or release version
+ -c|-C                                 # clean or distclean   
+ -t                                    # only pack demand bins
+ -f ospf,nqa                           # only specified user dir ( src/sbin/xx )
+ -n                                    # do not actually pack
+ -y                                    # digware/lockware extend param
+Ex: 
+ abuild -e 64sim7cen                   # compile, link and pack       
+ abuild -e 64sim7cen -o                # compile user kernel          
+ abuild -e 64sim7cen -uk               # compile and link user kernel 
+
+output:
+ TARGET/user_debug/cen_x86_64/         # plat delivers, such as aaad,ospfd 
+ TARGET/user_debug/cen_x86_64/pdt/     # pdt related delivers, such as comsh
+ TARGET/debug_simware7/64cen/          # pdt related kernel libs and ko
+ TARGET/debug_simware7/64sim7cen.ipe/  # the delivers of this ipe
+
+
+Lib path, please see:
+/var/mntcmw                           //10.153.3.229/软件平台3/V7DEV
+/var/mntabd                           //10.153.3.125/cilibdev/ABUILD
+/var/mntcmm                           //10.153.3.125/cilib      
+/var/mntdev                           //10.153.3.125/cilibdev
+/var/mntv7r1                          //10.153.3.50/软件平台3 
+/var/cmwv7dev7                        //10.153.3.160/软件平台7/V7DEV 
+/var/mntpack                          //10.153.3.125/cipack    
+/var/mntcmmold                        //10.153.3.125/cilib-old    
