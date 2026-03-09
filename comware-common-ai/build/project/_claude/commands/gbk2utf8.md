@@ -69,6 +69,7 @@ allowed-tools: Bash(abuild:*), Bash(python:*), Bash(python3:*), Read, Write, Edi
 3. 默认不创建备份文件（如需备份请使用--backup选项）
 4. 转换UTF-8编码的文件会自动跳过
 5. 转换后建议运行abuild编译测试
+6. SVN checkout 时已自动执行 UTF-8 转换（日志在 `/tmp/charset_converter/` 下），通常无需手动再次执行此命令，除非有新的 svn update 拉取了新文件
 
 ## 执行步骤
 

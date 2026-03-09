@@ -24,9 +24,9 @@ ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 ENV EDITOR=nvim
 ENV VISUAL=nvim
 
-# Install Claude Code
+# Install Claude Code and skify
 RUN npm config set registry http://rdmirrors.h3c.com/npm \
-    && npm install -g @anthropic-ai/claude-code@2.0.76
+    && npm install -g @anthropic-ai/claude-code@2.0.76 @skify/cli
 
 # Create a non-root user with sudo privileges
 ARG USER=coder
@@ -44,6 +44,10 @@ RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhisto
 # Set the default user and working directory
 USER ${USER}
 WORKDIR /home/${USER}
+
+# Configure skify registry
+RUN skify config set registry https://skify.coder.h3c.com \
+    && skify config set token empty
 
 COPY --chown=${USER}:${USER} _bashrc /home/${USER}/.bashrc
 COPY --chown=${USER}:${USER} _config/pip /home/${USER}/.config/pip/

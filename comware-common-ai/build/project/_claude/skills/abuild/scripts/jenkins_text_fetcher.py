@@ -9,8 +9,8 @@ class JenkinsTextFetcher:
         """
         初始化Jenkins文本获取器
         """
-        self.jenkins_url = jenkins_url or os.getenv('JENKINS_SERVER_URL', 'http://10.153.3.174:8080')
-        self.api_token = api_token or os.getenv('JENKINS_API_TOKEN', '11c7798a2446cc8acb1f871ad486a4b8ff')
+        self.jenkins_url = jenkins_url or os.getenv('JENKINS_SERVER_URL', 'http://10.153.3.127:8080')
+        self.api_token = api_token or os.getenv('JENKINS_API_TOKEN', '11f97ad64a077b6190737e4f604ee201ec')
         self.username = username or 'g29624'
 
         # 确保URL格式正确
