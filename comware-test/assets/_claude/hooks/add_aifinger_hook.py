@@ -7,66 +7,108 @@ Python文件添加AI_FingerPrint_UUID注释，忽略.venv目录。
 """
 
 import os
-import sys
-import subprocess
-import glob
 import random
 import string
 import datetime
 import time
 import re
+from collections import Counter
 
 def validate_uuid(uuid):
     """
     验证UUID是否合法
     合法的UUID格式应为：YYYYMMDD-8位随机字符（大小写字母和数字的组合）
-    同时不允许存在3个及以上连续的字母或数字
+
+    验证规则：
+    1. 格式必须为 YYYYMMDD-xxxxxxxx（17位）
+    2. 日期部分必须有效
+    3. 随机部分不能只有数字或只有字母（必须混合）
+    4. 随机部分不能所有字符相同（如 XXXXXXXX）
+    5. 随机部分必须有足够的字符多样性（至少3种不同字符）
+    6. 随机部分单个字符重复不能超过4次
+    7. 不允许3个及以上连续的字母或数字（递增或递减）
+    8. 不允许完全重复的模式（如 ABABABAB, ABCABCAB）
     """
-    # 检查UUID格式
+    # ========== 1. 基本类型和格式检查 ==========
     if not isinstance(uuid, str):
         return False
-    
-    # 检查长度和格式
-    if len(uuid) != 17:  # 8位日期 + 1位连字符 + 8位随机字符 = 17位
+
+    # 检查长度：8位日期 + 1位连字符 + 8位随机字符 = 17位
+    if len(uuid) != 17:
         return False
-    
+
     # 检查格式：YYYYMMDD-xxxxxxxx
     pattern = r'^\d{8}-[a-zA-Z0-9]{8}$'
     if not re.match(pattern, uuid):
         return False
-    
-    # 检查日期部分是否有效
+
+    # ========== 2. 日期有效性检查 ==========
     date_part = uuid[:8]
     try:
-        # 尝试解析日期
         datetime.datetime.strptime(date_part, '%Y%m%d')
     except ValueError:
         return False
-    
-    # 检查是否存在3个及以上连续的字母或数字
-    # 提取随机字符部分（不包含日期部分）
-    random_part = uuid[9:]  # 跳过日期和连字符
-    
-    # 检查连续字母（不区分大小写）
+
+    # ========== 3. 随机部分复杂度检查 ==========
+    random_part = uuid[9:]  # 跳过日期和连字符，获取8位随机字符
+
+    # 3.1 检查是否只包含数字或只包含字母（必须混合）- 优先检查，更快过滤
+    is_only_digits = all(c.isdigit() for c in random_part)
+    is_only_letters = all(c.isalpha() for c in random_part)
+
+    if is_only_digits or is_only_letters:
+        return False
+
+    # 3.2 检查是否所有字符都相同（如 XXXXXXXX, aaaaaaaa, 11111111）
+    if len(set(random_part)) == 1:
+        return False
+
+    # 3.3 检查字符多样性（至少需要3种不同的字符）
+    if len(set(random_part)) < 3:
+        return False
+
+    # 3.4 检查单个字符重复次数（不能超过4次）
+    char_count = Counter(random_part)
+    if any(count > 4 for count in char_count.values()):
+        return False
+
+    # ========== 4. 连续序列检查 ==========
+
+    # 4.1 检查连续字母（递增如 abc, XYZ 或 递减如 cba, ZYX）
     for i in range(len(random_part) - 2):
-        # 确保这三个字符都是字母
-        if random_part[i].isalpha() and random_part[i+1].isalpha() and random_part[i+2].isalpha():
-            # 转换为小写进行比较
+        if (random_part[i].isalpha() and
+            random_part[i+1].isalpha() and
+            random_part[i+2].isalpha()):
             a, b, c = random_part[i].lower(), random_part[i+1].lower(), random_part[i+2].lower()
-            # 检查ASCII码是否连续递增
+            # 检查递增序列 (abc, bcd, ...)
             if ord(b) == ord(a) + 1 and ord(c) == ord(b) + 1:
                 return False
-    
-    # 检查连续数字
+            # 检查递减序列 (cba, dcba, ...)
+            if ord(b) == ord(a) - 1 and ord(c) == ord(b) - 1:
+                return False
+
+    # 4.2 检查连续数字（递增如 123, 789 或 递减如 321, 987）
     for i in range(len(random_part) - 2):
-        # 确保这三个字符都是数字
-        if random_part[i].isdigit() and random_part[i+1].isdigit() and random_part[i+2].isdigit():
-            # 转换为整数进行比较
+        if (random_part[i].isdigit() and
+            random_part[i+1].isdigit() and
+            random_part[i+2].isdigit()):
             a, b, c = int(random_part[i]), int(random_part[i+1]), int(random_part[i+2])
-            # 检查数字是否连续递增
+            # 检查递增序列 (123, 234, ...)
             if b == a + 1 and c == b + 1:
                 return False
-    
+            # 检查递减序列 (321, 432, ...)
+            if b == a - 1 and c == b - 1:
+                return False
+
+    # 4.3 检查重复模式（如 XYXYXYXY, ABABABAB）
+    for pattern_len in [2, 3, 4]:
+        if len(random_part) % pattern_len == 0:
+            pattern = random_part[:pattern_len]
+            repeat_count = len(random_part) // pattern_len
+            if random_part == pattern * repeat_count:
+                return False
+
+    # 通过所有验证
     return True
 
 def generate_unique_id():
