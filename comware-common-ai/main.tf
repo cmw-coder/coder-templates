@@ -313,6 +313,28 @@ resource "coder_script" "start_code_server" {
     echo -e "\033[32m- ✔️ Code server started!\033[0m"
   EOF
 }
+resource "coder_script" "install_clangd" {
+  agent_id     = coder_agent.main.id
+  display_name = "Install clangd"
+  icon         = "/emojis/1f9e0.png"
+  run_on_start = true
+  start_blocks_login = true
+  script = <<EOF
+    #!/bin/bash
+    if command -v clangd >/dev/null 2>&1; then
+      echo -e "\033[32m- ✔️ clangd is already installed\033[0m"
+      exit 0
+    fi
+    echo -e "\033[36m- 📦 Installing clangd\033[0m"
+    curl -fsSL "${local.assets_url}/clangd-linux-22.1.0.zip" -o /tmp/clangd-linux-22.1.0.zip \
+      && cd /tmp \
+      && unzip -q clangd-linux-22.1.0.zip \
+      && rm clangd-linux-22.1.0.zip \
+      && sudo mv clangd_22.1.0 /opt/clangd \
+      && sudo ln -s /opt/clangd/bin/clangd /usr/local/bin/clangd
+    echo -e "\033[32m- ✔️ clangd installed!\033[0m"
+  EOF
+}
 resource "coder_script" "checkout_base_svn" {
   agent_id     = coder_agent.main.id
   display_name = "Checkout base SVN project"
