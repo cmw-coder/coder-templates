@@ -28,6 +28,14 @@ ENV VISUAL=nvim
 RUN npm config set registry http://rdmirrors.h3c.com/npm \
     && npm install -g @anthropic-ai/claude-code@2.0.76 @skify/cli
 
+# Install clangd language server
+COPY assets/clangd-linux-22.1.0.zip /tmp/
+RUN cd /tmp \
+    && unzip clangd-linux-22.1.0.zip \
+    && rm clangd-linux-22.1.0.zip \
+    && mv clangd_22.1.0 /opt/clangd \
+    && ln -s /opt/clangd/bin/clangd /usr/local/bin/clangd
+
 # Create a non-root user with sudo privileges
 ARG USER=coder
 RUN useradd --groups sudo --no-create-home --shell /bin/bash ${USER} \
