@@ -9,7 +9,7 @@ COPY ca-certs /usr/local/share/ca-certificates/
 COPY debian.sources /etc/apt/sources.list.d/
 
 RUN apt-get update \
-    && apt-get install -y build-essential ca-certificates curl fzf jq man-db nano neovim sudo unzip \
+    && apt-get install -y build-essential ca-certificates curl fzf git jq man-db nano neovim sudo unzip \
     && update-ca-certificates \
     && apt-get install -y locales subversion universal-ctags \
     && sed -i 's|# en_US.UTF-8|en_US.UTF-8|g' /etc/locale.gen \

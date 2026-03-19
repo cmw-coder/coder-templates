@@ -43,10 +43,10 @@ def generate_compile_commands():
     
     # 挂载 PUBLIC 外部公共库
     if public_root.exists():
-        include_flags.append(f"-isystem{public_root}")
+        include_flags.append(f"-I{public_root}")
         comware_dir = public_root / "comware"
         if comware_dir.exists():
-            include_flags.append(f"-isystem{comware_dir}")
+            include_flags.append(f"-I{comware_dir}")
         print(f"✅ 成功关联外部 PUBLIC 库: {public_root}")
     else:
         print(f"⚠️ 警告: 找不到 PUBLIC 目录，期望路径为 {public_root}")
