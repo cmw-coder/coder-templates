@@ -1,7 +1,13 @@
 #!/bin/bash
 
 # Get configuration from environment variables, use defaults as fallback
-SVN_PASSWORD=${SVN_PASSWORD:-""}        # This should be set automatically
+# Decode base64-encoded password to avoid special characters ($, @, etc.)
+# being misinterpreted by shell during environment variable injection
+if [ -n "${SVN_PASSWORD_B64:-}" ]; then
+    SVN_PASSWORD=$(printf '%s' "$SVN_PASSWORD_B64" | base64 -d)
+else
+    SVN_PASSWORD=${SVN_PASSWORD:-""}
+fi
 SVN_USERNAME=${SVN_USERNAME:-$(whoami)} # This should be set automatically
 
 # shellcheck source=/dev/null

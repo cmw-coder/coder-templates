@@ -117,7 +117,7 @@ resource "coder_agent" "main" {
     GIT_AUTHOR_EMAIL    = "${data.coder_workspace_owner.me.email}"
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
-    SVN_PASSWORD        = "${data.coder_parameter.svn_password.value}"
+    SVN_PASSWORD_B64    = base64encode(data.coder_parameter.svn_password.value)
     SVN_USERNAME        = "${data.coder_parameter.svn_username.value}"
   }
 
@@ -264,8 +264,8 @@ resource "coder_env" "project_public_svn" {
 }
 resource "coder_env" "svn_password" {
   agent_id = coder_agent.main.id
-  name     = "SVN_PASSWORD"
-  value    = "${data.coder_parameter.svn_password.value}"
+  name     = "SVN_PASSWORD_B64"
+  value    = base64encode(data.coder_parameter.svn_password.value)
 }
 resource "coder_env" "svn_username" {
   agent_id = coder_agent.main.id
