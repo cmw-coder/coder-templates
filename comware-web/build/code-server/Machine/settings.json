@@ -1,0 +1,11 @@
+{
+    "explorer.confirmPasteNative": false,
+    "files.autoGuessEncoding": true,
+    "C_Cpp.default.compilerPath": "/usr/bin/gcc",
+    "C_Cpp.default.cppStandard": "c++11",
+    "C_Cpp.default.cStandard": "c99",
+    "C_Cpp.intelliSenseCacheSize": 32768,
+    "C_Cpp.intelliSenseMemoryLimit": 16384,
+    "C_Cpp.maxSymbolSearchResults": 10000,
+    "window.autoDetectColorScheme": true,
+}

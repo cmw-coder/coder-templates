@@ -1,0 +1,8 @@
+{
+    "appworks.enableDataAnalysisServices": false,
+    "appworks.enableView": false,
+    "security.workspace.trust.untrustedFiles": "open",
+    "window.menuBarVisibility": "classic",
+    "esbonio.server.installBehavior": "automatic",
+    "esbonio.sphinx.numJobs": 0,
+}
