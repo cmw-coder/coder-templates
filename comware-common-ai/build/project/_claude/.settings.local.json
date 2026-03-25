@@ -4,7 +4,8 @@
       "Skill(abuild)",
       "Skill(generating-comware-buildrun)",
       "Skill(tree-sitter)",
-      "Skill(universal-Ctags)"
+      "Skill(universal-Ctags)",
+      "Skill(svn)"
     ],
     "deny": [],
     "ask": []
