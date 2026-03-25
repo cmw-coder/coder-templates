@@ -9,6 +9,28 @@ description: Interactive SVN project checkout skill. Guides users through branch
 
 This skill handles interactive SVN project configuration and checkout for Comware workspaces. Instead of requiring users to fill in Terraform UI parameters, it collects SVN configuration through natural language conversation, persists the configuration, and executes checkout operations.
 
+## Workspace Script Locations
+
+All utility scripts are installed in `/usr/local/bin/` and available in `$PATH`. You can `source` or execute them **by name only** — do NOT use absolute paths or try to find them under the home directory.
+
+| Script | Type | Usage |
+|---|---|---|
+| `svn-utils` | Source library | `source svn-utils` — provides `svn_with_auth`, `svn_s`, `svn_remove_branch` |
+| `checkout-list` | Executable | `checkout-list platform` or `checkout-list public` |
+| `project-env` | Source library | `source project-env` — loads `~/.svn_project_env` (auto-sourced by other scripts) |
+| `abuild` | Executable | `abuild -e 64sim9cen` |
+| `build-job` | Executable | `build-job --type abuild -e 64sim9cen` |
+| `shadow-branch` | Executable | `shadow-branch "$PROJECT_PLATFORM_PATH"` |
+
+**CRITICAL:** When you need to use `svn_with_auth`, just run:
+
+```bash
+source svn-utils
+svn_with_auth list "http://..."
+```
+
+Do NOT try to find `svn-utils` with `find` or `locate`. Do NOT use paths like `~/project/.tools/svn-utils` or `/home/user/project/.tools/svn-utils`. The scripts are in `/usr/local/bin/` which is already in `$PATH`.
+
 ## Configuration File
 
 All parameters are persisted to `~/.svn_project_env` in shell-sourceable format. This file is automatically loaded by all workspace scripts (`checkout-list`, `abuild`, `build-job`, `svn-utils`, etc.) via the `project-env` utility.
@@ -66,13 +88,24 @@ Credentials are needed before any `svn list` operations for directory browsing.
 - Required, no default value
 - Say to user: "Please provide your SVN password. It will be stored as base64-encoded text in `~/.svn_project_env`."
 
-After collecting credentials, temporarily set them for subsequent `svn list` operations:
+After collecting credentials, write them to the config file IMMEDIATELY so that `svn-utils` (and all other scripts) can find them automatically. Then source and validate:
 
 ```bash
+# Write credentials to config file first (even before branch selection)
+# This ensures svn-utils can authenticate for subsequent svn list operations
+cat > ~/.svn_project_env << 'ENVEOF'
 export SVN_USERNAME="<collected_username>"
-export SVN_PASSWORD_B64="$(printf '%s' '<collected_password>' | base64 -w0)"
+export SVN_PASSWORD_B64="<base64_password>"
+ENVEOF
+chmod 600 ~/.svn_project_env
+
+# Now source svn-utils (it auto-loads project-env which reads ~/.svn_project_env)
 source svn-utils
+# Test authentication works
+svn_with_auth list "http://10.153.120.80/cmwcode-open/" | head -10
 ```
+
+**IMPORTANT:** After branch and folder selection is complete (Step 7), the config file will be overwritten with the full configuration including all parameters. This initial write is just to enable `svn list` operations during the selection process.
 
 ### Step 3: Select Branch Path
 
@@ -86,7 +119,12 @@ Support three input modes:
 
 User provides a complete path like `V9R1/trunk` or `V7R1_SPRINGB75/branches_bugfix/COMWAREV700R001B75D071SP0010/H20250101-012345`.
 
-**Validation:** Run `svn_with_auth list "http://10.153.120.80/cmwcode-open/<path>/"` to verify the path exists.
+**Validation:** Run the following in bash (svn-utils is already sourced from Step 2):
+
+```bash
+source svn-utils
+svn_with_auth list "http://10.153.120.80/cmwcode-open/<path>/" | head -20
+```
 
 - If valid → proceed to Step 4
 - If invalid → find the last valid path segment and switch to **Mode C** from that level
@@ -124,6 +162,7 @@ Present the list and ask the user to choose.
 **Level 2 — Branch type:**
 
 ```bash
+source svn-utils
 svn_with_auth list "http://10.153.120.80/cmwcode-open/<L1>/"
 ```
 
@@ -165,6 +204,7 @@ At each level, always run `svn_with_auth list` to get the actual directory listi
 After determining the full platform SVN URL, decide which subdirectories to checkout.
 
 ```bash
+source svn-utils
 svn_with_auth list "http://10.153.120.80/cmwcode-open/<full_branch_path>/" | head -80
 ```
 
@@ -202,6 +242,7 @@ The public repository has a different structure from platform. Under the code di
 
 1. List the top-level directories:
    ```bash
+   source svn-utils
    svn_with_auth list "http://10.153.120.104/cmwcode-public/<full_branch_path>/"
    ```
 
@@ -221,6 +262,8 @@ The public repository has a different structure from platform. Under the code di
 ### Step 7: Write Config and Execute Checkout
 
 1. **Write the configuration file:**
+
+   The `<base64_password>` value should be computed from the raw password collected in Step 2: `printf '%s' '<raw_password>' | base64 -w0`
 
    ```bash
    cat > ~/.svn_project_env << 'ENVEOF'
@@ -284,13 +327,15 @@ When config and checkout both exist, do NOT ask for parameters again. Instead:
 
 1. **All `svn` commands requiring authentication MUST use `svn_with_auth` from `svn-utils`**, never plain `svn` with hardcoded credentials.
 
-2. **Encoding:** After checkout, `checkout-list` automatically converts `.c`/`.h` files from GBK to UTF-8. No manual conversion needed at this stage.
+2. **Script location:** All scripts (`svn-utils`, `checkout-list`, `project-env`, `abuild`, `build-job`, `shadow-branch`) are in `/usr/local/bin/` (in PATH). Always use `source svn-utils` — NEVER try to find or guess the path with `find`, `locate`, or manual path construction.
 
-3. **Error handling:** If `svn list` or `checkout-list` fails with authentication errors, ask the user to verify their credentials and offer to update them in the config file.
+3. **Encoding:** After checkout, `checkout-list` automatically converts `.c`/`.h` files from GBK to UTF-8. No manual conversion needed at this stage.
 
-4. **Large directory listings:** When `svn list` returns many entries (>50), show only the first 50 with a note that more exist. Let the user search by keyword if needed.
+4. **Error handling:** If `svn list` or `checkout-list` fails with authentication errors, ask the user to verify their credentials and offer to update them in the config file.
 
-5. **Config recovery:** If config is lost but checkout exists, recover SVN URLs from:
+5. **Large directory listings:** When `svn list` returns many entries (>50), show only the first 50 with a note that more exist. Let the user search by keyword if needed.
+
+6. **Config recovery:** If config is lost but checkout exists, recover SVN URLs from:
    ```bash
    svn info ~/project/platform | grep "^URL:"
    svn info ~/project/public | grep "^URL:"

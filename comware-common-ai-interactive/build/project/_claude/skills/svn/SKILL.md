@@ -11,6 +11,17 @@ description: Comware工作区中SVN版本控制的完整工作流指导，涵盖
 
 ## 重要前置知识
 
+### 工作区脚本位置
+
+所有工具脚本均安装在 `/usr/local/bin/` 目录下，已加入 `$PATH`。使用时**只需按名称调用**，不要使用绝对路径或尝试在主目录下查找。
+
+| 脚本 | 类型 | 用法 |
+|---|---|---|
+| `svn-utils` | Source库 | `source svn-utils` — 提供 `svn_with_auth`、`svn_s`、`svn_remove_branch` |
+| `checkout-list` | 可执行 | `checkout-list platform` 或 `checkout-list public` |
+| `shadow-branch` | 可执行 | `shadow-branch "$PROJECT_PLATFORM_PATH"` |
+| `project-env` | Source库 | `source project-env` — 加载 `~/.svn_project_env`（其他脚本自动source） |
+
 ### 认证机制
 
 工作区的SVN认证信息存储在 `~/.svn_project_env` 配置文件中（由 `svn-checkout` skill 在首次使用时创建），格式如下：
