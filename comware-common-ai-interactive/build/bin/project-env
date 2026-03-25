@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Source SVN project configuration from persistent config file.
+# This script should be sourced (not executed) by other scripts
+# to load environment variables for SVN operations.
+#
+# Config file format (~/.svn_project_env):
+#   export SVN_USERNAME="..."
+#   export SVN_PASSWORD_B64="..."
+#   export PROJECT_PLATFORM_SVN="..."
+#   export PROJECT_PLATFORM_FOLDER_LIST='[...]'
+#   export PROJECT_PLATFORM_PATH="..."
+#   export PROJECT_PUBLIC_SVN="..."
+#   export PROJECT_PUBLIC_FOLDER_LIST='[...]'
+#   export PROJECT_PUBLIC_PATH="..."
+
+_SVN_PROJECT_ENV="${HOME}/.svn_project_env"
+if [ -f "$_SVN_PROJECT_ENV" ]; then
+    # shellcheck source=/dev/null
+    source "$_SVN_PROJECT_ENV"
+fi
+unset _SVN_PROJECT_ENV
