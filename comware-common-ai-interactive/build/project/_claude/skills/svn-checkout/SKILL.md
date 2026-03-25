@@ -88,24 +88,34 @@ Credentials are needed before any `svn list` operations for directory browsing.
 - Required, no default value
 - Say to user: "Please provide your SVN password. It will be stored as base64-encoded text in `~/.svn_project_env`."
 
-After collecting credentials, write them to the config file IMMEDIATELY so that `svn-utils` (and all other scripts) can find them automatically. Then source and validate:
+After collecting credentials, write them to the config file IMMEDIATELY so that `svn-utils` (and all other scripts) can find them automatically. Use simple `echo` commands to avoid heredoc issues:
+
+**Step 2a — Compute base64 password and write config file:**
 
 ```bash
-# Write credentials to config file first (even before branch selection)
-# This ensures svn-utils can authenticate for subsequent svn list operations
-cat > ~/.svn_project_env << 'ENVEOF'
-export SVN_USERNAME="<collected_username>"
-export SVN_PASSWORD_B64="<base64_password>"
-ENVEOF
+# Compute base64 encoded password (replace THE_PASSWORD with actual password)
+SVN_PW_B64=$(printf '%s' 'THE_PASSWORD' | base64 -w0)
+echo "Encoded password: $SVN_PW_B64"
+
+# Write credentials to config file using echo (one line at a time)
+echo "export SVN_USERNAME=\"THE_USERNAME\"" > ~/.svn_project_env
+echo "export SVN_PASSWORD_B64=\"${SVN_PW_B64}\"" >> ~/.svn_project_env
 chmod 600 ~/.svn_project_env
 
-# Now source svn-utils (it auto-loads project-env which reads ~/.svn_project_env)
+# Verify file contents
+cat ~/.svn_project_env
+```
+
+**Step 2b — Test authentication:**
+
+```bash
 source svn-utils
-# Test authentication works
 svn_with_auth list "http://10.153.120.80/cmwcode-open/" | head -10
 ```
 
-**IMPORTANT:** After branch and folder selection is complete (Step 7), the config file will be overwritten with the full configuration including all parameters. This initial write is just to enable `svn list` operations during the selection process.
+If the `svn_with_auth list` command succeeds and returns directory entries, authentication is working. If it fails, ask the user to verify their credentials.
+
+**IMPORTANT:** After branch and folder selection is complete (Step 7), the config file will be updated with the full configuration including all parameters. This initial write is just to enable `svn list` operations during the selection process.
 
 ### Step 3: Select Branch Path
 
@@ -261,41 +271,47 @@ The public repository has a different structure from platform. Under the code di
 
 ### Step 7: Write Config and Execute Checkout
 
-1. **Write the configuration file:**
+1. **Write the full configuration file** using `echo` commands (avoid heredoc to prevent syntax issues):
 
-   The `<base64_password>` value should be computed from the raw password collected in Step 2: `printf '%s' '<raw_password>' | base64 -w0`
+   The base64 password was already computed in Step 2. Reuse the same value.
 
    ```bash
-   cat > ~/.svn_project_env << 'ENVEOF'
-   export SVN_USERNAME="<username>"
-   export SVN_PASSWORD_B64="<base64_password>"
-   export PROJECT_PLATFORM_SVN="http://10.153.120.80/cmwcode-open/<branch_path>"
-   export PROJECT_PLATFORM_FOLDER_LIST='["folder1","folder2"]'
-   export PROJECT_PLATFORM_PATH="$HOME/project/platform"
-   export PROJECT_PUBLIC_SVN="http://10.153.120.104/cmwcode-public/<branch_path>"
-   export PROJECT_PUBLIC_FOLDER_LIST='["PUBLIC/include","PUBLIC/lib"]'
-   export PROJECT_PUBLIC_PATH="$HOME/project/public"
-   ENVEOF
+   # Write full config file (one line at a time, using echo)
+   # NOTE: Use single quotes around $HOME so it is NOT expanded during write
+   echo 'export SVN_USERNAME="<username>"' > ~/.svn_project_env
+   echo 'export SVN_PASSWORD_B64="<base64_password>"' >> ~/.svn_project_env
+   echo 'export PROJECT_PLATFORM_SVN="http://10.153.120.80/cmwcode-open/<branch_path>"' >> ~/.svn_project_env
+   echo 'export PROJECT_PLATFORM_FOLDER_LIST='"'"'["folder1","folder2"]'"'"'' >> ~/.svn_project_env
+   echo 'export PROJECT_PLATFORM_PATH="$HOME/project/platform"' >> ~/.svn_project_env
+   echo 'export PROJECT_PUBLIC_SVN="http://10.153.120.104/cmwcode-public/<branch_path>"' >> ~/.svn_project_env
+   echo 'export PROJECT_PUBLIC_FOLDER_LIST='"'"'["PUBLIC/include"]'"'"'' >> ~/.svn_project_env
+   echo 'export PROJECT_PUBLIC_PATH="$HOME/project/public"' >> ~/.svn_project_env
    chmod 600 ~/.svn_project_env
+
+   # Verify file contents
+   cat ~/.svn_project_env
    ```
 
-   **IMPORTANT:** Use single-quoted heredoc delimiter (`'ENVEOF'`) to prevent variable expansion during write. The `$HOME` in PATH values should be written literally so it resolves at source-time.
+   **KEY POINTS:**
+   - Use **single quotes** around each echo argument so `$HOME` is written literally (not expanded). It will resolve when the file is sourced.
+   - For `FOLDER_LIST` values containing single quotes (the JSON array), use quote concatenation: `'"'"'` to embed a literal single quote.
+   - Replace ALL `<placeholder>` values with actual values before running.
 
-2. **Source the config and execute checkout:**
+2. **Execute platform checkout:**
 
    ```bash
    source ~/.svn_project_env
    checkout-list platform
    ```
 
-   Then:
+3. **Execute public checkout:**
 
    ```bash
    source ~/.svn_project_env
    checkout-list public
    ```
 
-3. **Report results** to the user: checkout success/failure, number of files, time taken.
+4. **Report results** to the user: checkout success/failure, number of files, time taken.
 
 ### Step 8: Maintenance Flow (Subsequent Invocations)
 
