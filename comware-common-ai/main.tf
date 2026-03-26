@@ -53,9 +53,10 @@ locals {
   is_manual = data.coder_parameter.manual_svn_mode.value == "true"
 
   # --- Platform path state (cascading mode) ---
-  # platform_version and platform_branch have NO count (always visible), so use .value directly
-  platform_version_val = data.coder_parameter.platform_version.value
-  platform_branch_val  = data.coder_parameter.platform_branch.value
+  # platform_version and platform_branch are hidden in manual mode (have count),
+  # so use try([0].value, default) for safe access.
+  platform_version_val = try(data.coder_parameter.platform_version[0].value, "V9R1")
+  platform_branch_val  = try(data.coder_parameter.platform_branch[0].value, "trunk")
   platform_subdir_val  = try(data.coder_parameter.platform_subdir[0].value, "")
 
   # Constructed platform SVN URL (cascading mode)
@@ -136,9 +137,10 @@ data "coder_parameter" "manual_svn_mode" {
 # =============================================================================
 
 # Platform version: static dropdown with 3 hardcoded options (DP-compatible).
-# NO count — always visible (even in manual mode) so that downstream counted
-# parameters can reference .value without [0] indexing (which breaks in DP).
+# Hidden in manual mode — downstream references use try([0].value, default).
 data "coder_parameter" "platform_version" {
+  count = data.coder_parameter.manual_svn_mode.value == "true" ? 0 : 1
+
   name         = "platform_version"
   display_name = "Platform Version"
   description  = "Select the platform code version"
@@ -163,8 +165,10 @@ data "coder_parameter" "platform_version" {
 }
 
 # Platform branch: static dropdown with 2 options (DP-compatible).
-# NO count — always visible so that platform_subdir can reference .value directly.
+# Hidden in manual mode — downstream references use try([0].value, default).
 data "coder_parameter" "platform_branch" {
+  count = data.coder_parameter.manual_svn_mode.value == "true" ? 0 : 1
+
   name         = "platform_branch"
   display_name = "Platform Branch"
   description  = "Select the branch type"
@@ -186,11 +190,11 @@ data "coder_parameter" "platform_branch" {
 
 # Platform bugfix subdirectory: text input shown only when branch = branches_bugfix.
 # User types the path manually (e.g., "COMWAREV900R001trunk/TB202601071176").
-# References platform_branch.value directly (no [0]) since platform_branch has no count.
+# References platform_branch via try([0].value) since platform_branch has count.
 data "coder_parameter" "platform_subdir" {
   count = (
     data.coder_parameter.manual_svn_mode.value != "true" &&
-    data.coder_parameter.platform_branch.value == "branches_bugfix"
+    try(data.coder_parameter.platform_branch[0].value, "trunk") == "branches_bugfix"
   ) ? 1 : 0
 
   name         = "platform_subdir"
@@ -369,9 +373,12 @@ data "coder_parameter" "manual_platform_folders" {
   mutable      = true
 }
 
-# Manual public path (empty = follow platform path)
+# Manual public path (shown only in manual mode with custom public path enabled)
 data "coder_parameter" "manual_public_path" {
-  count = data.coder_parameter.manual_svn_mode.value == "true" ? 1 : 0
+  count = (
+    data.coder_parameter.manual_svn_mode.value == "true" &&
+    data.coder_parameter.custom_public_path.value == "true"
+  ) ? 1 : 0
 
   name         = "manual_public_path"
   display_name = "Public SVN Path"
@@ -383,9 +390,12 @@ data "coder_parameter" "manual_public_path" {
   mutable      = false
 }
 
-# Manual public folders (tag-select)
+# Manual public folders (shown only in manual mode with custom public path enabled)
 data "coder_parameter" "manual_public_folders" {
-  count = data.coder_parameter.manual_svn_mode.value == "true" ? 1 : 0
+  count = (
+    data.coder_parameter.manual_svn_mode.value == "true" &&
+    data.coder_parameter.custom_public_path.value == "true"
+  ) ? 1 : 0
 
   name         = "manual_public_folders"
   display_name = "Public Folder List"
