@@ -200,11 +200,12 @@ data "coder_parameter" "platform_branch" {
 
 # Platform bugfix subdirectory: text input shown only when branch = branches_bugfix.
 # User types the path manually (e.g., "COMWAREV900R001trunk/TB202601071176").
-# References platform_branch via try(.value) since platform_branch has count.
+# Uses length() guard for safe [0] access since platform_branch has count.
 data "coder_parameter" "platform_subdir" {
   count = (
     data.coder_parameter.manual_svn_mode.value != "true" &&
-    try(data.coder_parameter.platform_branch[0].value, "trunk") == "branches_bugfix"
+    length(data.coder_parameter.platform_branch) > 0 &&
+    data.coder_parameter.platform_branch[0].value == "branches_bugfix"
   ) ? 1 : 0
 
   name         = "platform_subdir"
@@ -326,12 +327,13 @@ data "coder_parameter" "public_branch" {
 }
 
 # Public bugfix subdirectory: text input (only when custom path + branches_bugfix).
-# References public_branch via try(.value) since public_branch has count.
+# Uses length() guard for safe [0] access since public_branch has count.
 data "coder_parameter" "public_subdir" {
   count = (
     data.coder_parameter.manual_svn_mode.value != "true" &&
     data.coder_parameter.custom_public_path.value == "true" &&
-    try(data.coder_parameter.public_branch[0].value, "trunk") == "branches_bugfix"
+    length(data.coder_parameter.public_branch) > 0 &&
+    data.coder_parameter.public_branch[0].value == "branches_bugfix"
   ) ? 1 : 0
 
   name         = "public_subdir"

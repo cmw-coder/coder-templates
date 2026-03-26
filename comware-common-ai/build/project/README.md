@@ -1,124 +1,117 @@
-# Comware AI Development Environment
+# Comware AI 云开发环境
 
-Welcome to the Comware AI cloud development environment. This page covers the
-basics of using the VS Code terminal and the `h3ccodecli` tool.
+欢迎使用 Comware AI 云开发环境。本页介绍 VS Code 终端的基本用法以及
+`h3ccodecli` 工具的使用方法。
 
 ---
 
-## VS Code Terminal
+## VS Code 终端
 
-### Opening a Terminal
+### 打开终端
 
-- **Keyboard shortcut**: Press `` Ctrl+` `` (backtick) to toggle the terminal
-  panel.
-- **Menu**: Click **Terminal > New Terminal** in the top menu bar.
-- **Command Palette**: Press `Ctrl+Shift+P`, then type `Terminal: Create New
-  Terminal`.
+- **快捷键**：按 `` Ctrl+` ``（反引号）切换终端面板。
+- **菜单**：点击顶部菜单栏的 **Terminal > New Terminal**。
+- **命令面板**：按 `Ctrl+Shift+P`，然后输入 `Terminal: Create New Terminal`。
 
-### Common Operations
+### 常用操作
 
-| Operation              | Shortcut / Action                                 |
-| ---------------------- | ------------------------------------------------- |
-| New terminal           | Click the **+** icon in the terminal panel        |
-| Split terminal         | Click the split icon, or `Ctrl+Shift+5`           |
-| Switch between terminals | Click the terminal tab, or `Ctrl+PageUp/PageDown` |
-| Close terminal         | Type `exit`, or click the trash icon               |
-| Maximize terminal      | Double-click the terminal panel title bar          |
-| Clear terminal         | Type `clear`, or `Ctrl+Shift+P` > `Terminal: Clear`|
+| 操作           | 快捷键 / 操作方式                                   |
+| -------------- | ---------------------------------------------------- |
+| 新建终端       | 点击终端面板中的 **+** 图标                          |
+| 拆分终端       | 点击拆分图标，或按 `Ctrl+Shift+5`                    |
+| 切换终端       | 点击终端标签页，或按 `Ctrl+PageUp/PageDown`          |
+| 关闭终端       | 输入 `exit`，或点击垃圾桶图标                        |
+| 最大化终端     | 双击终端面板标题栏                                   |
+| 清屏           | 输入 `clear`，或按 `Ctrl+Shift+P` > `Terminal: Clear` |
 
-### Tips
+### 提示
 
-- The default shell is **Bash**.
-- The terminal starts in the project directory (`~/project`).
-- Use `Ctrl+Shift+C` / `Ctrl+Shift+V` to copy / paste in the terminal (or
-  right-click for context menu).
-- You can drag the terminal panel border to resize it, or drag it to the side
-  to dock it as a panel.
+- 默认 Shell 为 **Bash**。
+- 终端启动时的工作目录为项目目录（`~/project`）。
+- 在终端中使用 `Ctrl+Shift+C` / `Ctrl+Shift+V` 进行复制/粘贴（也可以右键打开
+  上下文菜单）。
+- 可以拖动终端面板边框调整大小，或将其拖到侧边停靠为面板。
 
 ---
 
 ## h3ccodecli
 
-`h3ccodecli` is a CLI tool that configures and launches **Claude Code** (AI
-coding assistant) in the current workspace.
+`h3ccodecli` 是一个 CLI 工具，用于在当前工作区中配置并启动 **Claude Code**（AI
+编程助手）。
 
-### First-Time Setup
+### 首次使用
 
-Open a terminal and run:
-
-```bash
-h3ccodecli
-```
-
-The tool will:
-
-1. **Detect your domain account** automatically (via `whoami`).
-2. **Query the API** to retrieve your personal API Key.
-3. **Prompt for department selection** if your account is associated with
-   multiple departments (type the number to select, or type a new department
-   name).
-4. **Save the configuration** to `~/.bashrc` (API Key, department, model
-   settings, etc.).
-5. **Launch Claude Code** in IDE mode with pre-configured permissions.
-
-### Subsequent Usage
-
-On subsequent runs, `h3ccodecli` will:
-
-- Load the saved configuration from `~/.bashrc`.
-- Verify the API Key is still valid (async background check).
-- Launch Claude Code directly without re-prompting.
-
-Simply run:
+打开终端并运行：
 
 ```bash
 h3ccodecli
 ```
 
-### Reset Configuration
+该工具将：
 
-If you need to re-authenticate or switch departments:
+1. **自动检测域账号**（通过 `whoami`）。
+2. **查询 API** 获取你的个人 API Key。
+3. **提示选择部门**——如果你的账号关联了多个部门（输入数字选择，或输入新的部门
+   名称）。
+4. **保存配置** 到 `~/.bashrc`（API Key、部门、模型设置等）。
+5. **启动 Claude Code**（IDE 模式，已预配置权限）。
+
+### 后续使用
+
+后续运行 `h3ccodecli` 时，工具将：
+
+- 从 `~/.bashrc` 加载已保存的配置。
+- 异步验证 API Key 是否仍然有效。
+- 直接启动 Claude Code，无需重新配置。
+
+直接运行即可：
+
+```bash
+h3ccodecli
+```
+
+### 重置配置
+
+如需重新认证或切换部门：
 
 ```bash
 h3ccodecli --reset
 ```
 
-This clears the saved configuration from `~/.bashrc`. Run `h3ccodecli` again
-to re-configure.
+这会清除 `~/.bashrc` 中保存的配置。之后重新运行 `h3ccodecli` 即可重新配置。
 
-### Environment Variables
+### 环境变量
 
-`h3ccodecli` configures the following environment variables (saved in
-`~/.bashrc`):
+`h3ccodecli` 会配置以下环境变量（保存在 `~/.bashrc` 中）：
 
-| Variable                          | Description                  |
-| --------------------------------- | ---------------------------- |
-| `ANTHROPIC_AUTH_TOKEN`            | Your personal API Key        |
-| `ANTHROPIC_BASE_URL`             | API endpoint                 |
-| `ANTHROPIC_MODEL`                | Default model                |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL`   | Opus model alias             |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Sonnet model alias           |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL`  | Haiku model alias            |
-| `H3C_DEPARTMENT`                 | Your department              |
-| `H3C_USERNAME`                   | Your domain account          |
+| 变量名                            | 说明               |
+| --------------------------------- | ------------------ |
+| `ANTHROPIC_AUTH_TOKEN`            | 你的个人 API Key   |
+| `ANTHROPIC_BASE_URL`             | API 端点地址       |
+| `ANTHROPIC_MODEL`                | 默认模型           |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL`   | Opus 模型别名      |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Sonnet 模型别名    |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL`  | Haiku 模型别名     |
+| `H3C_DEPARTMENT`                 | 你的部门           |
+| `H3C_USERNAME`                   | 你的域账号         |
 
-### Logs
+### 日志
 
-Initialization logs are written to:
+初始化日志写入以下路径：
 
 ```
 ~/project/log/init_h3ccodecli.log
 ```
 
-Check this file if you encounter issues during setup.
+如果在配置过程中遇到问题，请查看此文件。
 
 ---
 
-## Quick Start
+## 快速上手
 
-1. Open a terminal with `` Ctrl+` ``.
-2. Run `h3ccodecli` to configure and launch Claude Code.
-3. Start coding with AI assistance!
+1. 按 `` Ctrl+` `` 打开终端。
+2. 运行 `h3ccodecli` 配置并启动 Claude Code。
+3. 开始 AI 辅助编程！
 
-> **Tip**: You can close this page and re-open it anytime from the file
-> explorer (`README.md` in the project root).
+> **提示**：你可以随时关闭此页面，之后在文件资源管理器中重新打开（项目根目录下的
+> `README.md`）。
