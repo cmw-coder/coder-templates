@@ -322,13 +322,13 @@ data "coder_parameter" "project_public_folder_list" {
   display_name = "Public Folder List"
   description  = <<-EOT
     Type the **code directories** to checkout from public SVN.
-    Typing `PUBLIC` is recommended for **symbol highlighting**.
+    Typing `PUBLIC/include` is recommended for **symbol highlighting**.
     If you want to check out the **entire folder**, leave this field **empty**.
   EOT
   icon         = "/emojis/1f310.png"
   form_type    = "tag-select"
   type         = "list(string)"
-  default      = jsonencode([])
+  default      = jsonencode(["PUBLIC/include"])
   order        = 215
   mutable      = true
 }
