@@ -202,8 +202,9 @@ while IFS= read -r branch; do
 	fi
 done <<<"$branches"
 
-# Wait for all depth probes to complete
-wait
+# Wait for all depth probes to complete (|| true prevents set -e from
+# aborting if any background probe returns non-zero)
+wait || true
 
 # Collect depth results
 while IFS= read -r branch; do
@@ -230,7 +231,7 @@ while IFS= read -r branch; do
 done <<<"$branches"
 
 # Wait for all tree collections to complete
-wait
+wait || true
 
 # Phase 3: Assemble final JSON output
 final_json='{}'
