@@ -23,6 +23,8 @@ allowed-tools: Bash(abuild:*), Bash(python:*), Bash(python3:*), Read, Write, Edi
   - `--dry-run`：只显示要转换的文件，不实际转换
   - `--backup`：创建备份文件（默认不创建备份）
   - `--log-file <文件路径>`：指定转换日志文件路径
+  - `--workers <数量>`：并发工作线程数（默认64）
+  - `--verbose`：显示详细输出（默认静默模式，仅显示进度和汇总）
 
 ## 示例
 
@@ -51,6 +53,16 @@ allowed-tools: Bash(abuild:*), Bash(python:*), Bash(python3:*), Read, Write, Edi
    /gbk2utf8 .
    ```
 
+6. 查看详细的转换日志：
+   ```
+   /gbk2utf8 src --verbose
+   ```
+
+7. 指定并发线程数：
+   ```
+   /gbk2utf8 src --workers 32
+   ```
+
 ## 脚本引用
 
 基于.tools/charset_converter/convert_to_utf8.py脚本。
@@ -69,7 +81,9 @@ allowed-tools: Bash(abuild:*), Bash(python:*), Bash(python3:*), Read, Write, Edi
 3. 默认不创建备份文件（如需备份请使用--backup选项）
 4. 转换UTF-8编码的文件会自动跳过
 5. 转换后建议运行abuild编译测试
-6. SVN checkout 时已自动执行 UTF-8 转换（日志在 `/tmp/charset_converter/` 下），通常无需手动再次执行此命令，除非有新的 svn update 拉取了新文件
+6. 使用多线程并发处理，默认64线程，可通过--workers调整
+7. 默认静默模式，如需查看逐文件详情请使用--verbose
+8. SVN checkout 时已自动执行 UTF-8 转换（日志在 `/tmp/charset_converter/` 下），通常无需手动再次执行此命令，除非有新的 svn update 拉取了新文件
 
 ## 执行步骤
 

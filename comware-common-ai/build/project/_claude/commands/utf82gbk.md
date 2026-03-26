@@ -25,6 +25,8 @@ allowed-tools: Bash(abuild:*), Bash(python:*), Bash(python3:*), Read, Write, Edi
   - `--force`：强制转换非UTF-8编码的文件
   - `--encoding <编码类型>`：目标编码（gb2312、gbk或gb18030，默认gb18030）
   - `--conversion-log <文件路径>`：UTF-8转换日志文件路径（用于跳过原始UTF-8文件）
+  - `--workers <数量>`：并发工作线程数（默认64）
+  - `--verbose`：显示详细输出（默认静默模式，仅显示进度和汇总）
 
 ## 示例
 
@@ -63,6 +65,16 @@ allowed-tools: Bash(abuild:*), Bash(python:*), Bash(python3:*), Read, Write, Edi
    /utf82gbk .
    ```
 
+8. 查看详细的转换日志：
+   ```
+   /utf82gbk src --verbose
+   ```
+
+9. 指定并发线程数：
+   ```
+   /utf82gbk src --workers 32
+   ```
+
 ## 脚本引用
 
 基于.tools/charset_converter/convert_to_gb.py脚本。
@@ -81,7 +93,9 @@ allowed-tools: Bash(abuild:*), Bash(python:*), Bash(python3:*), Read, Write, Edi
 3. 默认会跳过原始就是UTF-8编码的文件（如果指定了转换日志）
 4. 默认不创建备份文件（如需备份请使用--backup选项）
 5. 转换后建议运行abuild编译测试
-6. SVN checkout 时会自动执行 UTF-8 转换，日志文件保存在 `/tmp/charset_converter/` 目录下：
+6. 使用多线程并发处理，默认64线程，可通过--workers调整
+7. 默认静默模式，如需查看逐文件详情请使用--verbose
+8. SVN checkout 时会自动执行 UTF-8 转换，日志文件保存在 `/tmp/charset_converter/` 目录下：
    - `platform_utf8_conversion.log`（platform 代码）
    - `public_utf8_conversion.log`（public 代码）
 
