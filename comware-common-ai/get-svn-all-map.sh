@@ -144,6 +144,7 @@ probe_branch_depth() {
 
 # Process a single branch: detect depth, collect intermediate dirs, sample folders.
 # Writes result JSON to $TMPDIR_BASE/branch_<version>_<branch>
+# All JSON accumulation uses files + --slurpfile to avoid ARG_MAX limits.
 process_branch() {
 	local version="$1"
 	local branch="$2"
@@ -160,18 +161,18 @@ process_branch() {
 
 	log "Branch ${version}/${branch}: depth=${depth}, sampled_path='${sampled_path}'"
 
-	# Initialize result with depth
-	local result
-	result=$(jq -n --argjson d "$depth" '{"depth": $d}')
+	# Initialize result file with depth
+	jq -n --argjson d "$depth" '{"depth": $d}' >"$outfile"
 
 	# Step 2: Collect intermediate-level entries (only if depth > 0)
 	if [ "$depth" -gt 0 ]; then
 		# Level 0: entries directly under the branch
 		local level_0_entries
 		level_0_entries=$(get_svn_dirs "$branch_url")
-		local level_0_json
-		level_0_json=$(list_to_json_array "$level_0_entries")
-		result=$(printf '%s\n' "$result" | jq --argjson entries "$level_0_json" '. + {"level_0": $entries}')
+		local l0_file="$TMPDIR_BASE/l0arr_${version}_${branch}"
+		list_to_json_array "$level_0_entries" >"$l0_file"
+		jq --slurpfile entries "$l0_file" '. + {"level_0": $entries[0]}' "$outfile" >"${outfile}.tmp"
+		mv "${outfile}.tmp" "$outfile"
 
 		# Level 1+: nested entries (parallelized within branch for level 1)
 		if [ "$depth" -ge 2 ]; then
@@ -182,25 +183,21 @@ process_branch() {
 				[ -z "$l0_entry" ] && continue
 				(
 					l1_entries=$(get_svn_dirs "${branch_url}${l0_entry}/")
-					l1_json=$(list_to_json_array "$l1_entries")
-					# Write json to temp file (filename encodes the key)
-					printf '%s\n' "$l1_json" >"$l1_tmpdir/${l0_entry}"
+					list_to_json_array "$l1_entries" >"$l1_tmpdir/${l0_entry}"
 
 					# Level 2 (if depth >= 3)
 					if [ "$depth" -ge 3 ] && [ -n "$l1_entries" ]; then
 						while IFS= read -r l1_entry; do
 							[ -z "$l1_entry" ] && continue
 							l2_entries=$(get_svn_dirs "${branch_url}${l0_entry}/${l1_entry}/")
-							l2_json=$(list_to_json_array "$l2_entries")
-							printf '%s\n' "$l2_json" >"$l1_tmpdir/${l0_entry}__${l1_entry}"
+							list_to_json_array "$l2_entries" >"$l1_tmpdir/${l0_entry}__${l1_entry}"
 
 							# Level 3 (if depth >= 4)
 							if [ "$depth" -ge 4 ] && [ -n "$l2_entries" ]; then
 								while IFS= read -r l2_entry; do
 									[ -z "$l2_entry" ] && continue
 									l3_entries=$(get_svn_dirs "${branch_url}${l0_entry}/${l1_entry}/${l2_entry}/")
-									l3_json=$(list_to_json_array "$l3_entries")
-									printf '%s\n' "$l3_json" >"$l1_tmpdir/${l0_entry}__${l1_entry}__${l2_entry}"
+									list_to_json_array "$l3_entries" >"$l1_tmpdir/${l0_entry}__${l1_entry}__${l2_entry}"
 								done <<<"$l2_entries"
 							fi
 						done <<<"$l1_entries"
@@ -210,13 +207,11 @@ process_branch() {
 
 			wait || true
 
-			# Collect level 1+ results from temp files
+			# Collect level 1+ results from temp files (using --slurpfile, not --argjson)
 			for tmpfile in "$l1_tmpdir"/*; do
 				[ -f "$tmpfile" ] || continue
 				local basename
 				basename=$(basename "$tmpfile")
-				local json_val
-				json_val=$(cat "$tmpfile")
 
 				# Determine the key based on the number of __ separators
 				local num_separators
@@ -233,7 +228,8 @@ process_branch() {
 					key="level_$((num_separators + 1))__${basename}"
 				fi
 
-				result=$(printf '%s\n' "$result" | jq --arg k "$key" --argjson entries "$json_val" '. + {($k): $entries}')
+				jq --arg k "$key" --slurpfile entries "$tmpfile" '. + {($k): $entries[0]}' "$outfile" >"${outfile}.tmp"
+				mv "${outfile}.tmp" "$outfile"
 			done
 		fi
 	fi
@@ -249,11 +245,10 @@ process_branch() {
 
 	local folder_entries
 	folder_entries=$(get_svn_dirs "$folder_url")
-	local folder_json
-	folder_json=$(list_to_json_array "$folder_entries")
-	result=$(printf '%s\n' "$result" | jq --argjson folders "$folder_json" '. + {"folders": $folders}')
-
-	echo "$result" >"$outfile"
+	local folder_file="$TMPDIR_BASE/folders_${version}_${branch}"
+	list_to_json_array "$folder_entries" >"$folder_file"
+	jq --slurpfile folders "$folder_file" '. + {"folders": $folders[0]}' "$outfile" >"${outfile}.tmp"
+	mv "${outfile}.tmp" "$outfile"
 }
 
 # =============================================================================
@@ -273,7 +268,9 @@ fi
 log "Found versions: $(echo "$versions" | tr '\n' ' ')"
 
 # Phase 2: For each version, list branches and process each branch in parallel
-final_json='{}'
+# All JSON accumulation uses files + --slurpfile to avoid ARG_MAX limits.
+final_file="$TMPDIR_BASE/final_json"
+echo '{}' >"$final_file"
 
 while IFS= read -r version; do
 	[ -z "$version" ] && continue
@@ -296,7 +293,7 @@ while IFS= read -r version; do
 
 	log "Version ${version}: branches=$(echo "$branches" | tr '\n' ' ')"
 
-	# Build branch list JSON
+	# Build branch list JSON (small, safe for --argjson)
 	branch_list_json=$(list_to_json_array "$branches")
 
 	# Launch parallel processing for each branch
@@ -308,8 +305,9 @@ while IFS= read -r version; do
 			# trunk is always depth 0, just sample folders directly
 			(
 				folder_entries=$(get_svn_dirs "$branch_url")
-				folder_json=$(list_to_json_array "$folder_entries")
-				jq -n --argjson folders "$folder_json" '{"depth": 0, "folders": $folders}' \
+				trunk_folder_file="$TMPDIR_BASE/trunk_folders_${version}"
+				list_to_json_array "$folder_entries" >"$trunk_folder_file"
+				jq -n --slurpfile folders "$trunk_folder_file" '{"depth": 0, "folders": $folders[0]}' \
 					>"$TMPDIR_BASE/branch_${version}_${branch}"
 			) &
 		else
@@ -320,25 +318,30 @@ while IFS= read -r version; do
 	# Wait for all branches of this version to complete
 	wait || true
 
-	# Assemble version JSON
-	version_json=$(jq -n --argjson branches "$branch_list_json" '{"branches": $branches}')
+	# Assemble version JSON using files (avoids ARG_MAX)
+	version_file="$TMPDIR_BASE/version_${version}"
+	jq -n --argjson branches "$branch_list_json" '{"branches": $branches}' >"$version_file"
 
 	while IFS= read -r branch; do
 		[ -z "$branch" ] && continue
 		outfile="$TMPDIR_BASE/branch_${version}_${branch}"
 		if [ -f "$outfile" ]; then
-			branch_json=$(cat "$outfile")
-			version_json=$(printf '%s\n' "$version_json" | jq --arg k "$branch" --argjson v "$branch_json" '. + {($k): $v}')
+			# Use --slurpfile to read branch JSON from file (not command-line arg)
+			jq --arg k "$branch" --slurpfile v "$outfile" '. + {($k): $v[0]}' "$version_file" >"${version_file}.tmp"
+			mv "${version_file}.tmp" "$version_file"
 		else
 			# Fallback: branch with depth 0 and empty folders
 			log "WARN: No output file for ${version}/${branch}, using fallback"
-			version_json=$(printf '%s\n' "$version_json" | jq --arg k "$branch" '. + {($k): {"depth": 0, "folders": []}}')
+			jq --arg k "$branch" '. + {($k): {"depth": 0, "folders": []}}' "$version_file" >"${version_file}.tmp"
+			mv "${version_file}.tmp" "$version_file"
 		fi
 	done <<<"$branches"
 
-	final_json=$(printf '%s\n' "$final_json" | jq --arg k "$version" --argjson v "$version_json" '. + {($k): $v}')
+	# Add assembled version to final JSON using --slurpfile
+	jq --arg k "$version" --slurpfile v "$version_file" '. + {($k): $v[0]}' "$final_file" >"${final_file}.tmp"
+	mv "${final_file}.tmp" "$final_file"
 done <<<"$versions"
 
 # Output in Terraform external data source format
 log "Done. Outputting final JSON."
-jq -n --argjson data "$final_json" '{"data": ($data | tostring)}'
+jq '{"data": (. | tostring)}' "$final_file"

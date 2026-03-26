@@ -1,10 +1,10 @@
 #!/bin/bash
 
 H3C_CODE_CLI_VERSION="1.0.0"
-CONFIG_FILE="$HOME/.h3ccodecli_config"
 REQUIRED_BASE_URL="http://10.113.36.145:4000"
 USER_API_URL="http://10.113.36.145:5000"  # litellm_user_api 服务地址
 LOG_FILE="$HOME/project/log/init_h3ccodecli.log"
+BASHRC_FILE="$HOME/.bashrc"
 
 # 颜色定义
 RED='\033[0;31m'
@@ -184,34 +184,164 @@ confirm_user_department() {
     esac
 }
 
-# 保存配置到文件
-save_config() {
-    local dept="$1"
+# 从 ~/.bashrc 中删除配置标记块
+remove_bashrc_config() {
+    if [ -f "$BASHRC_FILE" ]; then
+        sed -i '/# === H3C Code CLI Config Start ===/,/# === H3C Code CLI Config End ===/d' "$BASHRC_FILE"
+    fi
+}
+
+# 从 ~/.bashrc 中读取 ANTHROPIC_AUTH_TOKEN
+read_bashrc_config() {
+    if [ -f "$BASHRC_FILE" ]; then
+        local token=$(grep "^export ANTHROPIC_AUTH_TOKEN=" "$BASHRC_FILE" | cut -d'=' -f2 | tr -d '"')
+        if [ -n "$token" ] && [ "$token" != "xx" ]; then
+            export ANTHROPIC_AUTH_TOKEN="$token"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# 写入配置到 ~/.bashrc
+write_bashrc_config() {
+    local department="$1"
     local team_id="$2"
     local username="$3"
     local user_key="$4"
     local key_alias="$5"
 
-    cat > "$CONFIG_FILE" << EOF
-# H3C Code CLI 配置文件
-DEPARTMENT=$dept
-TEAM_ID=$team_id
-USERNAME=$username
-USER_KEY=$user_key
-KEY_ALIAS=$key_alias
-EOF
-    chmod 600 "$CONFIG_FILE"
+    # 调试日志
+    echo "[Debug] write_bashrc_config: dept=[$department] team_id=[$team_id] username=[$username] user_key=[$user_key]" >> "$LOG_FILE"
+    echo "[Debug] BASHRC_FILE=[$BASHRC_FILE]" >> "$LOG_FILE"
+
+    # 先删除旧配置块
+    remove_bashrc_config
+
+    # 检查文件是否可写
+    if [ ! -w "$BASHRC_FILE" ] && [ -f "$BASHRC_FILE" ]; then
+        echo "[Error] $BASHRC_FILE 不可写" >> "$LOG_FILE"
+        echo -e "${RED}[Error] 配置文件不可写${NC}"
+        return 1
+    fi
+
+    # 如果 bashrc 不存在，创建它
+    if [ ! -f "$BASHRC_FILE" ]; then
+        echo "[Debug] Creating new $BASHRC_FILE" >> "$LOG_FILE"
+        touch "$BASHRC_FILE" 2>> "$LOG_FILE"
+    fi
+
+    # 追加新配置块
+    {
+        echo ""
+        echo "# === H3C Code CLI Config Start ==="
+        echo "export ANTHROPIC_AUTH_TOKEN=\"$user_key\""
+        echo "export ANTHROPIC_BASE_URL=\"http://10.113.36.145:4000\""
+        echo "export ANTHROPIC_MODEL=\"ComwareModel\""
+        echo "export ANTHROPIC_DEFAULT_OPUS_MODEL=\"ComwareModel\""
+        echo "export ANTHROPIC_DEFAULT_SONNET_MODEL=\"ComwareModel\""
+        echo "export ANTHROPIC_DEFAULT_HAIKU_MODEL=\"ComwareModel-Air\""
+        echo "export H3CCODECLI_VERSION=\"v0326\""
+        echo "export H3C_DEPARTMENT=\"$department\""
+        echo "export H3C_USERNAME=\"$username\""
+        echo "export H3C_KEY_ALIAS=\"$key_alias\""
+        echo "export H3C_TEAM_ID=\"$team_id\""
+        echo "# === H3C Code CLI Config End ==="
+    } >> "$BASHRC_FILE"
+
+    echo "[Debug] Config written to $BASHRC_FILE" >> "$LOG_FILE"
+
+    # 尝试 source 生效
+    source ~/.bashrc 2>/dev/null
+    if [ -n "$ANTHROPIC_AUTH_TOKEN" ] && [ "$ANTHROPIC_AUTH_TOKEN" = "$user_key" ]; then
+        echo "[Info] 配置已生效，可直接运行 claude"
+    else
+        # source 失败或变量未设置，直接 export 到当前会话
+        export ANTHROPIC_AUTH_TOKEN="$user_key"
+        export ANTHROPIC_BASE_URL="http://10.113.36.145:4000"
+        export ANTHROPIC_MODEL="ComwareModel"
+        export ANTHROPIC_DEFAULT_OPUS_MODEL="ComwareModel"
+        export ANTHROPIC_DEFAULT_SONNET_MODEL="ComwareModel"
+        export ANTHROPIC_DEFAULT_HAIKU_MODEL="ComwareModel-Air"
+        export H3CCODECLI_VERSION="v0326"
+        export H3C_DEPARTMENT="$department"
+        export H3C_USERNAME="$username"
+        export H3C_KEY_ALIAS="$key_alias"
+        export H3C_TEAM_ID="$team_id"
+        echo "[Info] 配置已写入 ~/.bashrc，本次会话已生效"
+        echo "[Info] 新终端将自动加载配置"
+    fi
 }
 
-# 读取配置文件
-read_config() {
-    if [ -f "$CONFIG_FILE" ]; then
-        . "$CONFIG_FILE"
-        if [ -n "$USER_KEY" ] && [ "$USER_KEY" != "xx" ]; then
-            return 0
+# 异步刷新检查 token（后台执行）
+# 如果 API 返回的 apikey 或 team_id 不一致，在 bashrc 中添加刷新标记
+async_refresh_check() {
+    local current_token="$1"
+    local current_team_id="$2"
+    local username="$3"
+    local user_api_url="$USER_API_URL"
+    local bashrc_file="$BASHRC_FILE"
+    local log_file="$LOG_FILE"
+
+    # 后台执行检查
+    (
+        local response http_code api_key team_id
+
+        response=$(curl -s -w "\n%{http_code}" \
+            --connect-timeout 10 \
+            --max-time 30 \
+            -X POST "${user_api_url}/api/user/key" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\": \"${username}\"}" 2>> "$log_file")
+
+        http_code=$(echo "$response" | tail -n1)
+        response=$(echo "$response" | sed '$d')
+
+        echo "[Refresh] HTTP $http_code, URL=${user_api_url}" >> "$log_file"
+        echo "[Refresh] comparing token=[$current_token] team=[$current_team_id]" >> "$log_file"
+
+        if [ "$http_code" = "200" ]; then
+            local success=$(echo "$response" | jq -r '.success // false' 2>/dev/null)
+            echo "[Refresh] success=$success, response body logged" >> "$log_file"
+            echo "[Refresh] Response: $response" >> "$log_file"
+
+            if [ "$success" = "true" ]; then
+                api_key=$(echo "$response" | jq -r '.api_key // empty' 2>/dev/null)
+                team_id=$(echo "$response" | jq -r '.team_id // empty' 2>/dev/null)
+
+                echo "[Refresh] API returned api_key=[$api_key] team_id=[$team_id]" >> "$log_file"
+
+                # 检查是否不一致，在 bashrc 配置块中添加刷新标记
+                # 使用英文标记避免中文编码问题
+                if [ -n "$api_key" ] && [ "$api_key" != "$current_token" ]; then
+                    echo "[Refresh] Token mismatch, adding refresh marker" >> "$log_file"
+                    # 使用 grep 找到结束标记的行号，然后在该行前插入
+                    local end_line=$(grep -n "H3C Code CLI Config End" "$bashrc_file" 2>/dev/null | head -1 | cut -d: -f1)
+                    if [ -n "$end_line" ]; then
+                        sed -i "${end_line}i export H3C_NEED_REFRESH=\"token_changed\"" "$bashrc_file"
+                        echo "[Refresh] Marker inserted at line $end_line" >> "$log_file"
+                    else
+                        echo "[Refresh] ERROR: End marker not found in bashrc" >> "$log_file"
+                    fi
+                elif [ -n "$team_id" ] && [ -n "$current_team_id" ] && [ "$team_id" != "$current_team_id" ]; then
+                    echo "[Refresh] Team ID mismatch, adding refresh marker" >> "$log_file"
+                    local end_line=$(grep -n "H3C Code CLI Config End" "$bashrc_file" 2>/dev/null | head -1 | cut -d: -f1)
+                    if [ -n "$end_line" ]; then
+                        sed -i "${end_line}i export H3C_NEED_REFRESH=\"team_changed\"" "$bashrc_file"
+                        echo "[Refresh] Marker inserted at line $end_line" >> "$log_file"
+                    else
+                        echo "[Refresh] ERROR: End marker not found in bashrc" >> "$log_file"
+                    fi
+                else
+                    echo "[Refresh] Config match or empty team_id, no refresh needed" >> "$log_file"
+                fi
+            else
+                echo "[Refresh] API returned success=false" >> "$log_file"
+            fi
+        else
+            echo "[Refresh] API call failed (HTTP $http_code)" >> "$log_file"
         fi
-    fi
-    return 1
+    ) &
 }
 
 # 检查并设置 Base URL
@@ -228,18 +358,36 @@ is_token_valid() {
 
 # 主逻辑：设置认证 token
 setup_auth_token() {
-    # 如果环境变量中已有有效 token，直接使用
-    if is_token_valid; then
-        return 0
-    fi
+    # 检查 bashrc 中是否有刷新标记（上次异步检查发现不一致）
+    local need_refresh=$(grep "^export H3C_NEED_REFRESH=" "$BASHRC_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d '"')
+    if [ -n "$need_refresh" ]; then
+        echo "[Info] 检测到配置变更 ($need_refresh)，正在重新获取..."
+        # remove_bashrc_config 会删除整个配置块（包括刷新标记）
+        remove_bashrc_config
+        # 继续执行后续逻辑重新获取
+    else
+        # 如果环境变量中已有有效 token，直接使用并启动异步刷新检查
+        if is_token_valid; then
+            local current_team_id=$(grep "^export H3C_TEAM_ID=" "$BASHRC_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d '"')
+            local username=$(whoami)
+            # 启动异步刷新检查
+            async_refresh_check "$ANTHROPIC_AUTH_TOKEN" "$current_team_id" "$username"
+            return 0
+        fi
 
-    # 尝试从配置文件读取
-    if read_config; then
-        export ANTHROPIC_AUTH_TOKEN="$USER_KEY"
-        echo "[Info] 域账号: $USERNAME"
-        echo "[Info] 部门: $DEPARTMENT"
-        echo "[Info] 个人 API Key: $USER_KEY"
-        return 0
+        # 尝试从 ~/.bashrc 读取配置
+        if read_bashrc_config; then
+            # 从 bashrc 读取用户信息用于显示
+            local saved_username=$(grep "^export H3C_USERNAME=" "$BASHRC_FILE" | cut -d'=' -f2 | tr -d '"')
+            local saved_dept=$(grep "^export H3C_DEPARTMENT=" "$BASHRC_FILE" | cut -d'=' -f2 | tr -d '"')
+            local saved_team_id=$(grep "^export H3C_TEAM_ID=" "$BASHRC_FILE" 2>/dev/null | cut -d'=' -f2 | tr -d '"')
+            echo "[Info] 域账号: $saved_username"
+            echo "[Info] 部门: $saved_dept"
+            echo "[Info] 个人 API Key: $ANTHROPIC_AUTH_TOKEN"
+            # 启动异步刷新检查
+            async_refresh_check "$ANTHROPIC_AUTH_TOKEN" "$saved_team_id" "$saved_username"
+            return 0
+        fi
     fi
 
     # 获取系统用户名作为域账号
@@ -319,27 +467,21 @@ setup_auth_token() {
         exit 1
     fi
 
-    # 保存配置
-    save_config "$dept" "$team_id" "$username" "$user_key" ""
-
-    export ANTHROPIC_AUTH_TOKEN="$user_key"
+    # 保存配置到 ~/.bashrc
+    write_bashrc_config "$dept" "$team_id" "$username" "$user_key" ""
 
     echo ""
     echo -e "${GREEN}[Info] 用户信息获取成功！${NC}"
     echo "[Info] 域账号: $username"
     echo "[Info] 部门: $dept"
     echo "[Info] 个人 API Key: $user_key"
-    echo "[Info] 配置已保存到 $CONFIG_FILE"
 }
 
 # 处理命令行参数
 if [ "$1" = "--reset" ]; then
-    if [ -f "$CONFIG_FILE" ]; then
-        rm -f "$CONFIG_FILE"
-        echo "[Info] 配置已清除: $CONFIG_FILE"
-    else
-        echo "[Info] 配置文件不存在，无需清除"
-    fi
+    remove_bashrc_config
+    echo "[Info] 配置已清除"
+    echo "[Info] 请运行 source ~/.bashrc 或重新打开终端使更改生效"
     exit 0
 fi
 
@@ -497,13 +639,6 @@ ensure_base_url
 setup_auth_token
 
 # 其他环境变量配置
-
-export ANTHROPIC_MODEL=ComwareModel
-export ANTHROPIC_DEFAULT_OPUS_MODEL=ComwareModel
-export ANTHROPIC_DEFAULT_SONNET_MODEL=ComwareModel
-export ANTHROPIC_DEFAULT_HAIKU_MODEL=ComwareModel-Air
-
-
 export CLAUDE_SESSION_START=$(date +%s)
 export DISABLE_AUTOUPDATER=1
 export API_TIMEOUT_MS=30000000
@@ -528,7 +663,7 @@ echo "================================================="
 echo ""
 
 # Start Claude
-claude --allowedTools "Bash,Read"  --permission-mode acceptEdits --model opusplan --dangerously-skip-permissions
+claude --allowedTools "Bash,Read"  --ide  --permission-mode acceptEdits --model opusplan --dangerously-skip-permissions
 
 # Finish message
 echo ""
