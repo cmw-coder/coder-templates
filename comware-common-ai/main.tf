@@ -50,17 +50,14 @@ data "external" "public_svn_map" {
   }
 }
 
-# Explore platform subtree for non-trunk branches (detect depth dynamically)
+# Pre-fetch platform subtree for ALL branches under the selected version.
+# This is unconditional so the Coder UI can dynamically look up branch data
+# using live parameter values against the pre-computed constant map.
 data "external" "platform_subtree" {
-  count = (
-    local.platform_branch_value != "" &&
-    local.platform_branch_value != "trunk"
-  ) ? 1 : 0
-
   program = ["bash", "${path.module}/get-svn-subtree.sh"]
 
   query = {
-    base_url           = "${local.platform_prefix}/${data.coder_parameter.platform_version.value}/${local.platform_branch_value}/"
+    base_url           = "${local.platform_prefix}/${data.coder_parameter.platform_version.value}/"
     svn_username       = "z11187"
     svn_password       = "Zpr758258%"
     code_level_markers = "ACCESS,DEV,IP,NETFWD"
@@ -80,18 +77,15 @@ data "external" "platform_folders" {
   }
 }
 
-# Explore public subtree (only when custom public path is enabled and non-trunk)
+# Pre-fetch public subtree for ALL branches (only when custom public path enabled).
+# Uses direct parameter reference for count so the Coder UI can evaluate it dynamically.
 data "external" "public_subtree" {
-  count = (
-    local.use_custom_public &&
-    local.public_branch_value != "" &&
-    local.public_branch_value != "trunk"
-  ) ? 1 : 0
+  count = data.coder_parameter.custom_public_path.value == "true" ? 1 : 0
 
   program = ["bash", "${path.module}/get-svn-subtree.sh"]
 
   query = {
-    base_url           = "${local.public_prefix}/${try(data.coder_parameter.public_version[0].value, "")}/${local.public_branch_value}/"
+    base_url           = "${local.public_prefix}/${try(data.coder_parameter.public_version[0].value, "")}/"
     svn_username       = "z11187"
     svn_password       = "Zpr758258%"
     code_level_markers = "PUBLIC"
@@ -147,8 +141,14 @@ locals {
   platform_branch_value = try(data.coder_parameter.platform_branch[0].value, "")
   platform_is_trunk     = local.platform_branch_value == "trunk"
 
-  # Platform subtree (non-trunk branches only)
-  platform_subtree    = local.platform_is_trunk ? {} : jsondecode(try(data.external.platform_subtree[0].result.data, "{\"depth\": 0}"))
+  # Pre-fetched subtree map for ALL branches under the selected version.
+  # This is a constant map at plan time; the Coder UI uses it with live parameter values.
+  # Note: try() fallback handles runtime JSON errors but NOT unknown values during
+  # workspace tag parsing. The short-circuit in platform_subdir count handles that case.
+  platform_subtree_all = try(jsondecode(data.external.platform_subtree.result.data), {})
+
+  # Server-side: subtree data for the actually-selected branch
+  platform_subtree     = try(local.platform_subtree_all[local.platform_branch_value], {})
   platform_extra_depth = try(local.platform_subtree.depth, 0)
 
   # Platform subdirectory path (from dynamic selections)
@@ -172,10 +172,11 @@ locals {
   public_branch_value = local.use_custom_public ? try(data.coder_parameter.public_branch[0].value, "") : ""
   public_is_trunk = local.use_custom_public ? (local.public_branch_value == "trunk") : local.platform_is_trunk
 
-  # Public subtree (only when custom path enabled and non-trunk)
-  public_subtree = (local.use_custom_public && !local.public_is_trunk) ? jsondecode(
-    try(data.external.public_subtree[0].result.data, "{\"depth\": 0}")
-  ) : {}
+  # Pre-fetched subtree map for ALL branches under the selected public version
+  public_subtree_all = try(jsondecode(data.external.public_subtree[0].result.data), {})
+
+  # Server-side: subtree data for the actually-selected public branch
+  public_subtree     = try(local.public_subtree_all[local.public_branch_value], {})
   public_extra_depth = try(local.public_subtree.depth, 0)
 
   # Public subdirectory path
@@ -250,8 +251,21 @@ data "coder_parameter" "platform_branch" {
 # Platform subdirectory levels (dynamic count based on actual SVN tree depth)
 # For trunk: count=0 (no extra levels needed)
 # For tags/bugfix/project/etc: count=N (detected by get-svn-subtree.sh)
+#
+# IMPORTANT: The count expression uses a conditional short-circuit so that
+# during workspace tag parsing (when external data is unknown), the default
+# branch "trunk" resolves to count=0 without touching the unknown external data.
+# During actual plan and Coder UI re-evaluation, platform_subtree_all is a
+# known constant map and the non-trunk branch resolves to the actual depth.
 data "coder_parameter" "platform_subdir" {
-  count = local.platform_extra_depth
+  count = (
+    try(data.coder_parameter.platform_branch[0].value, "trunk") == "trunk"
+  ) ? 0 : try(
+    local.platform_subtree_all[
+      try(data.coder_parameter.platform_branch[0].value, "trunk")
+    ]["depth"],
+    0
+  )
 
   name         = "platform_subdir_${count.index}"
   display_name = "Platform Subdirectory ${count.index + 1}"
@@ -263,7 +277,9 @@ data "coder_parameter" "platform_subdir" {
 
   dynamic "option" {
     for_each = try(
-      local.platform_subtree[
+      local.platform_subtree_all[
+        try(data.coder_parameter.platform_branch[0].value, "trunk")
+      ][
         count.index == 0
         ? "level_0"
         : "level_${count.index}__${join("__", [
@@ -297,7 +313,7 @@ data "coder_parameter" "project_platform_folder_list" {
   form_type    = "multi-select"
   type         = "list(string)"
   default      = jsonencode([])
-  order        = 102 + local.platform_extra_depth
+  order        = 110
   mutable      = true
 
   dynamic "option" {
@@ -326,8 +342,9 @@ data "coder_parameter" "custom_public_path" {
 }
 
 # Public version selection (only when custom path enabled)
+# Uses direct parameter reference for count so the Coder UI can evaluate dynamically.
 data "coder_parameter" "public_version" {
-  count = local.use_custom_public ? 1 : 0
+  count = data.coder_parameter.custom_public_path.value == "true" ? 1 : 0
 
   name         = "public_version"
   display_name = "Public Version"
@@ -348,9 +365,10 @@ data "coder_parameter" "public_version" {
 }
 
 # Public branch type selection (only when custom path enabled)
+# Uses direct parameter references for count so the Coder UI can evaluate dynamically.
 data "coder_parameter" "public_branch" {
   count = (
-    local.use_custom_public &&
+    data.coder_parameter.custom_public_path.value == "true" &&
     try(data.coder_parameter.public_version[0].value, "") != ""
   ) ? 1 : 0
 
@@ -372,9 +390,18 @@ data "coder_parameter" "public_branch" {
   }
 }
 
-# Public subdirectory levels (dynamic count, only when custom path + non-trunk)
+# Public subdirectory levels (dynamic count, only when custom path enabled)
+# Uses the same conditional short-circuit pattern as platform_subdir to ensure
+# workspace tag parsing succeeds (trunk defaults to count=0).
 data "coder_parameter" "public_subdir" {
-  count = local.use_custom_public ? local.public_extra_depth : 0
+  count = (
+    try(data.coder_parameter.public_branch[0].value, "trunk") == "trunk"
+  ) ? 0 : try(
+    local.public_subtree_all[
+      try(data.coder_parameter.public_branch[0].value, "trunk")
+    ]["depth"],
+    0
+  )
 
   name         = "public_subdir_${count.index}"
   display_name = "Public Subdirectory ${count.index + 1}"
@@ -386,7 +413,9 @@ data "coder_parameter" "public_subdir" {
 
   dynamic "option" {
     for_each = try(
-      local.public_subtree[
+      local.public_subtree_all[
+        try(data.coder_parameter.public_branch[0].value, "trunk")
+      ][
         count.index == 0
         ? "level_0"
         : "level_${count.index}__${join("__", [
@@ -421,7 +450,7 @@ data "coder_parameter" "project_public_folder_list" {
   form_type    = "multi-select"
   type         = "list(string)"
   default      = jsonencode([])
-  order        = 203 + local.public_extra_depth
+  order        = 215
   mutable      = true
 
   dynamic "option" {
