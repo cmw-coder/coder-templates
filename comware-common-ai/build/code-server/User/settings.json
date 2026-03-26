@@ -1,5 +1,6 @@
 {
     "security.workspace.trust.untrustedFiles": "open",
     "window.menuBarVisibility": "classic",
+    "workbench.startupEditor": "readme",
     "Lingma.dedicatedDomainURL": "http://10.113.36.111",
 }
