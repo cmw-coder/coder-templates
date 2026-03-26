@@ -125,16 +125,31 @@ data "coder_parameter" "manual_svn_mode" {
   name         = "manual_svn_mode"
   display_name = "Manual SVN Mode"
   description  = "Check to type SVN paths manually instead of using cascading dropdowns"
-  icon         = "/emojis/270f.png"
+  icon         = "/emojis/270b.png"
   type         = "bool"
   default      = "false"
-  order        = 98
+  order        = 1
   mutable      = false
 }
 
 # =============================================================================
 # Coder parameters: Platform SVN (cascading dropdowns, hidden in manual mode)
 # =============================================================================
+
+
+# Manual platform path (e.g., "V9R1/branches_bugfix/COMWAREV900R001trunk/TB202601071176")
+data "coder_parameter" "manual_platform_path" {
+  count = data.coder_parameter.manual_svn_mode.value == "true" ? 1 : 0
+
+  name         = "manual_platform_path"
+  display_name = "Platform SVN Path"
+  description  = "Type the platform SVN path relative to the repo root (e.g., `V9R1/trunk` or `V9R1/branches_bugfix/COMWAREV900R001trunk/TB202601071176`)"
+  icon         = "/emojis/1f3e0.png"
+  type         = "string"
+  default      = "V9R1/trunk"
+  order        = 100
+  mutable      = false
+}
 
 # Platform version: static dropdown with 3 hardcoded options (DP-compatible).
 # Hidden in manual mode — downstream references use try([0].value, default).
@@ -147,7 +162,7 @@ data "coder_parameter" "platform_version" {
   icon         = "/emojis/1f3e0.png"
   form_type    = "dropdown"
   default      = "V9R1"
-  order        = 100
+  order        = 101
   mutable      = false
 
   option {
@@ -175,7 +190,7 @@ data "coder_parameter" "platform_branch" {
   icon         = "/emojis/1f3e0.png"
   form_type    = "dropdown"
   default      = "trunk"
-  order        = 101
+  order        = 102
   mutable      = false
 
   option {
@@ -190,11 +205,11 @@ data "coder_parameter" "platform_branch" {
 
 # Platform bugfix subdirectory: text input shown only when branch = branches_bugfix.
 # User types the path manually (e.g., "COMWAREV900R001trunk/TB202601071176").
-# References platform_branch via try([0].value) since platform_branch has count.
+# References platform_branch via try(.value) since platform_branch has count.
 data "coder_parameter" "platform_subdir" {
   count = (
     data.coder_parameter.manual_svn_mode.value != "true" &&
-    try(data.coder_parameter.platform_branch[0].value, "trunk") == "branches_bugfix"
+    try(data.coder_parameter.platform_branch.value, "trunk") == "branches_bugfix"
   ) ? 1 : 0
 
   name         = "platform_subdir"
@@ -202,14 +217,12 @@ data "coder_parameter" "platform_subdir" {
   description  = "Type the path under `branches_bugfix/` (e.g., `COMWAREV900R001trunk/TB202601071176`)"
   icon         = "/emojis/1f3e0.png"
   type         = "string"
-  order        = 102
+  order        = 103
   mutable      = false
 }
 
 # Platform folder list: tag-select for user to type folder names.
 data "coder_parameter" "project_platform_folder_list" {
-  count = data.coder_parameter.manual_svn_mode.value == "true" ? 0 : 1
-
   name         = "project_platform_folder_list"
   display_name = "Platform Folder List"
   description  = <<-EOT
@@ -220,7 +233,7 @@ data "coder_parameter" "project_platform_folder_list" {
   form_type    = "tag-select"
   type         = "list(string)"
   default      = jsonencode([])
-  order        = 110
+  order        = 104
   mutable      = true
 }
 
@@ -235,10 +248,27 @@ data "coder_parameter" "custom_public_path" {
   name         = "custom_public_path"
   display_name = "Custom Public Path"
   description  = "Check to select a **different** branch path for public SVN checkout (default: same as platform)"
-  icon         = "/emojis/1f310.png"
+  icon         = "/emojis/270b.png"
   type         = "bool"
   default      = "false"
   order        = 200
+  mutable      = false
+}
+
+# Manual public path (shown only in manual mode with custom public path enabled)
+data "coder_parameter" "manual_public_path" {
+  count = (
+    data.coder_parameter.manual_svn_mode.value == "true" &&
+    data.coder_parameter.custom_public_path.value == "true"
+  ) ? 1 : 0
+
+  name         = "manual_public_path"
+  display_name = "Public SVN Path"
+  description  = "Type the public SVN path (leave **empty** to use the same path as platform)"
+  icon         = "/emojis/1f310.png"
+  type         = "string"
+  default      = ""
+  order        = 201
   mutable      = false
 }
 
@@ -256,7 +286,7 @@ data "coder_parameter" "public_version" {
   icon         = "/emojis/1f310.png"
   form_type    = "dropdown"
   default      = "V9R1"
-  order        = 201
+  order        = 202
   mutable      = false
 
   option {
@@ -287,7 +317,7 @@ data "coder_parameter" "public_branch" {
   icon         = "/emojis/1f310.png"
   form_type    = "dropdown"
   default      = "trunk"
-  order        = 202
+  order        = 203
   mutable      = false
 
   option {
@@ -300,13 +330,13 @@ data "coder_parameter" "public_branch" {
   }
 }
 
-# Public bugfix subdirectory: text input (only when custom path enabled).
-# Always shown when custom is enabled — user leaves empty for trunk.
-# This avoids needing to reference public_branch[0].value (which has count and breaks DP).
+# Public bugfix subdirectory: text input (only when custom path + branches_bugfix).
+# References public_branch via try(.value) since public_branch has count.
 data "coder_parameter" "public_subdir" {
   count = (
     data.coder_parameter.manual_svn_mode.value != "true" &&
-    data.coder_parameter.custom_public_path.value == "true"
+    data.coder_parameter.custom_public_path.value == "true" &&
+    try(data.coder_parameter.public_branch.value, "trunk") == "branches_bugfix"
   ) ? 1 : 0
 
   name         = "public_subdir"
@@ -314,14 +344,12 @@ data "coder_parameter" "public_subdir" {
   description  = "Type the path under `branches_bugfix/` for public SVN (leave **empty** if branch is trunk)"
   icon         = "/emojis/1f310.png"
   type         = "string"
-  order        = 203
+  order        = 204
   mutable      = false
 }
 
 # Public folder list: tag-select.
 data "coder_parameter" "project_public_folder_list" {
-  count = data.coder_parameter.manual_svn_mode.value == "true" ? 0 : 1
-
   name         = "project_public_folder_list"
   display_name = "Public Folder List"
   description  = <<-EOT
@@ -333,27 +361,13 @@ data "coder_parameter" "project_public_folder_list" {
   form_type    = "tag-select"
   type         = "list(string)"
   default      = jsonencode(["PUBLIC/include"])
-  order        = 215
+  order        = 205
   mutable      = true
 }
 
 # =============================================================================
 # Coder parameters: Manual mode inputs (shown only when manual mode is on)
 # =============================================================================
-
-# Manual platform path (e.g., "V9R1/branches_bugfix/COMWAREV900R001trunk/TB202601071176")
-data "coder_parameter" "manual_platform_path" {
-  count = data.coder_parameter.manual_svn_mode.value == "true" ? 1 : 0
-
-  name         = "manual_platform_path"
-  display_name = "Platform SVN Path"
-  description  = "Type the platform SVN path relative to the repo root (e.g., `V9R1/trunk` or `V9R1/branches_bugfix/COMWAREV900R001trunk/TB202601071176`)"
-  icon         = "/emojis/1f3e0.png"
-  type         = "string"
-  default      = "V9R1/trunk"
-  order        = 100
-  mutable      = false
-}
 
 # Manual platform folders (tag-select for comma-separated folder names)
 data "coder_parameter" "manual_platform_folders" {
@@ -373,22 +387,7 @@ data "coder_parameter" "manual_platform_folders" {
   mutable      = true
 }
 
-# Manual public path (shown only in manual mode with custom public path enabled)
-data "coder_parameter" "manual_public_path" {
-  count = (
-    data.coder_parameter.manual_svn_mode.value == "true" &&
-    data.coder_parameter.custom_public_path.value == "true"
-  ) ? 1 : 0
 
-  name         = "manual_public_path"
-  display_name = "Public SVN Path"
-  description  = "Type the public SVN path (leave **empty** to use the same path as platform)"
-  icon         = "/emojis/1f310.png"
-  type         = "string"
-  default      = ""
-  order        = 200
-  mutable      = false
-}
 
 # Manual public folders (shown only in manual mode with custom public path enabled)
 data "coder_parameter" "manual_public_folders" {
