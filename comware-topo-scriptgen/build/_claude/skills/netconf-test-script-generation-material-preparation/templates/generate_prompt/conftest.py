@@ -20,12 +20,6 @@ topo = r'test_topo.topox'
 @atf_time_stats("ATFSetupTime")
 @atf_adornment
 def setup():
-    gl.DUT1.send('''
-            ctrl+z
-            system-view
-            configuration replace file 1027.cfg
-            n
-        ''')
     #DUT配置开启IGMP-snooping功能(默认为enable)
     gl.DUT1.send(f'''
 

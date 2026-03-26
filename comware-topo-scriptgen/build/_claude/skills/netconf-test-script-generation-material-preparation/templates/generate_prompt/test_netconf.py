@@ -83,10 +83,10 @@ class TestClass:
             host=gl.DUT1.PORT1.ip, port=80, user='comware_test', pwd='comware_test', over='soap')
 
         # 正则表达式获取接口索引示例，具体看版本是否支持
-        ifmgr_message = gl.DUT1.send(
-            f'ctrl+z\nsys\nprobe\ndisplay system internal ifmgr list | '
-            f'include {gl.DUT1.PORT1.intf}')
-        TestClass.DUT1_PORT1_ifindex = re.search(r'index:(\d+)', ifmgr_message).group(1)
+        # ifmgr_message = gl.DUT1.send(
+        #     f'ctrl+z\nsys\nprobe\ndisplay system internal ifmgr list | '
+        #     f'include {gl.DUT1.PORT1.intf}')
+        # TestClass.DUT1_PORT1_ifindex = re.search(r'index:(\d+)', ifmgr_message).group(1)
 
         # getStringValue获取接口索引示例，具体看版本是否支持
         # TestClass.DUT1_PORT1_ifindex=gl.DUT1.getStringValue(
