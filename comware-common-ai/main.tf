@@ -1,19 +1,21 @@
 terraform {
   required_providers {
     coder = {
-      source  = "coder/coder"
-      version = "2.10.0"
+      source = "coder/coder"
     }
     docker = {
       source  = "kreuzwerker/docker"
       version = "3.6.2"
+    }
+    external = {
+      source = "hashicorp/external"
     }
   }
 }
 
 provider "docker" {
   registry_auth {
-    address = "registry.coder.h3c.com"
+    address  = "registry.coder.h3c.com"
     username = "coder"
     password = "silly"
   }
@@ -22,78 +24,97 @@ provider "docker" {
 provider "coder" {
 }
 
-data "coder_parameter" "project_platform_svn" {
-  name          = "project_platform_svn"
-  display_name  = "Project platform SVN"
-  description   = "Please provide the **platform** SVN URL (till your project branch) for checkout."
-  icon          = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
-  order         = 0
-  type          = "string"
-  mutable       = false
-  default       = "http://10.153.120.80/cmwcode-open/V9R1/trunk"
-}
-data "coder_parameter" "project_platform_folder_list" {
-  name          = "project_platform_folder_list"
-  display_name  = "Project platform folder list"
-  description   = <<-EOT
-    Please provide a list of **folder paths** for `Project platform SVN` to checkout.\
-    If you want to check out the **entire folder**, leave this field **empty**.
-  EOT
-  icon          = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
-  order         = 1
-  type          = "list(string)"
-  mutable       = true
-  default       = jsonencode([])
-}
-data "coder_parameter" "project_public_svn" {
-  name          = "project_public_svn"
-  display_name  = "Project public SVN"
-  description   = <<-EOT
-    Please provide the **public** SVN URL (till your project branch) for checkout.\
-    If you want to **skip** checking out the public folder, leave this field **empty**.
-  EOT
-  icon          = "${data.coder_workspace.me.access_url}/emojis/1f310.png"
-  order         = 2
-  type          = "string"
-  mutable       = false
-  default       = "http://10.153.120.104/cmwcode-public/V9R1/trunk"
-}
-data "coder_parameter" "project_public_folder_list" {
-  name          = "project_public_folder_list"
-  display_name  = "Project public folder list"
-  description   = <<-EOT
-    Please provide a list of **folder paths** for `Project public SVN` to checkout.\
-    Including the `PUBLIC/include` folder is highly recommended for **symbol highlighting**.\
-    If you want to check out the **entire folder**, leave this field **empty**.
-  EOT
-  icon          = "${data.coder_workspace.me.access_url}/emojis/1f310.png"
-  order         = 3
-  type          = "list(string)"
-  mutable       = true
-  default       = jsonencode([
-    "PUBLIC/include",
-  ])
-}
-data "coder_parameter" "svn_username" {
-  name          = "svn_username"
-  display_name  = "SVN username"
-  order         = 4
-  description   = "Specify a SVN username to checkout codes"
-  type          = "string"
-  mutable       = false
-}
-data "coder_parameter" "svn_password" {
-  name          = "svn_password"
-  display_name  = "SVN password"
-  order         = 5
-  description   = "Specify a SVN password to checkout codes"
-  type          = "string"
-  mutable       = true
+# =============================================================================
+# External data sources: SVN directory discovery
+# =============================================================================
 
-  styling = jsonencode({
-    mask_input = true
-  })
+# Pre-fetch platform SVN directory map (version -> branch types)
+data "external" "platform_svn_map" {
+  program = ["bash", "${path.module}/get-svn-map.sh"]
+
+  query = {
+    base_url     = "http://10.153.120.80/cmwcode-open/"
+    svn_username = "z11187"
+    svn_password = "Zpr758258%"
+  }
 }
+
+# Pre-fetch public SVN directory map (version -> branch types)
+data "external" "public_svn_map" {
+  program = ["bash", "${path.module}/get-svn-map.sh"]
+
+  query = {
+    base_url     = "http://10.153.120.104/cmwcode-public/"
+    svn_username = "z11187"
+    svn_password = "Zpr758258%"
+  }
+}
+
+# Explore platform subtree for non-trunk branches (detect depth dynamically)
+data "external" "platform_subtree" {
+  count = (
+    local.platform_branch_value != "" &&
+    local.platform_branch_value != "trunk"
+  ) ? 1 : 0
+
+  program = ["bash", "${path.module}/get-svn-subtree.sh"]
+
+  query = {
+    base_url           = "${local.platform_prefix}/${data.coder_parameter.platform_version.value}/${local.platform_branch_value}/"
+    svn_username       = "z11187"
+    svn_password       = "Zpr758258%"
+    code_level_markers = "ACCESS,DEV,IP,NETFWD"
+  }
+}
+
+# Fetch platform code-level directory listing for folder selection
+data "external" "platform_folders" {
+  count = local.platform_path_complete ? 1 : 0
+
+  program = ["bash", "${path.module}/get-svn-list.sh"]
+
+  query = {
+    url          = "${local.platform_svn_url}/"
+    svn_username = "z11187"
+    svn_password = "Zpr758258%"
+  }
+}
+
+# Explore public subtree (only when custom public path is enabled and non-trunk)
+data "external" "public_subtree" {
+  count = (
+    local.use_custom_public &&
+    local.public_branch_value != "" &&
+    local.public_branch_value != "trunk"
+  ) ? 1 : 0
+
+  program = ["bash", "${path.module}/get-svn-subtree.sh"]
+
+  query = {
+    base_url           = "${local.public_prefix}/${try(data.coder_parameter.public_version[0].value, "")}/${local.public_branch_value}/"
+    svn_username       = "z11187"
+    svn_password       = "Zpr758258%"
+    code_level_markers = "PUBLIC"
+  }
+}
+
+# Fetch public code-level directory listing for folder selection
+data "external" "public_folders" {
+  count = local.public_path_complete ? 1 : 0
+
+  program = ["bash", "${path.module}/get-svn-list.sh"]
+
+  query = {
+    url          = "${local.public_svn_url}/"
+    svn_username = "z11187"
+    svn_password = "Zpr758258%"
+  }
+}
+
+# =============================================================================
+# Coder data sources
+# =============================================================================
+
 data "coder_provisioner" "me" {
 }
 data "coder_workspace" "me" {
@@ -101,34 +122,364 @@ data "coder_workspace" "me" {
 data "coder_workspace_owner" "me" {
 }
 
+# =============================================================================
+# Locals
+# =============================================================================
+
 locals {
-  assets_url = "https://coder-assets.cmwcoder.h3c.com"
-  code_server_dir = "/tmp/code-server"
-  coder_docs_url = "https://coder-docs.cmwcoder.h3c.com"
+  # Existing configuration
+  assets_url          = "https://coder-assets.cmwcoder.h3c.com"
+  code_server_dir     = "/tmp/code-server"
+  coder_docs_url      = "https://coder-docs.cmwcoder.h3c.com"
   coder_tutorials_url = "https://tutorials.coder.h3c.com"
-  marketplace_url = "https://code-marketplace.cmwcoder.h3c.com"
-  project_path = "/home/${data.coder_workspace_owner.me.name}/project"
+  marketplace_url     = "https://code-marketplace.cmwcoder.h3c.com"
+  project_path        = "/home/${data.coder_workspace_owner.me.name}/project"
+
+  # SVN base URLs
+  platform_prefix = "http://10.153.120.80/cmwcode-open"
+  public_prefix   = "http://10.153.120.104/cmwcode-public"
+
+  # Pre-fetched SVN directory maps
+  platform_svn_map = jsondecode(data.external.platform_svn_map.result.data)
+  public_svn_map   = jsondecode(data.external.public_svn_map.result.data)
+
+  # --- Platform path state ---
+  platform_branch_value = try(data.coder_parameter.platform_branch[0].value, "")
+  platform_is_trunk     = local.platform_branch_value == "trunk"
+
+  # Platform subtree (non-trunk branches only)
+  platform_subtree    = local.platform_is_trunk ? {} : jsondecode(try(data.external.platform_subtree[0].result.data, "{\"depth\": 0}"))
+  platform_extra_depth = try(local.platform_subtree.depth, 0)
+
+  # Platform subdirectory path (from dynamic selections)
+  platform_subdir_values = local.platform_extra_depth > 0 ? compact([
+    for i in range(local.platform_extra_depth) :
+    try(data.coder_parameter.platform_subdir[i].value, "")
+  ]) : []
+  platform_subdir_path = join("/", local.platform_subdir_values)
+
+  # Constructed platform SVN URL
+  platform_svn_url = "${local.platform_prefix}/${data.coder_parameter.platform_version.value}/${local.platform_branch_value}${local.platform_subdir_path != "" ? "/${local.platform_subdir_path}" : ""}"
+
+  # Platform path completeness check
+  platform_path_complete = local.platform_branch_value != "" && (
+    local.platform_extra_depth == 0 ||
+    try(data.coder_parameter.platform_subdir[local.platform_extra_depth - 1].value, "") != ""
+  )
+
+  # --- Public path state ---
+  use_custom_public   = data.coder_parameter.custom_public_path.value == "true"
+  public_branch_value = local.use_custom_public ? try(data.coder_parameter.public_branch[0].value, "") : ""
+  public_is_trunk = local.use_custom_public ? (local.public_branch_value == "trunk") : local.platform_is_trunk
+
+  # Public subtree (only when custom path enabled and non-trunk)
+  public_subtree = (local.use_custom_public && !local.public_is_trunk) ? jsondecode(
+    try(data.external.public_subtree[0].result.data, "{\"depth\": 0}")
+  ) : {}
+  public_extra_depth = try(local.public_subtree.depth, 0)
+
+  # Public subdirectory path
+  public_subdir_values = (local.use_custom_public && local.public_extra_depth > 0) ? compact([
+    for i in range(local.public_extra_depth) :
+    try(data.coder_parameter.public_subdir[i].value, "")
+  ]) : []
+  public_subdir_path = join("/", local.public_subdir_values)
+
+  # Constructed public SVN URL (follows platform path when checkbox unchecked)
+  public_svn_url = local.use_custom_public ? (
+    "${local.public_prefix}/${try(data.coder_parameter.public_version[0].value, "")}/${local.public_branch_value}${local.public_subdir_path != "" ? "/${local.public_subdir_path}" : ""}"
+  ) : (
+    "${local.public_prefix}/${data.coder_parameter.platform_version.value}/${local.platform_branch_value}${local.platform_subdir_path != "" ? "/${local.platform_subdir_path}" : ""}"
+  )
+
+  # Public path completeness check
+  public_path_complete = local.use_custom_public ? (
+    local.public_branch_value != "" && (
+      local.public_extra_depth == 0 ||
+      try(data.coder_parameter.public_subdir[local.public_extra_depth - 1].value, "") != ""
+    )
+  ) : local.platform_path_complete
 }
 
+# =============================================================================
+# Coder parameters: Platform SVN (cascading dropdowns)
+# =============================================================================
+
+# Platform version selection (e.g., V9R1, V7R1_SPRINGB75, ...)
+data "coder_parameter" "platform_version" {
+  name         = "platform_version"
+  display_name = "Platform Version"
+  description  = "Select the platform code version (top-level SVN directory)"
+  icon         = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
+  form_type    = "dropdown"
+  default      = "V9R1"
+  order        = 100
+  mutable      = false
+
+  dynamic "option" {
+    for_each = keys(local.platform_svn_map)
+    content {
+      name  = option.value
+      value = option.value
+    }
+  }
+}
+
+# Platform branch type selection (e.g., trunk, branches_bugfix, tags, ...)
+data "coder_parameter" "platform_branch" {
+  count = data.coder_parameter.platform_version.value != "" ? 1 : 0
+
+  name         = "platform_branch"
+  display_name = "Platform Branch"
+  description  = "Select the branch type"
+  icon         = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
+  form_type    = "dropdown"
+  default      = "trunk"
+  order        = 101
+  mutable      = false
+
+  dynamic "option" {
+    for_each = try(local.platform_svn_map[data.coder_parameter.platform_version.value], [])
+    content {
+      name  = option.value
+      value = option.value
+    }
+  }
+}
+
+# Platform subdirectory levels (dynamic count based on actual SVN tree depth)
+# For trunk: count=0 (no extra levels needed)
+# For tags/bugfix/project/etc: count=N (detected by get-svn-subtree.sh)
+data "coder_parameter" "platform_subdir" {
+  count = local.platform_extra_depth
+
+  name         = "platform_subdir_${count.index}"
+  display_name = "Platform Subdirectory ${count.index + 1}"
+  description  = "Select subdirectory level ${count.index + 1}"
+  icon         = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
+  form_type    = "dropdown"
+  order        = 102 + count.index
+  mutable      = false
+
+  dynamic "option" {
+    for_each = try(
+      local.platform_subtree[
+        count.index == 0
+        ? "level_0"
+        : "level_${count.index}__${join("__", [
+          for i in range(count.index) :
+          data.coder_parameter.platform_subdir[i].value
+        ])}"
+      ],
+      []
+    )
+    content {
+      name  = option.value
+      value = option.value
+    }
+  }
+}
+
+# Platform folder list (multi-select from code-level directories)
+data "coder_parameter" "project_platform_folder_list" {
+  count = (
+    length(data.external.platform_folders) > 0 &&
+    length(try(jsondecode(data.external.platform_folders[0].result.data), [])) > 0
+  ) ? 1 : 0
+
+  name         = "project_platform_folder_list"
+  display_name = "Platform Folder List"
+  description  = <<-EOT
+    Select the **code directories** to checkout from platform SVN.
+    If you want to check out the **entire folder**, leave this field **empty**.
+  EOT
+  icon         = "${data.coder_workspace.me.access_url}/emojis/1f3e0.png"
+  form_type    = "multi-select"
+  type         = "list(string)"
+  default      = jsonencode([])
+  order        = 102 + local.platform_extra_depth
+  mutable      = true
+
+  dynamic "option" {
+    for_each = try(jsondecode(data.external.platform_folders[0].result.data), [])
+    content {
+      name  = option.value
+      value = option.value
+    }
+  }
+}
+
+# =============================================================================
+# Coder parameters: Public SVN (checkbox + conditional cascading)
+# =============================================================================
+
+# Checkbox: use a different branch path for public SVN
+data "coder_parameter" "custom_public_path" {
+  name         = "custom_public_path"
+  display_name = "Custom Public Path"
+  description  = "Check to select a **different** branch path for public SVN checkout (default: same as platform)"
+  icon         = "${data.coder_workspace.me.access_url}/emojis/1f310.png"
+  type         = "bool"
+  default      = "false"
+  order        = 200
+  mutable      = false
+}
+
+# Public version selection (only when custom path enabled)
+data "coder_parameter" "public_version" {
+  count = local.use_custom_public ? 1 : 0
+
+  name         = "public_version"
+  display_name = "Public Version"
+  description  = "Select the public code version"
+  icon         = "${data.coder_workspace.me.access_url}/emojis/1f310.png"
+  form_type    = "dropdown"
+  default      = "V9R1"
+  order        = 201
+  mutable      = false
+
+  dynamic "option" {
+    for_each = keys(local.public_svn_map)
+    content {
+      name  = option.value
+      value = option.value
+    }
+  }
+}
+
+# Public branch type selection (only when custom path enabled)
+data "coder_parameter" "public_branch" {
+  count = (
+    local.use_custom_public &&
+    try(data.coder_parameter.public_version[0].value, "") != ""
+  ) ? 1 : 0
+
+  name         = "public_branch"
+  display_name = "Public Branch"
+  description  = "Select the branch type for public SVN"
+  icon         = "${data.coder_workspace.me.access_url}/emojis/1f310.png"
+  form_type    = "dropdown"
+  default      = "trunk"
+  order        = 202
+  mutable      = false
+
+  dynamic "option" {
+    for_each = try(local.public_svn_map[try(data.coder_parameter.public_version[0].value, "")], [])
+    content {
+      name  = option.value
+      value = option.value
+    }
+  }
+}
+
+# Public subdirectory levels (dynamic count, only when custom path + non-trunk)
+data "coder_parameter" "public_subdir" {
+  count = local.use_custom_public ? local.public_extra_depth : 0
+
+  name         = "public_subdir_${count.index}"
+  display_name = "Public Subdirectory ${count.index + 1}"
+  description  = "Select subdirectory level ${count.index + 1} for public SVN"
+  icon         = "${data.coder_workspace.me.access_url}/emojis/1f310.png"
+  form_type    = "dropdown"
+  order        = 203 + count.index
+  mutable      = false
+
+  dynamic "option" {
+    for_each = try(
+      local.public_subtree[
+        count.index == 0
+        ? "level_0"
+        : "level_${count.index}__${join("__", [
+          for i in range(count.index) :
+          data.coder_parameter.public_subdir[i].value
+        ])}"
+      ],
+      []
+    )
+    content {
+      name  = option.value
+      value = option.value
+    }
+  }
+}
+
+# Public folder list (multi-select from code-level directories)
+data "coder_parameter" "project_public_folder_list" {
+  count = (
+    length(data.external.public_folders) > 0 &&
+    length(try(jsondecode(data.external.public_folders[0].result.data), [])) > 0
+  ) ? 1 : 0
+
+  name         = "project_public_folder_list"
+  display_name = "Public Folder List"
+  description  = <<-EOT
+    Select the **code directories** to checkout from public SVN.
+    Selecting `PUBLIC` is recommended for **symbol highlighting**.
+    If you want to check out the **entire folder**, leave this field **empty**.
+  EOT
+  icon         = "${data.coder_workspace.me.access_url}/emojis/1f310.png"
+  form_type    = "multi-select"
+  type         = "list(string)"
+  default      = jsonencode([])
+  order        = 203 + local.public_extra_depth
+  mutable      = true
+
+  dynamic "option" {
+    for_each = try(jsondecode(data.external.public_folders[0].result.data), [])
+    content {
+      name  = option.value
+      value = option.value
+    }
+  }
+}
+
+# =============================================================================
+# Coder parameters: SVN credentials
+# =============================================================================
+
+data "coder_parameter" "svn_username" {
+  name         = "svn_username"
+  display_name = "SVN Username"
+  description  = "Specify a SVN username to checkout codes"
+  type         = "string"
+  order        = 300
+  mutable      = false
+}
+
+data "coder_parameter" "svn_password" {
+  name         = "svn_password"
+  display_name = "SVN Password"
+  description  = "Specify a SVN password to checkout codes"
+  type         = "string"
+  order        = 301
+  mutable      = true
+
+  styling = jsonencode({
+    mask_input = true
+  })
+}
+
+# =============================================================================
+# Coder agent
+# =============================================================================
+
 resource "coder_agent" "main" {
-  arch                   = data.coder_provisioner.me.arch
-  os                     = "linux"
+  arch = data.coder_provisioner.me.arch
+  os   = "linux"
 
   env = {
     GIT_AUTHOR_NAME     = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_AUTHOR_EMAIL    = "${data.coder_workspace_owner.me.email}"
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
-    SVN_PASSWORD_B64    = base64encode(data.coder_parameter.svn_password.value)
-    SVN_USERNAME        = "${data.coder_parameter.svn_username.value}"
   }
 
   display_apps {
     port_forwarding_helper = true
-    ssh_helper = true
-    vscode = false
-    vscode_insiders = false
-    web_terminal = true
+    ssh_helper             = true
+    vscode                 = false
+    vscode_insiders        = false
+    web_terminal           = true
   }
 
   metadata {
@@ -137,7 +488,7 @@ resource "coder_agent" "main" {
     script       = "coder stat cpu"
     interval     = 10
     timeout      = 1
-    order       = 0
+    order        = 0
   }
   metadata {
     key          = "ram_usage"
@@ -159,6 +510,7 @@ resource "coder_agent" "main" {
       fi
     EOF
     interval     = 30
+    timeout      = 1
     order        = 2
   }
   metadata {
@@ -173,9 +525,14 @@ resource "coder_agent" "main" {
       fi
     EOF
     interval     = 30
+    timeout      = 1
     order        = 3
   }
 }
+
+# =============================================================================
+# Coder apps
+# =============================================================================
 
 resource "coder_app" "code_server" {
   agent_id     = coder_agent.main.id
@@ -209,6 +566,10 @@ resource "coder_app" "coder_tutorials" {
   external     = true
 }
 
+# =============================================================================
+# Coder environment variables
+# =============================================================================
+
 resource "coder_env" "coder_service_name" {
   agent_id = coder_agent.main.id
   name     = "CODER_SERVICE_NAME"
@@ -232,7 +593,7 @@ resource "coder_env" "node_options" {
 resource "coder_env" "project_platform_folder_list" {
   agent_id = coder_agent.main.id
   name     = "PROJECT_PLATFORM_FOLDER_LIST"
-  value    = "${data.coder_parameter.project_platform_folder_list.value}"
+  value    = try(data.coder_parameter.project_platform_folder_list[0].value, jsonencode([]))
 }
 resource "coder_env" "project_platform_path" {
   agent_id = coder_agent.main.id
@@ -242,12 +603,12 @@ resource "coder_env" "project_platform_path" {
 resource "coder_env" "project_platform_svn" {
   agent_id = coder_agent.main.id
   name     = "PROJECT_PLATFORM_SVN"
-  value    = "${data.coder_parameter.project_platform_svn.value}"
+  value    = local.platform_svn_url
 }
 resource "coder_env" "project_public_folder_list" {
   agent_id = coder_agent.main.id
   name     = "PROJECT_PUBLIC_FOLDER_LIST"
-  value    = "${data.coder_parameter.project_public_folder_list.value}"
+  value    = try(data.coder_parameter.project_public_folder_list[0].value, jsonencode([]))
 }
 resource "coder_env" "project_public_path" {
   agent_id = coder_agent.main.id
@@ -257,7 +618,7 @@ resource "coder_env" "project_public_path" {
 resource "coder_env" "project_public_svn" {
   agent_id = coder_agent.main.id
   name     = "PROJECT_PUBLIC_SVN"
-  value    = "${data.coder_parameter.project_public_svn.value}"
+  value    = local.public_svn_url
 }
 resource "coder_env" "svn_password" {
   agent_id = coder_agent.main.id
@@ -270,19 +631,23 @@ resource "coder_env" "svn_username" {
   value    = "${data.coder_parameter.svn_username.value}"
 }
 
+# =============================================================================
+# Coder scripts
+# =============================================================================
+
 resource "coder_script" "start_code_server" {
-  agent_id     = coder_agent.main.id
-  display_name = "Start Code Server"
-  icon         = "/icon/code.svg"
-  run_on_start = true
+  agent_id           = coder_agent.main.id
+  display_name       = "Start Code Server"
+  icon               = "/icon/code.svg"
+  run_on_start       = true
   start_blocks_login = true
-  script = <<EOF
+  script             = <<EOF
     #!/bin/bash
-    echo -e "\033[36m- 📦 Installing code-server\033[0m"
+    echo -e "\033[36m- Installing code-server\033[0m"
     mkdir -p ${local.code_server_dir}
     curl -fsSL "${local.assets_url}/code-server-4.102.3-linux-amd64.tar.gz" | tar -C "${local.code_server_dir}" -xz --strip-components 1
 
-    echo -e "\033[36m- ⏳ Installing extensions\033[0m"
+    echo -e "\033[36m- Installing extensions\033[0m"
     ${local.code_server_dir}/bin/code-server --install-extension "alefragnani.bookmarks" --force
     ${local.code_server_dir}/bin/code-server --install-extension "anjali.clipboard-history" --force
     ${local.code_server_dir}/bin/code-server --install-extension "beaugust.blamer-vs" --force
@@ -300,7 +665,7 @@ resource "coder_script" "start_code_server" {
     ${local.code_server_dir}/bin/code-server --install-extension "rogalmic.bash-debug" --force
     ${local.code_server_dir}/bin/code-server --install-extension "rsbondi.highlight-words" --force
 
-    echo -e "\033[36m- ⏳ Starting code-server\033[0m"
+    echo -e "\033[36m- Starting code-server\033[0m"
     ${local.code_server_dir}/bin/code-server \
       --auth none \
       --disable-telemetry \
@@ -310,66 +675,70 @@ resource "coder_script" "start_code_server" {
       --port 13337 \
       --trusted-origins * \
       >${local.code_server_dir}/main.log 2>&1 &
-    echo -e "\033[32m- ✔️ Code server started!\033[0m"
+    echo -e "\033[32m- Code server started!\033[0m"
   EOF
 }
 resource "coder_script" "install_clangd" {
-  agent_id     = coder_agent.main.id
-  display_name = "Install clangd"
-  icon         = "/emojis/1f9e0.png"
-  run_on_start = true
+  agent_id           = coder_agent.main.id
+  display_name       = "Install clangd"
+  icon               = "/emojis/1f9e0.png"
+  run_on_start       = true
   start_blocks_login = true
-  script = <<EOF
+  script             = <<EOF
     #!/bin/bash
     if command -v clangd >/dev/null 2>&1; then
-      echo -e "\033[32m- ✔️ clangd is already installed\033[0m"
+      echo -e "\033[32m- clangd is already installed\033[0m"
       exit 0
     fi
-    echo -e "\033[36m- 📦 Installing clangd\033[0m"
+    echo -e "\033[36m- Installing clangd\033[0m"
     curl -fsSL "${local.assets_url}/clangd-linux-22.1.0.zip" -o /tmp/clangd-linux-22.1.0.zip \
       && cd /tmp \
       && unzip -q clangd-linux-22.1.0.zip \
       && rm clangd-linux-22.1.0.zip \
       && sudo mv clangd_22.1.0 /opt/clangd \
       && sudo ln -s /opt/clangd/bin/clangd /usr/local/bin/clangd
-    echo -e "\033[32m- ✔️ clangd installed!\033[0m"
+    echo -e "\033[32m- clangd installed!\033[0m"
   EOF
 }
 resource "coder_script" "checkout_base_svn" {
-  agent_id     = coder_agent.main.id
-  display_name = "Checkout base SVN project"
-  icon         = "/emojis/1f3e0.png"
-  run_on_start = true
+  agent_id           = coder_agent.main.id
+  display_name       = "Checkout base SVN project"
+  icon               = "/emojis/1f3e0.png"
+  run_on_start       = true
   start_blocks_login = true
-  script = <<EOF
+  script             = <<EOF
     #!/bin/bash
     checkout-list platform
   EOF
 }
 resource "coder_script" "checkout_public_svn" {
-  agent_id     = coder_agent.main.id
-  display_name = "Checkout public SVN project"
-  icon         = "/emojis/1f310.png"
-  run_on_start = true
+  agent_id           = coder_agent.main.id
+  display_name       = "Checkout public SVN project"
+  icon               = "/emojis/1f310.png"
+  run_on_start       = true
   start_blocks_login = true
-  script = <<EOF
+  script             = <<EOF
     #!/bin/bash
     checkout-list public
   EOF
 }
 resource "coder_script" "create_python_venv" {
-  agent_id     = coder_agent.main.id
-  display_name = "Create Python Venv"
-  icon         = "/icon/python.svg"
-  run_on_start = true
+  agent_id           = coder_agent.main.id
+  display_name       = "Create Python Venv"
+  icon               = "/icon/python.svg"
+  run_on_start       = true
   start_blocks_login = true
-  script = <<EOF
+  script             = <<EOF
     #!/bin/bash
     cd "${local.project_path}"
     python -m venv .venv --system-site-packages
     .venv/bin/pip install tree-sitter tree-sitter-c
   EOF
 }
+
+# =============================================================================
+# Docker resources
+# =============================================================================
 
 resource "docker_service" "workspace" {
   name = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
@@ -394,7 +763,7 @@ resource "docker_service" "workspace" {
         value = data.coder_workspace.me.name
       }
 
-      command = ["sh", "-c", replace(coder_agent.main.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")]
+      command  = ["sh", "-c", replace(coder_agent.main.init_script, "/localhost|127\\.0\\.0\\.1/", "host.docker.internal")]
       hostname = lower(data.coder_workspace.me.name)
 
       env = {
@@ -413,7 +782,6 @@ resource "docker_service" "workspace" {
       mounts {
         target    = "/home/${data.coder_workspace_owner.me.name}"
         type      = "volume"
-
         read_only = false
         source    = docker_volume.home_volume.name
       }
@@ -421,7 +789,6 @@ resource "docker_service" "workspace" {
       mounts {
         target    = "/opt/glibc-headers/include"
         type      = "bind"
-
         read_only = true
         source    = "/opt/glibc-headers/include"
       }
@@ -429,7 +796,6 @@ resource "docker_service" "workspace" {
       mounts {
         target    = "/opt/open-headers/include"
         type      = "bind"
-
         read_only = true
         source    = "/opt/open-headers/V9R1/trunk/include"
       }
@@ -442,7 +808,7 @@ resource "docker_image" "main" {
   build {
     context = "build"
     build_args = {
-      USER = data.coder_workspace_owner.me.name
+      USER              = data.coder_workspace_owner.me.name
       EXTENSION_VERSION = "1.99.2025040909"
     }
     force_remove = true
@@ -462,10 +828,10 @@ resource "docker_volume" "home_volume" {
 }
 
 resource "docker_registry_image" "main" {
-  name = docker_image.main.name
-  insecure_skip_verify  = true
-  keep_remotely = false
-  triggers              = {
+  name                 = docker_image.main.name
+  insecure_skip_verify = true
+  keep_remotely        = false
+  triggers = {
     dir_sha1 = sha1(join("", [for f in fileset(path.module, "build/**") : filesha1(f)]))
   }
 }
