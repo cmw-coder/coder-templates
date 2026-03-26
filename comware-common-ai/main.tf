@@ -7,9 +7,6 @@ terraform {
       source  = "kreuzwerker/docker"
       version = "3.6.2"
     }
-    external = {
-      source = "hashicorp/external"
-    }
   }
 }
 
@@ -36,32 +33,6 @@ data "coder_workspace_owner" "me" {
 }
 
 # =============================================================================
-# External data: filtered SVN directory maps
-# =============================================================================
-# Queries only 3 versions x 2 branches from SVN (fast, ~20-30 seconds).
-# Script runs in the provisioner environment (Coder server container).
-
-data "external" "platform_map" {
-  program = ["bash", "${path.module}/get-filtered-svn-map.sh"]
-
-  query = {
-    repo_type    = "platform"
-    svn_username = "z11187"
-    svn_password = "Zpr758258%"
-  }
-}
-
-data "external" "public_map" {
-  program = ["bash", "${path.module}/get-filtered-svn-map.sh"]
-
-  query = {
-    repo_type    = "public"
-    svn_username = "z11187"
-    svn_password = "Zpr758258%"
-  }
-}
-
-# =============================================================================
 # Locals
 # =============================================================================
 
@@ -78,20 +49,13 @@ locals {
   platform_prefix = "http://10.153.120.80/cmwcode-open"
   public_prefix   = "http://10.153.120.104/cmwcode-public"
 
-  # Decoded SVN directory maps from external data sources.
-  # try() fallback to empty map ensures Dynamic Parameters form rendering
-  # doesn't break when data.external results are unavailable (DP evaluator
-  # does NOT execute data sources; only var.* and data.coder_parameter.* are
-  # available during form rendering).
-  platform_map = try(jsondecode(data.external.platform_map.result.data), {})
-  public_map   = try(jsondecode(data.external.public_map.result.data), {})
-
   # --- Mode detection ---
   is_manual = data.coder_parameter.manual_svn_mode.value == "true"
 
   # --- Platform path state (cascading mode) ---
-  platform_version_val = try(data.coder_parameter.platform_version[0].value, "V9R1")
-  platform_branch_val  = try(data.coder_parameter.platform_branch[0].value, "trunk")
+  # platform_version and platform_branch have NO count (always visible), so use .value directly
+  platform_version_val = data.coder_parameter.platform_version.value
+  platform_branch_val  = data.coder_parameter.platform_branch.value
   platform_subdir_val  = try(data.coder_parameter.platform_subdir[0].value, "")
 
   # Constructed platform SVN URL (cascading mode)
@@ -107,7 +71,8 @@ locals {
   ]))
 
   # --- Public path state (cascading mode) ---
-  use_custom_public   = try(data.coder_parameter.custom_public_path[0].value == "true", false)
+  # custom_public_path has NO count (always visible), so use .value directly
+  use_custom_public   = data.coder_parameter.custom_public_path.value == "true"
   public_version_val  = try(data.coder_parameter.public_version[0].value, "")
   public_branch_val   = try(data.coder_parameter.public_branch[0].value, "trunk")
   public_subdir_val   = try(data.coder_parameter.public_subdir[0].value, "")
@@ -171,11 +136,9 @@ data "coder_parameter" "manual_svn_mode" {
 # =============================================================================
 
 # Platform version: static dropdown with 3 hardcoded options (DP-compatible).
-# Static options guarantee at least 1 option exists during DP form rendering,
-# avoiding the "options do not exist" error.
+# NO count — always visible (even in manual mode) so that downstream counted
+# parameters can reference .value without [0] indexing (which breaks in DP).
 data "coder_parameter" "platform_version" {
-  count = data.coder_parameter.manual_svn_mode.value == "true" ? 0 : 1
-
   name         = "platform_version"
   display_name = "Platform Version"
   description  = "Select the platform code version"
@@ -200,9 +163,8 @@ data "coder_parameter" "platform_version" {
 }
 
 # Platform branch: static dropdown with 2 options (DP-compatible).
+# NO count — always visible so that platform_subdir can reference .value directly.
 data "coder_parameter" "platform_branch" {
-  count = data.coder_parameter.manual_svn_mode.value == "true" ? 0 : 1
-
   name         = "platform_branch"
   display_name = "Platform Branch"
   description  = "Select the branch type"
@@ -222,71 +184,40 @@ data "coder_parameter" "platform_branch" {
   }
 }
 
-# Platform bugfix subdirectory: shown only when branch = branches_bugfix.
-# Uses dynamic options from the SVN map with a static fallback option for DP.
+# Platform bugfix subdirectory: text input shown only when branch = branches_bugfix.
+# User types the path manually (e.g., "COMWAREV900R001trunk/TB202601071176").
+# References platform_branch.value directly (no [0]) since platform_branch has no count.
 data "coder_parameter" "platform_subdir" {
   count = (
     data.coder_parameter.manual_svn_mode.value != "true" &&
-    try(data.coder_parameter.platform_branch[0].value, "") == "branches_bugfix"
+    data.coder_parameter.platform_branch.value == "branches_bugfix"
   ) ? 1 : 0
 
   name         = "platform_subdir"
-  display_name = "Platform Bugfix Subdirectory"
-  description  = "Select the bugfix subdirectory (latest 20 shown)"
+  display_name = "Platform Bugfix Path"
+  description  = "Type the path under `branches_bugfix/` (e.g., `COMWAREV900R001trunk/TB202601071176`)"
   icon         = "/emojis/1f3e0.png"
-  form_type    = "dropdown"
+  type         = "string"
   order        = 102
   mutable      = false
-
-  # Static fallback option ensures DP rendering always has at least 1 option
-  option {
-    name  = "(loading...)"
-    value = ""
-  }
-
-  dynamic "option" {
-    for_each = try(
-      keys(local.platform_map[data.coder_parameter.platform_version[0].value]["branches_bugfix"]),
-      []
-    )
-    content {
-      name  = option.value
-      value = option.value
-    }
-  }
 }
 
-# Platform folder list: multi-select with dynamic options from SVN map.
-# For trunk: platform_map[version]["trunk"] is a list of folders.
-# For branches_bugfix: platform_map[version]["branches_bugfix"][subdir] is a list.
+# Platform folder list: tag-select for user to type folder names.
 data "coder_parameter" "project_platform_folder_list" {
   count = data.coder_parameter.manual_svn_mode.value == "true" ? 0 : 1
 
   name         = "project_platform_folder_list"
   display_name = "Platform Folder List"
   description  = <<-EOT
-    Select the **code directories** to checkout from platform SVN.
+    Type the **code directories** to checkout from platform SVN.
     If you want to check out the **entire folder**, leave this field **empty**.
   EOT
   icon         = "/emojis/1f3e0.png"
-  form_type    = "multi-select"
+  form_type    = "tag-select"
   type         = "list(string)"
   default      = jsonencode([])
   order        = 110
   mutable      = true
-
-  dynamic "option" {
-    for_each = try(
-      data.coder_parameter.platform_branch[0].value == "trunk"
-      ? local.platform_map[data.coder_parameter.platform_version[0].value]["trunk"]
-      : local.platform_map[data.coder_parameter.platform_version[0].value]["branches_bugfix"][data.coder_parameter.platform_subdir[0].value],
-      []
-    )
-    content {
-      name  = option.value
-      value = option.value
-    }
-  }
 }
 
 # =============================================================================
@@ -294,9 +225,9 @@ data "coder_parameter" "project_platform_folder_list" {
 # =============================================================================
 
 # Checkbox: use a different branch path for public SVN (hidden in manual mode)
+# NO count — always visible so that downstream public_version, public_branch,
+# public_subdir can reference .value without [0] indexing.
 data "coder_parameter" "custom_public_path" {
-  count = data.coder_parameter.manual_svn_mode.value == "true" ? 0 : 1
-
   name         = "custom_public_path"
   display_name = "Custom Public Path"
   description  = "Check to select a **different** branch path for public SVN checkout (default: same as platform)"
@@ -308,10 +239,11 @@ data "coder_parameter" "custom_public_path" {
 }
 
 # Public version: static dropdown (only when custom path enabled)
+# References custom_public_path.value directly (no [0]) since it has no count.
 data "coder_parameter" "public_version" {
   count = (
     data.coder_parameter.manual_svn_mode.value != "true" &&
-    try(data.coder_parameter.custom_public_path[0].value, "false") == "true"
+    data.coder_parameter.custom_public_path.value == "true"
   ) ? 1 : 0
 
   name         = "public_version"
@@ -338,10 +270,11 @@ data "coder_parameter" "public_version" {
 }
 
 # Public branch: static dropdown (only when custom path enabled)
+# References custom_public_path.value directly (no [0]) since it has no count.
 data "coder_parameter" "public_branch" {
   count = (
     data.coder_parameter.manual_svn_mode.value != "true" &&
-    try(data.coder_parameter.custom_public_path[0].value, "false") == "true"
+    data.coder_parameter.custom_public_path.value == "true"
   ) ? 1 : 0
 
   name         = "public_branch"
@@ -363,81 +296,41 @@ data "coder_parameter" "public_branch" {
   }
 }
 
-# Public bugfix subdirectory (only when custom + branches_bugfix)
+# Public bugfix subdirectory: text input (only when custom path enabled).
+# Always shown when custom is enabled — user leaves empty for trunk.
+# This avoids needing to reference public_branch[0].value (which has count and breaks DP).
 data "coder_parameter" "public_subdir" {
   count = (
     data.coder_parameter.manual_svn_mode.value != "true" &&
-    try(data.coder_parameter.custom_public_path[0].value, "false") == "true" &&
-    try(data.coder_parameter.public_branch[0].value, "") == "branches_bugfix"
+    data.coder_parameter.custom_public_path.value == "true"
   ) ? 1 : 0
 
   name         = "public_subdir"
-  display_name = "Public Bugfix Subdirectory"
-  description  = "Select the bugfix subdirectory for public SVN"
+  display_name = "Public Bugfix Path"
+  description  = "Type the path under `branches_bugfix/` for public SVN (leave **empty** if branch is trunk)"
   icon         = "/emojis/1f310.png"
-  form_type    = "dropdown"
+  type         = "string"
   order        = 203
   mutable      = false
-
-  # Static fallback for DP
-  option {
-    name  = "(loading...)"
-    value = ""
-  }
-
-  dynamic "option" {
-    for_each = try(
-      keys(local.public_map[data.coder_parameter.public_version[0].value]["branches_bugfix"]),
-      []
-    )
-    content {
-      name  = option.value
-      value = option.value
-    }
-  }
 }
 
-# Public folder list: multi-select.
-# When custom_public_path is unchecked, follows platform's version/branch/subdir.
+# Public folder list: tag-select.
 data "coder_parameter" "project_public_folder_list" {
   count = data.coder_parameter.manual_svn_mode.value == "true" ? 0 : 1
 
   name         = "project_public_folder_list"
   display_name = "Public Folder List"
   description  = <<-EOT
-    Select the **code directories** to checkout from public SVN.
-    Selecting `PUBLIC` is recommended for **symbol highlighting**.
+    Type the **code directories** to checkout from public SVN.
+    Typing `PUBLIC` is recommended for **symbol highlighting**.
     If you want to check out the **entire folder**, leave this field **empty**.
   EOT
   icon         = "/emojis/1f310.png"
-  form_type    = "multi-select"
+  form_type    = "tag-select"
   type         = "list(string)"
   default      = jsonencode([])
   order        = 215
   mutable      = true
-
-  dynamic "option" {
-    for_each = try(
-      # When custom public path: use public_map with public params
-      try(data.coder_parameter.custom_public_path[0].value, "false") == "true"
-      ? (
-        data.coder_parameter.public_branch[0].value == "trunk"
-        ? local.public_map[data.coder_parameter.public_version[0].value]["trunk"]
-        : local.public_map[data.coder_parameter.public_version[0].value]["branches_bugfix"][data.coder_parameter.public_subdir[0].value]
-      )
-      # When following platform: use public_map with platform params
-      : (
-        data.coder_parameter.platform_branch[0].value == "trunk"
-        ? local.public_map[data.coder_parameter.platform_version[0].value]["trunk"]
-        : local.public_map[data.coder_parameter.platform_version[0].value]["branches_bugfix"][data.coder_parameter.platform_subdir[0].value]
-      ),
-      []
-    )
-    content {
-      name  = option.value
-      value = option.value
-    }
-  }
 }
 
 # =============================================================================
