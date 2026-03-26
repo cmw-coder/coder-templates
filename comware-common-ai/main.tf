@@ -204,7 +204,7 @@ data "coder_parameter" "platform_branch" {
 data "coder_parameter" "platform_subdir" {
   count = (
     data.coder_parameter.manual_svn_mode.value != "true" &&
-    try(data.coder_parameter.platform_branch.value, "trunk") == "branches_bugfix"
+    try(data.coder_parameter.platform_branch[0].value, "trunk") == "branches_bugfix"
   ) ? 1 : 0
 
   name         = "platform_subdir"
@@ -331,7 +331,7 @@ data "coder_parameter" "public_subdir" {
   count = (
     data.coder_parameter.manual_svn_mode.value != "true" &&
     data.coder_parameter.custom_public_path.value == "true" &&
-    try(data.coder_parameter.public_branch.value, "trunk") == "branches_bugfix"
+    try(data.coder_parameter.public_branch[0].value, "trunk") == "branches_bugfix"
   ) ? 1 : 0
 
   name         = "public_subdir"
