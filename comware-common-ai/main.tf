@@ -107,14 +107,9 @@ locals {
   platform_svn_url = local.is_manual ? local.platform_svn_url_manual : local.platform_svn_url_cascading
   public_svn_url   = local.is_manual ? local.public_svn_url_manual : local.public_svn_url_cascading
 
-  # --- Final folder lists (mode-dependent) ---
-  platform_folder_list = local.is_manual ? (
-    try(data.coder_parameter.manual_platform_folders[0].value, jsonencode([]))
-  ) : try(data.coder_parameter.project_platform_folder_list[0].value, jsonencode([]))
-
-  public_folder_list = local.is_manual ? (
-    try(data.coder_parameter.manual_public_folders[0].value, jsonencode([]))
-  ) : try(data.coder_parameter.project_public_folder_list[0].value, jsonencode([]))
+  # --- Final folder lists ---
+  platform_folder_list = data.coder_parameter.project_platform_folder_list.value
+  public_folder_list   = data.coder_parameter.project_public_folder_list.value
 }
 
 # =============================================================================
@@ -362,51 +357,6 @@ data "coder_parameter" "project_public_folder_list" {
   type         = "list(string)"
   default      = jsonencode(["PUBLIC/include"])
   order        = 205
-  mutable      = true
-}
-
-# =============================================================================
-# Coder parameters: Manual mode inputs (shown only when manual mode is on)
-# =============================================================================
-
-# Manual platform folders (tag-select for comma-separated folder names)
-data "coder_parameter" "manual_platform_folders" {
-  count = data.coder_parameter.manual_svn_mode.value == "true" ? 1 : 0
-
-  name         = "manual_platform_folders"
-  display_name = "Platform Folder List"
-  description  = <<-EOT
-    Type the **code directories** to checkout from platform SVN (comma-separated).
-    Leave **empty** to check out the entire folder.
-  EOT
-  icon         = "/emojis/1f3e0.png"
-  form_type    = "tag-select"
-  type         = "list(string)"
-  default      = jsonencode([])
-  order        = 110
-  mutable      = true
-}
-
-
-
-# Manual public folders (shown only in manual mode with custom public path enabled)
-data "coder_parameter" "manual_public_folders" {
-  count = (
-    data.coder_parameter.manual_svn_mode.value == "true" &&
-    data.coder_parameter.custom_public_path.value == "true"
-  ) ? 1 : 0
-
-  name         = "manual_public_folders"
-  display_name = "Public Folder List"
-  description  = <<-EOT
-    Type the **code directories** to checkout from public SVN (comma-separated).
-    Leave **empty** to check out the entire folder.
-  EOT
-  icon         = "/emojis/1f310.png"
-  form_type    = "tag-select"
-  type         = "list(string)"
-  default      = jsonencode([])
-  order        = 215
   mutable      = true
 }
 
