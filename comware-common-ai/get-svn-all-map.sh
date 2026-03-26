@@ -49,6 +49,9 @@ SVN_PASSWORD=${SVN_PASSWORD_INPUT:-${SVN_PASSWORD:-""}}
 SVN_USERNAME=${SVN_USERNAME_INPUT:-${SVN_USERNAME:-""}}
 
 MAX_DEPTH=6
+
+# Diagnostic logging to stderr (visible in Terraform logs, not in JSON output)
+log() { echo "[get-svn-all-map] $*" >&2; }
 TMPDIR_BASE=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_BASE"' EXIT
 
@@ -69,10 +72,13 @@ get_svn_dirs() {
 	local url=$1
 	local contents
 	contents=$(svn_with_auth ls "${url}") || {
+		log "WARN: svn ls failed for ${url}"
 		echo ""
 		return 0
 	}
-	echo "${contents}" | grep '/$' | sed 's/\/$//'
+	# { grep ... || true; } prevents exit code 1 when no directories found
+	# (grep returns 1 on no match, which kills the script under set -euo pipefail)
+	echo "${contents}" | { grep '/$' || true; } | sed 's/\/$//'
 }
 
 # Check if directory listing contains any code-level marker directories
@@ -98,7 +104,7 @@ list_to_json_array() {
 		echo "[]"
 		return
 	fi
-	printf '%s\n' "$input" | grep -v '^$' | jq -R . | jq -s .
+	printf '%s\n' "$input" | { grep -v '^$' || true; } | jq -R . | jq -s .
 }
 
 # Probe depth for a single branch by sampling the FIRST entry at each level.
@@ -151,6 +157,8 @@ process_branch() {
 	local depth sampled_path
 	depth=$(echo "$probe_result" | cut -d' ' -f1)
 	sampled_path=$(echo "$probe_result" | cut -d' ' -f2-)
+
+	log "Branch ${version}/${branch}: depth=${depth}, sampled_path='${sampled_path}'"
 
 	# Initialize result with depth
 	local result
@@ -212,7 +220,7 @@ process_branch() {
 
 				# Determine the key based on the number of __ separators
 				local num_separators
-				num_separators=$(echo "$basename" | grep -o '__' | wc -l)
+				num_separators=$(echo "$basename" | { grep -o '__' || true; } | wc -l)
 
 				local key
 				if [ "$num_separators" -eq 0 ]; then
@@ -253,23 +261,40 @@ process_branch() {
 # =============================================================================
 
 # Phase 1: List all versions
+log "Starting: base_url=${BASE_URL}, markers=${CODE_LEVEL_MARKERS}"
 versions=$(get_svn_dirs "$BASE_URL")
 
 if [ -z "$versions" ]; then
+	log "WARN: No versions found at ${BASE_URL}, returning empty map"
 	jq -n '{"data": "{}"}'
 	exit 0
 fi
+
+log "Found versions: $(echo "$versions" | tr '\n' ' ')"
 
 # Phase 2: For each version, list branches and process each branch in parallel
 final_json='{}'
 
 while IFS= read -r version; do
 	[ -z "$version" ] && continue
+
+	# Filter: only process directories matching version naming pattern (e.g., V7R1_*, V9R1_*)
+	# This skips root-level structural dirs like trunk/, branches_bugfix/, tags/, WLANlib/, textfsm/
+	if [[ ! "$version" =~ ^V[0-9]+R[0-9] ]]; then
+		log "SKIP: '${version}' does not match version pattern V[0-9]R[0-9]*, skipping"
+		continue
+	fi
+
 	version_url="${BASE_URL}${version}/"
 
 	# List branches for this version
 	branches=$(get_svn_dirs "$version_url")
-	[ -z "$branches" ] && continue
+	if [ -z "$branches" ]; then
+		log "WARN: No branches found for version ${version}, skipping"
+		continue
+	fi
+
+	log "Version ${version}: branches=$(echo "$branches" | tr '\n' ' ')"
 
 	# Build branch list JSON
 	branch_list_json=$(list_to_json_array "$branches")
@@ -306,6 +331,7 @@ while IFS= read -r version; do
 			version_json=$(printf '%s\n' "$version_json" | jq --arg k "$branch" --argjson v "$branch_json" '. + {($k): $v}')
 		else
 			# Fallback: branch with depth 0 and empty folders
+			log "WARN: No output file for ${version}/${branch}, using fallback"
 			version_json=$(printf '%s\n' "$version_json" | jq --arg k "$branch" '. + {($k): {"depth": 0, "folders": []}}')
 		fi
 	done <<<"$branches"
@@ -314,4 +340,5 @@ while IFS= read -r version; do
 done <<<"$versions"
 
 # Output in Terraform external data source format
+log "Done. Outputting final JSON."
 jq -n --argjson data "$final_json" '{"data": ($data | tostring)}'
