@@ -13,7 +13,7 @@ terraform {
 
 provider "docker" {
   registry_auth {
-    address = "registry.coder.h3c.com"
+    address = "registry.coder-route.h3c.com"
     username = "coder"
     password = "silly"
   }
@@ -30,7 +30,7 @@ data "coder_parameter" "project_platform_svn" {
   order         = 0
   type          = "string"
   mutable       = false
-  default       = "http://10.153.120.80/cmwcode-open/V9R1/trunk"
+  default       = "http://10.153.123.13/cmwcode-route/V9R1/trunk"
 }
 data "coder_parameter" "project_platform_folder_list" {
   name          = "project_platform_folder_list"
@@ -89,6 +89,10 @@ data "coder_parameter" "svn_password" {
   description   = "Specify a SVN password to checkout codes"
   type          = "string"
   mutable       = true
+
+  styling = jsonencode({
+    mask_input = true
+  })
 }
 data "coder_provisioner" "me" {
 }
@@ -98,11 +102,11 @@ data "coder_workspace_owner" "me" {
 }
 
 locals {
-  assets_url = "https://coder-assets.cmwcoder.h3c.com"
+  assets_url = "https://assets.coder-route.h3c.com"
   code_server_dir = "/tmp/code-server"
-  coder_docs_url = "https://coder-docs.cmwcoder.h3c.com"
-  coder_tutorials_url = "https://tutorials.coder.h3c.com"
-  marketplace_url = "https://code-marketplace.cmwcoder.h3c.com"
+  coder_docs_url = "https://docs.coder-route.h3c.com"
+  coder_tutorials_url = "https://tutorials.coder-route.h3c.com"
+  marketplace_url = "https://marketplace.coder-route.h3c.com"
   project_path = "/home/${data.coder_workspace_owner.me.name}/project"
 }
 
@@ -115,7 +119,7 @@ resource "coder_agent" "main" {
     GIT_AUTHOR_EMAIL    = "${data.coder_workspace_owner.me.email}"
     GIT_COMMITTER_NAME  = coalesce(data.coder_workspace_owner.me.full_name, data.coder_workspace_owner.me.name)
     GIT_COMMITTER_EMAIL = "${data.coder_workspace_owner.me.email}"
-    SVN_PASSWORD_B64    = base64encode(data.coder_parameter.svn_password.value)
+    SVN_PASSWORD        = "${data.coder_parameter.svn_password.value}"
     SVN_USERNAME        = "${data.coder_parameter.svn_username.value}"
   }
 
@@ -395,7 +399,7 @@ resource "docker_service" "workspace" {
 }
 
 resource "docker_image" "main" {
-  name = "registry.coder.h3c.com/coder-${data.coder_workspace.me.id}"
+  name = "registry.coder-route.h3c.com/coder-${data.coder_workspace.me.id}"
   build {
     context = "build"
     build_args = {
