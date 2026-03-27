@@ -163,53 +163,56 @@ check_core_deps() {
 }
 check_core_deps
 
-# Define JSON content for Claude plugin settings
-JSON_CONTENT='{
-  "enabledPlugins": {
-    "comware-plugin@comware-plugins-marketplace": true
-  }
-}'
-
-# Define target file paths
-GLOBAL_SETTINGS="$HOME/.claude/settings.json"  # Global user-level path
-LOCAL_SETTINGS="$HOME/project/.claude/settings.json"  # Local override path
-
-# Function: write JSON to file (auto-create directory)
-write_json_to_file() {
-  local file_path="$1"
-  local json="$2"
-
-  local dir_path
-  dir_path=$(dirname "$file_path")
-  if [ ! -d "$dir_path" ]; then
-    echo "Creating directory: $dir_path"
-    if ! mkdir -p "$dir_path"; then
-      echo "Error: cannot create directory $dir_path"
-      return 1
-    fi
-  fi
-
-  if echo "$json" > "$file_path"; then
-    echo "Written file: $file_path"
-    return 0
-  else
-    echo "Error: cannot write file $file_path"
-    return 1
-  fi
-}
-
-# Write settings files (log output to file)
-{
-    echo "Writing config files..."
-    write_json_to_file "$GLOBAL_SETTINGS" "$JSON_CONTENT"
-    write_json_to_file "$LOCAL_SETTINGS" "$JSON_CONTENT"
-
-    echo -e "\nVerifying files:"
-    [ -f "$GLOBAL_SETTINGS" ] && echo "OK: Global config exists: $GLOBAL_SETTINGS" || echo "FAIL: Global config missing"
-    [ -f "$LOCAL_SETTINGS" ] && echo "OK: Local config exists: $LOCAL_SETTINGS" || echo "FAIL: Local config missing"
-
-    echo -e "\nDone!"
-} >> "$LOG_FILE" 2>&1
+# [DISABLED] Plugins marketplace not yet available in route red zone
+# TODO: Uncomment when plugins-marketplace is deployed to 10.113.12.131
+#
+# # Define JSON content for Claude plugin settings
+# JSON_CONTENT='{
+#   "enabledPlugins": {
+#     "comware-plugin@comware-plugins-marketplace": true
+#   }
+# }'
+#
+# # Define target file paths
+# GLOBAL_SETTINGS="$HOME/.claude/settings.json"  # Global user-level path
+# LOCAL_SETTINGS="$HOME/project/.claude/settings.json"  # Local override path
+#
+# # Function: write JSON to file (auto-create directory)
+# write_json_to_file() {
+#   local file_path="$1"
+#   local json="$2"
+#
+#   local dir_path
+#   dir_path=$(dirname "$file_path")
+#   if [ ! -d "$dir_path" ]; then
+#     echo "Creating directory: $dir_path"
+#     if ! mkdir -p "$dir_path"; then
+#       echo "Error: cannot create directory $dir_path"
+#       return 1
+#     fi
+#   fi
+#
+#   if echo "$json" > "$file_path"; then
+#     echo "Written file: $file_path"
+#     return 0
+#   else
+#     echo "Error: cannot write file $file_path"
+#     return 1
+#   fi
+# }
+#
+# # Write settings files (log output to file)
+# {
+#     echo "Writing config files..."
+#     write_json_to_file "$GLOBAL_SETTINGS" "$JSON_CONTENT"
+#     write_json_to_file "$LOCAL_SETTINGS" "$JSON_CONTENT"
+#
+#     echo -e "\nVerifying files:"
+#     [ -f "$GLOBAL_SETTINGS" ] && echo "OK: Global config exists: $GLOBAL_SETTINGS" || echo "FAIL: Global config missing"
+#     [ -f "$LOCAL_SETTINGS" ] && echo "OK: Local config exists: $LOCAL_SETTINGS" || echo "FAIL: Local config missing"
+#
+#     echo -e "\nDone!"
+# } >> "$LOG_FILE" 2>&1
 
 
 # Check and install dependencies (log output to file)
@@ -236,40 +239,44 @@ check_and_install_deps() {
 {
     check_and_install_deps
 
-    # Function: check if marketplace is installed
-    is_marketplace_installed() {
-        local name="$1"
-        claude plugin marketplace list 2>/dev/null | grep -q "$name"
-    }
+# [DISABLED] Plugins marketplace not yet available in route red zone
+# TODO: Uncomment when plugins-marketplace is deployed to 10.113.12.131
+#
+#     # Function: check if marketplace is installed
+#     is_marketplace_installed() {
+#         local name="$1"
+#         claude plugin marketplace list 2>/dev/null | grep -q "$name"
+#     }
+#
+#     # Function: add or update marketplace
+#     add_or_update_marketplace() {
+#         local url="$1"
+#         local name="$2"
+#
+#         if is_marketplace_installed "$name"; then
+#             echo "[Info] Marketplace '$name' already installed, updating..."
+#             claude plugin marketplace update "$name" 2>/dev/null
+#         else
+#             echo "[Info] Adding marketplace: $name"
+#             claude plugin marketplace add "$url"
+#         fi
+#     }
+#
+#     # Add or update marketplaces
+#     add_or_update_marketplace "http://10.113.36.121:3001/chatgpt/comware-plugins-marketplace.git" "comware-plugins-marketplace"
+#     add_or_update_marketplace "http://10.113.36.121:3001/chatgpt/claude-plugins.git" "comware-plugins"
+#
+#     # Install and update plugins
+#     echo "[Info] Installing/updating plugins..."
+#     claude plugin install comware-plugin@comware-plugins-marketplace -s project
+#
+#     # Update plugins
+#     echo "[Info] Checking plugin updates..."
+#     claude plugin update comware-plugin@comware-plugins-marketplace -s project
+#
+#     # Clean up old skill files
+#     rm -rf ~/project/.claude/skills/generating-comware-buildrun 2>/dev/null
 
-    # Function: add or update marketplace
-    add_or_update_marketplace() {
-        local url="$1"
-        local name="$2"
-
-        if is_marketplace_installed "$name"; then
-            echo "[Info] Marketplace '$name' already installed, updating..."
-            claude plugin marketplace update "$name" 2>/dev/null
-        else
-            echo "[Info] Adding marketplace: $name"
-            claude plugin marketplace add "$url"
-        fi
-    }
-
-    # Add or update marketplaces
-    add_or_update_marketplace "http://10.113.36.121:3001/chatgpt/comware-plugins-marketplace.git" "comware-plugins-marketplace"
-    add_or_update_marketplace "http://10.113.36.121:3001/chatgpt/claude-plugins.git" "comware-plugins"
-
-    # Install and update plugins
-    echo "[Info] Installing/updating plugins..."
-    claude plugin install comware-plugin@comware-plugins-marketplace -s project
-
-    # Update plugins
-    echo "[Info] Checking plugin updates..."
-    claude plugin update comware-plugin@comware-plugins-marketplace -s project
-
-    # Clean up old skill files
-    rm -rf ~/project/.claude/skills/generating-comware-buildrun 2>/dev/null
 } >> "$LOG_FILE" 2>&1
 
 
@@ -297,16 +304,19 @@ export CLAUDE_SESSION_START=$(date +%s)
 export DISABLE_AUTOUPDATER=1
 export API_TIMEOUT_MS=30000000
 
-# Telemetry configs
-export CLAUDE_CODE_ENABLE_TELEMETRY="1"
-export OTEL_METRICS_EXPORTER="otlp,prometheus"
-export OTEL_LOGS_EXPORTER="otlp"
-export OTEL_EXPORTER_OTLP_PROTOCOL="grpc"
-export OTEL_EXPORTER_OTLP_ENDPOINT="http://10.113.36.125:4000"
-
-# Debug configs
-export OTEL_METRIC_EXPORT_INTERVAL="100000"
-export OTEL_LOGS_EXPORT_INTERVAL="50000"
+# [DISABLED] Telemetry not yet available in route red zone
+# TODO: Uncomment when telemetry collector is deployed to route red zone
+#
+# # Telemetry configs
+# export CLAUDE_CODE_ENABLE_TELEMETRY="1"
+# export OTEL_METRICS_EXPORTER="otlp,prometheus"
+# export OTEL_LOGS_EXPORTER="otlp"
+# export OTEL_EXPORTER_OTLP_PROTOCOL="grpc"
+# export OTEL_EXPORTER_OTLP_ENDPOINT="http://10.113.36.125:4000"
+#
+# # Debug configs
+# export OTEL_METRIC_EXPORT_INTERVAL="100000"
+# export OTEL_LOGS_EXPORT_INTERVAL="50000"
 
 # Startup message
 echo ""
