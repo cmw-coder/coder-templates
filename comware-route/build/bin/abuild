@@ -29,7 +29,7 @@ show_help() {
     echo "Configurable Environment Variables:"
     echo "  Current script:"
     echo "    JENKINS_API_TOKEN                 Jenkins API token, default is 117b0fdde578a988ec1be741dd777c1a1c"
-    echo "    JENKINS_SERVER_URL                Jenkins server URL, default is http://10.153.3.174:8080"
+    echo "    JENKINS_SERVER_URL                Jenkins server URL, default is http://10.153.3.127:8080"
     echo "    PROJECT_PLATFORM_FOLDER_LIST      Project platform folder list (JSON array), this should be set automatically"
     echo ""
     echo "  Inherited from log-utils:"

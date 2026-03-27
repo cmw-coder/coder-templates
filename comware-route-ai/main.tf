@@ -38,15 +38,15 @@ data "coder_workspace_owner" "me" {
 
 locals {
   # Existing configuration
-  assets_url          = "https://coder-assets.cmwcoder.h3c.com"
+  assets_url          = "https://assets.coder-route.h3c.com"
   code_server_dir     = "/tmp/code-server"
-  coder_docs_url      = "https://coder-docs.cmwcoder.h3c.com"
-  coder_tutorials_url = "https://tutorials.coder.h3c.com"
-  marketplace_url     = "https://code-marketplace.cmwcoder.h3c.com"
+  coder_docs_url      = "https://docs.coder-route.h3c.com"
+  coder_tutorials_url = "https://tutorials.coder-route.h3c.com"
+  marketplace_url     = "https://marketplace.coder-route.h3c.com"
   project_path        = "/home/${data.coder_workspace_owner.me.name}/project"
 
   # SVN base URLs
-  platform_prefix = "http://10.153.120.80/cmwcode-open"
+  platform_prefix = "http://10.153.123.13/cmwcode-route"
   public_prefix   = "http://10.153.120.104/cmwcode-public"
 
   # --- Mode detection ---
@@ -210,7 +210,7 @@ data "coder_parameter" "platform_subdir" {
 
   name         = "platform_subdir"
   display_name = "Platform Bugfix Path"
-  description  = "Type the path under `branches_bugfix/` (e.g., `COMWAREV900R001trunk/TB202601071176`)"
+  description  = "Type the path under `branches_bugfix/` (e.g., `COMWAREV900R001trunk/v9trunk_bgptemp`)"
   icon         = "/emojis/1f3e0.png"
   type         = "string"
   order        = 103
