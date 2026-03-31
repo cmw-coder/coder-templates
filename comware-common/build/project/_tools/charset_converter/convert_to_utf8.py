@@ -9,7 +9,9 @@ import os
 import sys
 import argparse
 import datetime
+import concurrent.futures
 from pathlib import Path
+from threading import Lock
 
 
 def detect_encoding(file_path):
@@ -143,27 +145,37 @@ def detect_encoding(file_path):
         return None, 0.0
 
 
-def convert_to_utf8(file_path, backup=False):
-    """将文件转换为UTF-8编码"""
+def convert_to_utf8(file_path, backup=False, verbose=False):
+    """将文件转换为UTF-8编码
+
+    Args:
+        file_path: 文件路径
+        backup: 是否创建备份
+        verbose: 是否显示详细输出
+    """
     try:
         # 检测当前编码
         encoding, confidence = detect_encoding(file_path)
 
         if encoding is None:
-            print(f"无法检测 {file_path} 的编码，跳过")
+            if verbose:
+                print(f"无法检测 {file_path} 的编码，跳过")
             return False
 
-        print(f"文件: {file_path}")
-        print(f"  当前编码: {encoding} (置信度: {confidence:.2%})")
+        if verbose:
+            print(f"文件: {file_path}")
+            print(f"  当前编码: {encoding} (置信度: {confidence:.2%})")
 
         # 如果已经是UTF-8，跳过
         if encoding.lower() in ['utf-8', 'utf-8-sig']:
-            print(f"  已经是UTF-8编码，跳过")
+            if verbose:
+                print(f"  已经是UTF-8编码，跳过")
             return True
 
         # 只处理GB编码文件，Mac Roman文件也跳过（同原始UTF-8一样处理）
         if encoding.lower() not in ['gb18030', 'gb2312', 'gbk']:
-            print(f"  不是GB编码文件，跳过 (包括Mac Roman文件)")
+            if verbose:
+                print(f"  不是GB编码文件，跳过 (包括Mac Roman文件)")
             return False
 
         # 读取文件内容
@@ -175,7 +187,8 @@ def convert_to_utf8(file_path, backup=False):
         try:
             decoded_content = content.decode('gb18030', errors='ignore')
         except UnicodeDecodeError as e:
-            print(f"  使用gb18030解码失败: {e}")
+            if verbose:
+                print(f"  使用gb18030解码失败: {e}")
             return False
 
         # 备份原始文件
@@ -183,17 +196,20 @@ def convert_to_utf8(file_path, backup=False):
             backup_path = str(file_path) + '.bak'
             with open(backup_path, 'wb') as f:
                 f.write(content)
-            print(f"  已创建备份: {backup_path}")
+            if verbose:
+                print(f"  已创建备份: {backup_path}")
 
         # 写入UTF-8编码的文件
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(decoded_content)
 
-        print(f"  已转换为UTF-8编码")
+        if verbose:
+            print(f"  已转换为UTF-8编码")
         return True
 
     except Exception as e:
-        print(f"转换文件 {file_path} 时出错: {e}")
+        if verbose:
+            print(f"转换文件 {file_path} 时出错: {e}")
         return False
 
 
@@ -223,6 +239,10 @@ def main():
                        help='只显示要转换的文件，不实际转换')
     parser.add_argument('--log-file', default='utf8_conversion.log',
                        help='记录转换文件的日志文件路径 (默认: utf8_conversion.log)')
+    parser.add_argument('--workers', type=int, default=64,
+                       help='并发工作线程数 (默认: 64)')
+    parser.add_argument('--verbose', action='store_true',
+                       help='显示详细输出 (默认: 静默模式)')
 
     args = parser.parse_args()
 
@@ -252,37 +272,85 @@ def main():
             print(f"  ... 还有 {len(files) - 50} 个文件")
         return
 
-    # 转换文件
+    # 转换文件 - 使用线程池并发处理
+    # 线程安全的统计变量
     success_count = 0
     fail_count = 0
     skip_count = 0
     failed_files = []
     converted_files = []  # 记录实际被转换的文件
 
-    for i, file_path in enumerate(files, 1):
-        print(f"\n[{i}/{len(files)}] ", end='')
+    # 线程锁
+    success_lock = Lock()
+    fail_lock = Lock()
+    skip_lock = Lock()
+    failed_lock = Lock()
+    converted_lock = Lock()
 
-        # 检测编码
-        encoding, confidence = detect_encoding(file_path)
-        if encoding is None:
-            fail_count += 1
-            failed_files.append((file_path, "无法检测编码"))
-            continue
+    def process_file(file_path):
+        nonlocal success_count, fail_count, skip_count, failed_files, converted_files
 
-        # 如果已经是UTF-8，跳过
-        if encoding.lower() in ['utf-8', 'utf-8-sig']:
-            skip_count += 1
-            continue
+        try:
+            # 检测编码
+            encoding, confidence = detect_encoding(file_path)
+            if encoding is None:
+                with fail_lock:
+                    fail_count += 1
+                with failed_lock:
+                    failed_files.append((file_path, "无法检测编码"))
+                return
 
-        # 转换文件
-        if convert_to_utf8(file_path, backup=args.backup):
-            success_count += 1
-            # 记录相对路径（相对于根目录）
-            rel_path = file_path.relative_to(root_path)
-            converted_files.append(str(rel_path))  # 记录转换成功的文件
-        else:
-            fail_count += 1
-            failed_files.append((file_path, "转换失败"))
+            # 如果已经是UTF-8，跳过
+            if encoding.lower() in ['utf-8', 'utf-8-sig']:
+                with skip_lock:
+                    skip_count += 1
+                return
+
+            # 转换文件
+            if convert_to_utf8(file_path, backup=args.backup, verbose=args.verbose):
+                with success_lock:
+                    success_count += 1
+                # 记录相对路径（相对于根目录）
+                try:
+                    rel_path = file_path.relative_to(root_path)
+                    with converted_lock:
+                        converted_files.append(str(rel_path))
+                except ValueError:
+                    # 文件不在 root_path 下（例如符号链接），跳过记录
+                    pass
+            else:
+                with fail_lock:
+                    fail_count += 1
+                with failed_lock:
+                    failed_files.append((file_path, "转换失败"))
+
+        except Exception as e:
+            with fail_lock:
+                fail_count += 1
+            with failed_lock:
+                failed_files.append((file_path, f"处理异常: {e}"))
+
+    # 并发处理
+    print(f"开始并发处理 {len(files)} 个文件...")
+    max_workers = min(args.workers, len(files))  # 使用用户指定的线程数
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # 提交所有任务
+        futures = [executor.submit(process_file, file_path) for file_path in files]
+
+        # 等待完成并显示进度
+        completed = 0
+        for future in concurrent.futures.as_completed(futures):
+            completed += 1
+            try:
+                future.result()  # 等待任务完成，捕获可能的异常
+                if completed % 20 == 0 or completed == len(files):
+                    print(f"进度: {completed}/{len(files)} ({completed/len(files)*100:.1f}%)")
+            except Exception as e:
+                with fail_lock:
+                    fail_count += 1
+                with failed_lock:
+                    failed_files.append(("未知文件", f"任务异常: {e}"))
 
     # 保存转换清单
     if converted_files:

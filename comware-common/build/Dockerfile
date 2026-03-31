@@ -48,6 +48,7 @@ WORKDIR /home/${USER}
 COPY --chown=${USER}:${USER} _bashrc /home/${USER}/.bashrc
 COPY --chown=${USER}:${USER} _config/pip /home/${USER}/.config/pip/
 COPY --chown=${USER}:${USER} code-server /home/${USER}/.local/share/code-server/
+COPY --chown=${USER}:${USER} project/README.md /home/${USER}/project/README.md
 COPY --chown=${USER}:${USER} project/_claude /home/${USER}/project/.claude/
 COPY --chown=${USER}:${USER} project/_tools /home/${USER}/project/.tools/
 
