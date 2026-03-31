@@ -263,6 +263,11 @@ main() {
         return 1
     fi
 
+    if [ -z "$CODER_WORKSPACE_ID" ]; then
+        log_error "CODER_WORKSPACE_ID is not set. Refusing to proceed to avoid accidental deletion of parent directories."
+        return 1
+    fi
+
     # if is remove, delete the shadow branch
     if [ "$is_remove" = true ]; then
         # Get current branch URL

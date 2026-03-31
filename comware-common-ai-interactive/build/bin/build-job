@@ -190,6 +190,7 @@ run_build_job() {
         handle_error "Invalid shadow branch url, this may be caused by an incorrect PROJECT_PLATFORM_PATH."
         return 1
     fi
+    PLATFORM_SHADOW_CREATED=true
 
     # Determine task name
     local task_name
@@ -199,7 +200,9 @@ run_build_job() {
     fi
 
     log_info "Creating shadow branch for project public folder: ${PROJECT_PUBLIC_PATH}"
-    shadow-branch -f -k "$PROJECT_PUBLIC_PATH"
+    if shadow-branch -f -k "$PROJECT_PUBLIC_PATH"; then
+        PUBLIC_SHADOW_CREATED=true
+    fi
 
     local svn_path=${shadow_branch_url#*cmwcode-open}
     log_debug "Found cmwcode-open in SVN path, extracted path: $svn_path"
@@ -269,15 +272,23 @@ show_help() {
 interrupt_handler() {
     log_warn "${COLOR_YELLOW}Interrupted, cleanup shadow branches${COLOR_RESET}"
 
-    # Delete shadow branch
-    shadow-branch -r "$PROJECT_PLATFORM_PATH"
-    shadow-branch -r "$PROJECT_PUBLIC_PATH"
+    # Only delete shadow branches that were successfully created
+    if [ "$PLATFORM_SHADOW_CREATED" = true ]; then
+        shadow-branch -r "$PROJECT_PLATFORM_PATH"
+    fi
+    if [ "$PUBLIC_SHADOW_CREATED" = true ]; then
+        shadow-branch -r "$PROJECT_PUBLIC_PATH"
+    fi
 
     return 1
 }
 
 main() {
     trap interrupt_handler SIGINT SIGTERM
+
+    # Track shadow branch creation for conditional cleanup
+    PLATFORM_SHADOW_CREATED=false
+    PUBLIC_SHADOW_CREATED=false
 
     local build_type
     local module_list
@@ -328,9 +339,13 @@ main() {
     run_build_job "$build_type" "$module_list" "$extra_params"
     local build_result=$?
 
-    # Delete shadow branch
-    shadow-branch -r "$PROJECT_PLATFORM_PATH"
-    shadow-branch -r "$PROJECT_PUBLIC_PATH"
+    # Only delete shadow branches that were successfully created
+    if [ "$PLATFORM_SHADOW_CREATED" = true ]; then
+        shadow-branch -r "$PROJECT_PLATFORM_PATH"
+    fi
+    if [ "$PUBLIC_SHADOW_CREATED" = true ]; then
+        shadow-branch -r "$PROJECT_PUBLIC_PATH"
+    fi
 
     return $build_result
 }

@@ -1,4 +1,4 @@
-FROM registry.coder-route.h3c.com/node:lts-trixie-slim
+FROM registry.coder-route.h3c.com/node:trixie-slim
 
 # Set environment variables
 ENV DEVCONTAINER=true
