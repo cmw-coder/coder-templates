@@ -333,7 +333,8 @@ resource "coder_script" "checkout_public_svn" {
 }
 
 resource "docker_service" "workspace" {
-  name = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
+  count = data.coder_workspace.me.start_count
+  name  = "coder-${data.coder_workspace_owner.me.name}-${lower(data.coder_workspace.me.name)}"
   task_spec {
     container_spec {
       image = docker_registry_image.main.name
