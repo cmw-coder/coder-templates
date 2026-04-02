@@ -62,7 +62,6 @@ COPY --chown=${USER}:${USER} code-server /home/${USER}/.local/share/code-server/
 COPY --chown=${USER}:${USER} project /home/${USER}/project/
 
 
-
 # Add languagepacks.json
 ARG EXTENSION_VERSION=1.99.2025040909
 RUN export LANGUAGEPACK_HASH=$(echo -n "MS-CEINTL.vscode-language-pack-zh-hans${EXTENSION_VERSION}" | md5sum | awk '{print $1}') \
