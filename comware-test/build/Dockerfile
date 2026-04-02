@@ -61,8 +61,7 @@ WORKDIR /home/${USER}
 COPY --chown=${USER}:${USER} code-server /home/${USER}/.local/share/code-server/
 COPY --chown=${USER}:${USER} project /home/${USER}/project/
 
-# Create localke directory
-RUN mkdir -p /home/${USER}/project/localke && chown ${USER}:${USER} /home/${USER}/project/localke
+
 
 # Add languagepacks.json
 ARG EXTENSION_VERSION=1.99.2025040909

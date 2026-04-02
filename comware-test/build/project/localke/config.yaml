@@ -1,0 +1,56 @@
+# =====================================================================
+# 本地KE库配置文件
+# =====================================================================
+# 说明：本地私有知识库的配置信息
+
+# 库版本信息
+version: "1.0.0"
+last_updated: "2026-03-28"
+
+# 库描述
+description: "本地私有知识库，存储用户自定义的命令、示例和设计参考"
+
+# 各子库信息
+sources:
+  cmd:
+    description: "命令行参考库"
+    format: "txt"
+    encoding: "utf-8"
+    # 示例格式：
+    # display ospf peer | ...命令说明...
+    # display bgp peer | ...命令说明...
+
+  background:
+    description: "测试背景库"
+    structure:
+      - confests/      # conftest.py文件
+      - resources/     # 资源文件
+
+  example:
+    description: "测试示例库"
+    structure:
+      - test_scripts/  # 测试脚本
+      - examples/      # 示例文件
+
+  design:
+    description: "设计参考库"
+    structure:
+      - press/         # 配置手册
+      - specs/         # 规格说明
+
+# 用户私有库
+users:
+  # 示例：每个用户可以有独立的私有KE库
+  user1:
+    priority: 1
+    description: "用户1的私有KE库"
+  user2:
+    priority: 2
+    description: "用户2的私有KE库"
+
+# 配置说明
+# 1. 添加本地命令：编辑 cmd/cmd.txt
+# 2. 添加背景文件：放在 background/conftest/ 或 background/resources/
+# 3. 添加测试示例：放在 example/test_scripts/ 或 example/examples/
+# 4. 添加设计参考：放在 design/press/ 或 design/specs/
+# 5. 用户私有库：在 users/ 下创建用户目录
