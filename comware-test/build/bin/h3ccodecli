@@ -861,13 +861,46 @@ fi
 
 
 
-# 20260331 makunpeng 增加插件市场 
-claude plugin marketplace remove comware-test-marketplace || true
-claude plugin marketplace add http://10.144.41.149:3001/chatgpt/comware-test-marketplace.git    || true
-claude plugin install webide-plugin@comware-test-marketplace -s project  
+# ============================================
+# 插件市场管理
+# ============================================
+echo "[插件] 检查插件市场状态..."
 
-claude plugin marketplace update comware-test-marketplace
-claude plugin update webide-plugin@comware-test-marketplace -s project
+# 检查插件市场是否已安装
+MARKETPLACE_NAME="comware-test-marketplace"
+MARKETPLACE_URL="http://10.144.41.149:3001/chatgpt/comware-test-marketplace.git"
+PLUGIN_NAME="webide-plugin@${MARKETPLACE_NAME}"
+
+if claude plugin marketplace list 2>/dev/null | grep -q "${MARKETPLACE_NAME}"; then
+    echo "[插件] 插件市场已安装: ${MARKETPLACE_NAME}"
+    echo "[插件] 正在更新插件市场..."
+    if claude plugin marketplace update "${MARKETPLACE_NAME}" 2>/dev/null; then
+        echo "[插件] 插件市场更新成功"
+    else
+        echo "[警告] 插件市场更新失败，将继续执行"
+    fi
+
+    echo "[插件] 正在更新插件..."
+    if claude plugin update "${PLUGIN_NAME}" -s project 2>/dev/null; then
+        echo "[插件] 插件更新成功"
+    else
+        echo "[警告] 插件更新失败，将继续执行"
+    fi
+else
+    echo "[插件] 插件市场未安装，正在添加..."
+    if claude plugin marketplace add "${MARKETPLACE_URL}" 2>/dev/null; then
+        echo "[插件] 插件市场添加成功"
+    else
+        echo "[警告] 插件市场添加失败，将继续执行"
+    fi
+
+    echo "[插件] 正在安装插件..."
+    if claude plugin install "${PLUGIN_NAME}" -s project 2>/dev/null; then
+        echo "[插件] 插件安装成功"
+    else
+        echo "[警告] 插件安装失败，将继续执行"
+    fi
+fi
 
 
 
