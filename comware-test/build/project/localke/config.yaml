@@ -23,7 +23,7 @@ sources:
   background:
     description: "测试背景库"
     structure:
-      - confests/      # conftest.py文件
+      - conftest/      # conftest.py文件
       - resources/     # 资源文件
 
   example:

@@ -485,10 +485,11 @@ if [ "$1" = "--reset" ]; then
     exit 0
 fi
 
-# 创建日志目录
+# 创建日志目录并清空日志（每次进入覆盖）
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || {
     echo "[Warn] 无法创建日志目录: $(dirname "$LOG_FILE")"
 }
+: > "$LOG_FILE"
 
 # 检查核心依赖（必须在 API 调用之前）
 check_core_deps() {
@@ -505,57 +506,6 @@ check_core_deps() {
     fi
 }
 check_core_deps
-
-# 定义要写入的JSON内容（包含所有需要安装的 plugin）
-JSON_CONTENT='{
-  "enabledPlugins": {
-    "comware-plugin@comware-plugins-marketplace": true
-  }
-}'
-
-# 定义两个目标文件路径
-GLOBAL_SETTINGS="$HOME/.claude/settings.json"  # 全局用户级路径
-LOCAL_SETTINGS="$HOME/project/.claude/settings.json"  # 本地覆盖级路径
-
-# 函数：写入JSON到指定文件（自动创建目录）
-write_json_to_file() {
-  local file_path="$1"
-  local json="$2"
-
-  # 创建文件所在的目录（如果不存在）
-  local dir_path=$(dirname "$file_path")
-  if [ ! -d "$dir_path" ]; then
-    echo "创建目录: $dir_path"
-    if ! mkdir -p "$dir_path"; then
-      echo "错误：无法创建目录 $dir_path"
-      return 1
-    fi
-  fi
-
-  # 将JSON内容写入文件（覆盖原有内容）
-  if echo "$json" > "$file_path"; then
-    echo "成功写入文件: $file_path"
-    return 0
-  else
-    echo "错误：无法写入文件 $file_path"
-    return 1
-  fi
-}
-
-# 执行写入操作（日志输出到文件）
-{
-    echo "写入配置文件..."
-    write_json_to_file "$GLOBAL_SETTINGS" "$JSON_CONTENT"
-    write_json_to_file "$LOCAL_SETTINGS" "$JSON_CONTENT"
-
-    # 最终检查
-    echo -e "\n验证文件是否存在："
-    [ -f "$GLOBAL_SETTINGS" ] && echo "✅ 全局配置文件已存在: $GLOBAL_SETTINGS" || echo "❌ 全局配置文件创建失败"
-    [ -f "$LOCAL_SETTINGS" ] && echo "✅ 本地配置文件已存在: $LOCAL_SETTINGS" || echo "❌ 本地配置文件创建失败"
-
-    echo -e "\n操作完成！"
-} >> "$LOG_FILE" 2>&1
-
 
 # 检查并安装依赖（日志输出到文件）
 check_and_install_deps() {
@@ -604,19 +554,31 @@ check_and_install_deps() {
     # 添加或更新 marketplace
     add_or_update_marketplace "http://10.113.36.121:3001/chatgpt/comware-plugins-marketplace.git" "comware-plugins-marketplace"
     add_or_update_marketplace "http://10.113.36.121:3001/chatgpt/claude-plugins.git" "comware-plugins"
+    add_or_update_marketplace "http://10.113.36.121:3001/chatgpt/claude-hud.git" "claude-hud"
 
     # 安装并更新 plugins
     echo "[Info] 安装/更新 plugins..."
     claude plugin install comware-plugin@comware-plugins-marketplace -s project
-
+    mkdir -p ~/.cache/tmp 
+    export TMPDIR=~/.cache/tmp 
+    claude plugin install claude-hud@claude-hud -s project
 
     # 更新 plugins
     echo "[Info] 检查 plugin 更新..."
     claude plugin update comware-plugin@comware-plugins-marketplace -s project
+    claude plugin update claude-hud@claude-hud -s project
 
 
     # 清理旧技能文件
     rm -rf ~/project/.claude/skills/generating-comware-buildrun 2>/dev/null
+
+    # 安装 MCP 服务器 sirchmunk（如果不存在）
+    if ! claude mcp list 2>/dev/null | grep -q "sirchmunk"; then
+        echo "[Info] 正在安装 MCP 服务器: sirchmunk"
+        claude mcp add sirchmunk http://10.113.36.111:9888/mcp --transport http
+    else
+        echo "[Info] MCP 服务器 sirchmunk 已安装，跳过"
+    fi
 } >> "$LOG_FILE" 2>&1
 
 
