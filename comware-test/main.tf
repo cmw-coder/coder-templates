@@ -348,6 +348,14 @@ resource "coder_script" "create_project_folders" {
 
     cd /home/${local.username}/project
     mkdir -p ./KE知识库
+    mkdir -p ./localke/background/conftest
+    mkdir -p ./localke/background/resources
+    mkdir -p ./localke/design/press
+    mkdir -p ./localke/design/specs
+    mkdir -p ./localke/example/examples
+    mkdir -p ./localke/example/test_scripts
+    mkdir -p ./localke/logs
+    mkdir -p ./localke/users
     mkdir -p ./press
     mkdir -p ./test_cases
     mkdir -p ./test_scripts
