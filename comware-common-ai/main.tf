@@ -664,6 +664,23 @@ resource "coder_script" "create_python_venv" {
     .venv/bin/pip install tree-sitter tree-sitter-c
   EOF
 }
+resource "coder_script" "collect_cc_statistics" {
+  agent_id     = coder_agent.main.id
+  display_name = "Collect CC Statistics"
+  icon         = "/emojis/1f4ca.png"
+  cron         = "0 0 0 * * *"
+  run_on_stop  = true
+  script       = <<EOF
+    #!/bin/bash
+    VENV_DIR="$HOME/.cc-statistics-venv"
+    if [ ! -d "$VENV_DIR" ]; then
+      python3 -m venv "$VENV_DIR" --system-site-packages
+      "$VENV_DIR/bin/pip" install /opt/cc-statistics -q
+      "$VENV_DIR/bin/pip" install -r /opt/cc-statistics/comware/requirements.txt -q
+    fi
+    "$VENV_DIR/bin/python" /opt/cc-statistics/comware/json_to_pgsql.py collect --all --upsert
+  EOF
+}
 
 # =============================================================================
 # Docker resources
@@ -728,6 +745,13 @@ resource "docker_service" "workspace" {
         type      = "bind"
         read_only = true
         source    = "/opt/open-headers/V9R1/trunk/include"
+      }
+
+      mounts {
+        target    = "/opt/cc-statistics"
+        type      = "bind"
+        read_only = true
+        source    = "/opt/cc-statistics"
       }
     }
   }
