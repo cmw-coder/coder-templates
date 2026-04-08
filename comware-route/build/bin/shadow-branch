@@ -26,13 +26,15 @@ apply_changes_to_shadow_branch() {
     local current_branch_status="$2"
     local shadow_branch_url="$3"
 
-    # Extract added/deleted/modified files
+    # Extract added/deleted/modified/unversioned files
     local added_files
     local deleted_files
     local modified_files
+    local unversioned_files
     added_files=$(echo "$current_branch_status" | grep "^A" | awk '{print $2}')
     deleted_files=$(echo "$current_branch_status" | grep "^D" | awk '{print $2}')
     modified_files=$(echo "$current_branch_status" | grep -E "^M|^MM" | awk '{print $2}')
+    unversioned_files=$(echo "$current_branch_status" | grep "^?" | awk '{print $2}')
 
     # Create temporary directory for shadow branch
     local temp_dir
@@ -85,6 +87,11 @@ apply_changes_to_shadow_branch() {
     # Process each file type
     log_info "Processing added files..."
     for file_path in $added_files; do
+        local relative_path="${file_path#"$current_branch_path"/}"
+        [ -f "$current_branch_path/$relative_path" ] && process_file add "$relative_path"
+    done
+    log_info "Processing unversioned files..."
+    for file_path in $unversioned_files; do
         local relative_path="${file_path#"$current_branch_path"/}"
         [ -f "$current_branch_path/$relative_path" ] && process_file add "$relative_path"
     done
