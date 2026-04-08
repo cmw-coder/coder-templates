@@ -172,6 +172,7 @@ pip install pypandoc python-docx beautifulsoup4 markdown lxml
 4. **模板文件**:
    - 模板文件位于 `{当前SKILL路径}/templates/generate_prompt/` 目录
    - 包含: `test_netconf.py`, `conftest.py`, `Checklist.json` 等
+   - 修复流程，禁止将模板上面的top节点删除
    - 如果不需要复制模板，可以省略 `-t` 参数
 
 5. **错误排查**:
