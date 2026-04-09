@@ -668,7 +668,7 @@ resource "coder_script" "collect_cc_statistics" {
   agent_id     = coder_agent.main.id
   display_name = "Collect CC Statistics"
   icon         = "/emojis/1f4ca.png"
-  cron         = "0 0 0 * * *"
+  cron         = "0 30 23 * * *"
   run_on_stop  = true
   script       = <<EOF
     #!/bin/bash
