@@ -502,6 +502,21 @@ resource "coder_app" "open_webui" {
   url          = "http://10.113.12.131:3000"
   external     = true
 }
+resource "coder_app" "claude_run" {
+  agent_id     = coder_agent.main.id
+  slug         = "claude-run"
+  display_name = "Claude Run"
+  icon         = "/emojis/1f4ac.png"
+  url          = "http://localhost:12001"
+  subdomain    = true
+  share        = "public"
+
+  healthcheck {
+    url       = "http://localhost:12001"
+    interval  = 5
+    threshold = 6
+  }
+}
 
 # =============================================================================
 # Coder environment variables
@@ -613,6 +628,16 @@ resource "coder_script" "start_code_server" {
       --trusted-origins * \
       >${local.code_server_dir}/main.log 2>&1 &
     echo -e "\033[32m- Code server started!\033[0m"
+  EOF
+}
+resource "coder_script" "start_claude_run" {
+  agent_id           = coder_agent.main.id
+  display_name       = "Start Claude Run"
+  icon               = "/emojis/1f4ac.png"
+  run_on_start       = true
+  script             = <<EOF
+    #!/bin/bash
+    claude-run --no-open >/tmp/claude-run.log 2>&1 &
   EOF
 }
 resource "coder_script" "install_clangd" {

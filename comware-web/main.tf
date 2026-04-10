@@ -114,6 +114,21 @@ resource "coder_app" "get_workspace_id" {
   icon         = "${data.coder_workspace.me.access_url}/icon/widgets.svg"
   command      = "echo \"Workspace ID:\" && echo ${data.coder_workspace.me.id} && zsh"
 }
+resource "coder_app" "claude_run" {
+  agent_id     = coder_agent.main.id
+  slug         = "claude-run"
+  display_name = "Claude Run"
+  icon         = "/emojis/1f4ac.png"
+  url          = "http://localhost:12001"
+  subdomain    = true
+  share        = "public"
+
+  healthcheck {
+    url       = "http://localhost:12001"
+    interval  = 5
+    threshold = 6
+  }
+}
 
 resource "coder_env" "http_proxy" {
   agent_id = coder_agent.main.id
@@ -169,6 +184,17 @@ resource "coder_script" "start_code_server" {
     >/home/${local.username}/.local/share/code-server/main.log 2>&1 &
 
     echo -e "\033[32m- Code server started!\033[0m"
+  EOF
+}
+
+resource "coder_script" "start_claude_run" {
+  agent_id     = coder_agent.main.id
+  display_name = "Start Claude Run"
+  icon         = "/emojis/1f4ac.png"
+  run_on_start = true
+  script = <<EOF
+    #!/bin/bash
+    claude-run --no-open >/tmp/claude-run.log 2>&1 &
   EOF
 }
 

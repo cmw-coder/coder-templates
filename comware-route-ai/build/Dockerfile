@@ -26,7 +26,7 @@ ENV VISUAL=nvim
 
 # Install Claude Code and skify
 RUN npm config set registry http://rdmirrors.h3c.com/npm \
-    && npm install -g @anthropic-ai/claude-code@2.0.76 @skify/cli
+    && npm install -g @anthropic-ai/claude-code@2.0.76 @skify/cli claude-run
 
 # Create a non-root user with sudo privileges
 ARG USER=coder
